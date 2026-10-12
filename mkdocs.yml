@@ -50,10 +50,24 @@ nav:
   - Référence API: reference/api.md
   - ADR:
       - "0001 — Architecture initiale": adr/0001-architecture-initiale.md
+      - "0002 — Méthodologie informée par les benchmarks": adr/0002-benchmark-informed-evaluation-methodology.md
   - Plans:
       - "Roadmap d'amélioration (2026)": plans/project-improvement-roadmap-2026.md
       - "V2 — Pipeline async, observabilité, juge hybride": plans/feature-pipeline-v2-1.md
       - "Sécurité & coût — spécialisation": plans/feature-security-cost-specialization-1.md
+  - "Plans d'implémentation":
+      - "Model Compass — recherche benchmarks et développement": implementation-plans/01-model-compass-benchmark-research-and-development.md
+      - "Model Compass — amélioration du pipeline et de la qualité": implementation-plans/02-pipeline-evaluation-quality-improvement.md
+  - "Recherche benchmarks":
+      - "Registre des sources": research/benchmark-source-registry.md
+      - "Comparaison des benchmarks": research/benchmark-comparison.md
+      - "Principes de conception": research/model-compass-design-principles.md
+      - "Cartographie benchmark → cas d'usage": research/benchmark-to-use-case-mapping.md
+      - "HELM": research/benchmarks/helm.md
+      - "MMLU / MMLU-Pro": research/benchmarks/mmlu-family.md
+      - "BIG-bench": research/benchmarks/big-bench.md
+      - "MT-Bench": research/benchmarks/mt-bench.md
+      - "SWE-bench": research/benchmarks/swe-bench.md
   - Maintenance de la documentation: documentation.md
   - "Brief manager (2026-08-17)": brief-manager-2026-08-17.md
   - "Brief manager (2026-09-08)": brief-manager-2026-09-08.md
