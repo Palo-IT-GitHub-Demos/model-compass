@@ -81,6 +81,23 @@ _RESULTS_DIR = Path("results")
 _INTERMEDIATE_DIR = Path("data/intermediate")
 _QUALITY_PROMPTS = Path("data/prompts/quality_prompts.json")
 _USE_CASE_CATALOG = DEFAULT_USE_CASE_CATALOG_PATH
+_QUALITY_SUITES: dict[str, tuple[Path, Path]] = {
+    "v1": (_QUALITY_PROMPTS, DEFAULT_USE_CASE_CATALOG_PATH),
+    "v2": (
+        Path("data/prompts/quality_prompts_v2.json"),
+        Path("data/catalog/model_compass_use_cases_v2.json"),
+    ),
+}
+
+
+def _activate_quality_suite(name: str) -> None:
+    """Point the pipelines at the prompt file and catalog of the named suite."""
+    global _QUALITY_PROMPTS, _USE_CASE_CATALOG
+    if name not in _QUALITY_SUITES:
+        raise ValueError(f"Unknown QUALITY_SUITE '{name}'. Valid values: {', '.join(sorted(_QUALITY_SUITES))}.")
+    _QUALITY_PROMPTS, _USE_CASE_CATALOG = _QUALITY_SUITES[name]
+
+
 _DRY_RUN_DIR = Path("data/dry_run")
 _MIN_QUALITY_COVERAGE_FOR_CER = 0.8
 _TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -341,7 +358,7 @@ class AsyncPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file found at '%s'; skipping.", _QUALITY_PROMPTS)
             return pd.DataFrame()
-        judge = AsyncQualityJudge(client)
+        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
         try:
             df = await judge.run_dataset(
                 _QUALITY_PROMPTS,
@@ -705,6 +722,7 @@ def _save_pending(
             "dimension_count": collect_result.dimension_count,
             "repetitions": collect_result.repetitions,
             "suite_id": collect_result.quality_suite_id,
+            "code_execution": collect_result.code_execution,
         },
         "pending_judgments": collect_result.pending_judgments,
     }
@@ -936,7 +954,7 @@ class CollectPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file at '%s'; skipping.", _QUALITY_PROMPTS)
             return CollectResult()
-        judge = AsyncQualityJudge(client)
+        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
         try:
             result = await judge.run_collect(
                 _QUALITY_PROMPTS,
@@ -1596,6 +1614,7 @@ class DryRunPipeline(CollectPipeline):
                 "dimension_count": collect_result.dimension_count,
                 "repetitions": collect_result.repetitions,
                 "suite_id": collect_result.quality_suite_id,
+                "code_execution": collect_result.code_execution,
             },
         }
         pending_path = _DRY_RUN_DIR / f"pending_{timestamp}.json"
@@ -1770,6 +1789,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help=("Security probe set for this run only. Overrides SECURITY_MODE. " "Ignored by merge/models."),
     )
+    parser.add_argument(
+        "--quality-suite",
+        choices=sorted(_QUALITY_SUITES),
+        default=None,
+        help="Quality prompt suite and catalog for this run only. Overrides QUALITY_SUITE. Use it for merge too.",
+    )
     parser.add_argument("--paid-only", action="store_true", help="Keep only paid models for 'select'.")
     parser.add_argument("--free-only", action="store_true", help="Keep only zero-priced/free-tier models for 'select'.")
     parser.add_argument("--max-input-price", type=float, default=None, help="Maximum input price per 1M tokens.")
@@ -1793,6 +1818,8 @@ def _settings_override_from_args(args: argparse.Namespace) -> Settings | None:
     if args.security:
         overrides["security_mode"] = args.security
         overrides["security_probes_path"] = None  # an explicit --security wins over a stale custom path
+    if args.quality_suite:
+        overrides["quality_suite"] = args.quality_suite
     if not overrides:
         return None
     return get_settings().model_copy(update=overrides)
@@ -1936,6 +1963,8 @@ def main() -> None:
             return
 
         settings = _settings_override_from_args(args) if subcommand in _SETTINGS_AWARE_SUBCOMMANDS else None
+        if subcommand in (*_SETTINGS_AWARE_SUBCOMMANDS, "merge"):
+            _activate_quality_suite((_settings_override_from_args(args) or get_settings()).quality_suite)
 
         if subcommand in ("run", "collect"):
             pipeline = CollectPipeline(settings) if settings else CollectPipeline()

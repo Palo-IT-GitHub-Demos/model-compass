@@ -18,6 +18,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from src.evaluators.code_sandbox import find_policy_violation, run_python_tests
+
 
 @dataclass(frozen=True)
 class CheckResult:
@@ -167,8 +169,7 @@ class PythonSyntaxCheck:
                 passed=False,
                 score=1,
                 reason=(
-                    f"Function '{required_function}' parameters must be "
-                    f"{required_parameters}, got {actual_parameters}."
+                    f"Function '{required_function}' parameters must be {required_parameters}, got {actual_parameters}."
                 ),
                 **fmt,
             )
@@ -179,6 +180,79 @@ class PythonSyntaxCheck:
             reason=f"Response satisfies the '{required_function}' Python function contract.",
             **fmt,
         )
+
+
+class PythonExecutionCheck:
+    """Run generated Python against test cases in the restricted sandbox.
+
+    Undecidable (routed to the judge panel) unless the run opted in with
+    ``execute_code`` or when the sandbox itself is unavailable, so an
+    infrastructure problem is never scored as a model failure.
+    """
+
+    category = "code_execution"
+
+    def run(
+        self,
+        prompt: str,
+        response: str,
+        evaluation: Mapping[str, Any] | None = None,
+    ) -> CheckResult:
+        """Score the response 5 when every test case passes, otherwise 1."""
+        del prompt
+        code = _strip_code_fences(response)
+        fmt = _format_compliance(evaluation, response, code, "raw Python")
+        if _get_context_value(evaluation, "execute_code") is not True:
+            return CheckResult(
+                passed=None,
+                score=None,
+                reason="Code execution is disabled; routed to the judge panel.",
+                **fmt,
+            )
+        if not code:
+            return CheckResult(passed=False, score=1, reason="Response is empty; expected Python source.", **fmt)
+
+        function_name = _get_context_str(evaluation, "required_function")
+        cases = _get_context_value(evaluation, "test_cases")
+        if function_name is None or not isinstance(cases, list) or not cases:
+            return CheckResult(
+                passed=None, score=None, reason="No executable test contract; routed to the judge panel.", **fmt
+            )
+
+        violation = find_policy_violation(code)
+        if violation is not None:
+            return CheckResult(passed=False, score=1, reason=f"Rejected before execution: {violation}.", **fmt)
+
+        expected_parameters = _get_context_strings(evaluation, "required_parameters")
+        tree = ast.parse(code)
+        function = next(
+            (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function_name),
+            None,
+        )
+        if function is None:
+            return CheckResult(
+                passed=False, score=1, reason=f"Required function '{function_name}' was not found.", **fmt
+            )
+        actual_parameters = [arg.arg for arg in (*function.args.posonlyargs, *function.args.args)]
+        if expected_parameters and actual_parameters != expected_parameters:
+            return CheckResult(
+                passed=False,
+                score=1,
+                reason=f"Function '{function_name}' parameters must be {expected_parameters}, got {actual_parameters}.",
+                **fmt,
+            )
+
+        result = run_python_tests(code, function_name, cases)
+        if not result.is_model_failure:
+            return CheckResult(passed=None, score=None, reason=f"Sandbox unavailable: {result.detail}", **fmt)
+        if result.status == "ok" and result.passed == result.total:
+            return CheckResult(passed=True, score=5, reason=f"Passed {result.passed}/{result.total} test cases.", **fmt)
+        detail = (
+            f"Passed {result.passed}/{result.total} test cases."
+            if result.status == "ok"
+            else f"Execution {result.status}: {result.detail}"
+        )
+        return CheckResult(passed=False, score=1, reason=detail, **fmt)
 
 
 class ExactFormatCheck:
@@ -245,6 +319,7 @@ class ExactAnswerCheck(ExactFormatCheck):
 CHECKS: dict[str, DeterministicCheck] = {
     "json_output": JsonValidityCheck(),
     "code_generation": PythonSyntaxCheck(),
+    "code_execution": PythonExecutionCheck(),
     "instruction_following": ExactFormatCheck(),
     "exact_answer": ExactAnswerCheck(),
     "factual_sanity": ExactAnswerCheck(),

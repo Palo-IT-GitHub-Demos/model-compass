@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the opt-in `generic-screen-v2` quality suite (`QUALITY_SUITE=v2` or
+  `--quality-suite v2`): 30 prompts that keep the 16 v1 prompts at the same IDs
+  and add 7 executable code items, 4 noisy-text extraction items and 3 judged
+  communication items, with the matching `model-compass-use-cases-v2` catalog;
+  `generic-screen-v1` stays the default and unchanged
+- Added a restricted code sandbox for `code_execution` prompts, enabled only
+  with `QUALITY_CODE_EXECUTION=true`: AST allowlist, isolated subprocess with
+  empty environment, timeout and resource limits, and hash-only logging. It is
+  defence in depth, not a security boundary; when disabled or unavailable the
+  responses go to the judge panel instead of being scored as failures
 - `make merge` now exports quality-suite diagnostics under
   `results/quality_analysis/`: per-prompt item analysis (discrimination,
   saturated/floor/low-variance flags) and inter-judge agreement

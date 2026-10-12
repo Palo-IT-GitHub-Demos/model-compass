@@ -252,6 +252,45 @@ avec un avertissement) : une couverture partielle change silencieusement le
 sens du score moyen, une valeur isolée invalide ne fait que le priver d'une
 contribution.
 
+## 3 bis. Suite `generic-screen-v2` et exécution de code
+
+`QUALITY_SUITE=v2` (ou `--quality-suite v2`, à répéter pour `merge`) charge
+`data/prompts/quality_prompts_v2.json` et
+`data/catalog/model_compass_use_cases_v2.json`. `generic-screen-v1` reste la
+valeur par défaut et n'est pas modifié (ADR 0002). La v2 contient les 16 prompts
+v1 aux mêmes identifiants, plus 14 items :
+
+- 7 items de code (`code_execution`, ids 16-22) notés par des cas de test ;
+- 4 extractions de texte bruité avec JSON attendu exact (ids 23-26) ;
+- 3 items de communication notés par les juges (ids 27-29).
+
+Le catalogue v2 rattache ces items aux cas d'usage existants (extraction : 7
+items, code : 8, communication : 5). Les seuils restent provisoires : leur
+calibration est prévue à l'étape 5 du plan 02.
+
+### Contrat du sandbox de code
+
+L'ADR 0002 exige un sandbox, des limites de ressources, des logs et une
+attribution avant toute exécution de code généré. Contrat appliqué par
+`src/evaluators/code_sandbox.py` :
+
+- **Opt-in** : rien ne s'exécute sans `QUALITY_CODE_EXECUTION=true`. Sinon les
+  réponses `code_execution` sont envoyées au panel de juges (critères fournis).
+  `quality_metadata.code_execution` indique ce qui a été utilisé.
+- **Avant exécution** : analyse AST ; imports limités à une liste blanche de la
+  bibliothèque standard, appels (`open`, `eval`, `exec`, `getattr`…) et attributs
+  dunder dangereux refusés. Un refus est un échec de la réponse (score 1, raison
+  explicite).
+- **Exécution** : sous-processus Python isolé (`-I -S`), environnement vide,
+  répertoire temporaire, timeout de 5 s, limite CPU et taille de fichier
+  (plus la mémoire sous Linux), sortie de l'utilisateur supprimée.
+- **Notation** : 5 si tous les cas passent, sinon 1 ; la raison indique
+  `x/y` cas passés. Si le sandbox est indisponible, la réponse est renvoyée
+  aux juges et non comptée comme échec du modèle.
+- **Logs** : hash du code, fonction, statut, cas passés, durée ; jamais le code.
+- **Limite assumée** : défense en profondeur, pas une frontière de sécurité. Le
+  réseau n'est bloqué que par la liste blanche d'imports et la mémoire n'est pas
+  limitée sous macOS. À réserver aux réponses de modèles évalués.
 ## 4. Couverture du périmètre
 
 Le module de correction déterministe résume lui-même sa limite :

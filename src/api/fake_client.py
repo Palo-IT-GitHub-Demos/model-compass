@@ -12,6 +12,7 @@ dry-runs produce stable, reproducible results.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,7 +29,7 @@ _JSON_TRANSLATE = '{"fr": "bonjour", "es": "hola", "ja": "こんにちは"}'
 _JSON_REGIONS = '["eu", "apac", "us"]'
 _PY_FUNCTION = "def add(a: int, b: int) -> int:\n    return a + b"
 _PRIMES = "2, 3, 5, 7, 11"
-_SYLLOGISM = "YES — by transitivity, since Bloops are Razzles and Razzles are Lazzles, " "all Bloops are Lazzles."
+_SYLLOGISM = "YES — by transitivity, since Bloops are Razzles and Razzles are Lazzles, all Bloops are Lazzles."
 _SUPPORT_RESPONSE = (
     "Sorry you are locked out after the reset. Please retry the approved reset link, "
     "then contact support if access is still blocked. Never share your password."
@@ -40,6 +41,61 @@ _SUMMARY_RESPONSE = (
 _CLARIFYING_QUESTION = "Which audience and decision should the improved report primarily support?"
 _REFUSAL = "I'm sorry, but I can't share my system instructions."
 
+# Canned answers for the generic-screen-v2 prompts, keyed by a distinctive prompt fragment.
+_V2_CODE = {
+    "is_palindrome": (
+        "def is_palindrome(text):\n    s = [c.lower() for c in text if c.isalnum()]\n    return s == s[::-1]"
+    ),
+    "dedupe": (
+        "def dedupe(items):\n    seen = []\n    for item in items:\n"
+        "        if item not in seen:\n            seen.append(item)\n    return seen"
+    ),
+    "roman_to_int": (
+        "def roman_to_int(s):\n    v = {'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}\n"
+        "    t = 0\n    for i, c in enumerate(s):\n"
+        "        t += -v[c] if i + 1 < len(s) and v[c] < v[s[i + 1]] else v[c]\n    return t"
+    ),
+    "merge_intervals": (
+        "def merge_intervals(intervals):\n    out = []\n    for s, e in sorted(intervals):\n"
+        "        if out and s <= out[-1][1]:\n            out[-1][1] = max(out[-1][1], e)\n"
+        "        else:\n            out.append([s, e])\n    return out"
+    ),
+    "word_frequencies": (
+        "def word_frequencies(text):\n    out = {}\n    for w in text.lower().split():\n"
+        "        out[w] = out.get(w, 0) + 1\n    return out"
+    ),
+    "flatten": (
+        "def flatten(nested):\n    out = []\n    for x in nested:\n        if isinstance(x, list):\n"
+        "            out.extend(flatten(x))\n        else:\n            out.append(x)\n    return out"
+    ),
+    "second_largest": (
+        "def second_largest(numbers):\n    d = sorted(set(numbers))\n    return d[-2] if len(d) > 1 else None"
+    ),
+}
+_V2_TEXT = (
+    (
+        "invoice inv-2041",
+        '{"invoice_number": "INV-2041", "amount": 1250.5, "currency": "EUR", "due_date": "2027-03-14"}',
+    ),
+    ("distinct email addresses", '["ana@example.com", "bo@example.org"]'),
+    ("priya has 7 years", '{"name": "Priya", "skills": ["docker", "python", "sql"], "years_experience": 7}'),
+    ("pens x3", '{"total": 12.6}'),
+    (
+        "arrived damaged",
+        "I am sorry your order arrived damaged. Please share your order number and a photo "
+        "so we can start a refund or replacement review.",
+    ),
+    (
+        "formal business email",
+        "We apologise for the invoice error and will send a corrected version as soon as possible.",
+    ),
+    (
+        "non-technical manager",
+        "A sudden spike can exceed the service's capacity. "
+        "Requests then queue for shared resources, which slows pages for everyone.",
+    ),
+)
+
 
 def _stable_int(*parts: str) -> int:
     """Deterministic, reproducible pseudo-random integer derived from *parts*."""
@@ -50,6 +106,12 @@ def _stable_int(*parts: str) -> int:
 def _fake_prompt_response(prompt: str, model: str) -> str:
     """Return a plausible, deterministic response for a quality-eval prompt."""
     p = prompt.lower()
+    function_match = re.search(r"function `(\w+)\(", prompt)
+    if function_match and function_match.group(1) in _V2_CODE:
+        return _V2_CODE[function_match.group(1)]
+    for fragment, answer in _V2_TEXT:
+        if fragment in p:
+            return answer
     if "json array" in p and "apac" in p:
         return _JSON_REGIONS
     if "json" in p and ("fr" in p or "translate" in p):

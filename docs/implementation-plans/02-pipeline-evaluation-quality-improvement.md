@@ -109,6 +109,12 @@ reportés à l'étape 4 (ils changent le comportement des juges et exigent le je
 de calibration humain). Livré : `src/evaluators/quality_diagnostics.py`
 (analyse des items, alpha de Krippendorff), export `results/quality_analysis/`.
 
+Étape 3 (vague 1 de A1) faite : suite `generic-screen-v2` séparée (30 prompts,
+`QUALITY_SUITE=v2`), catalogue v2, sandbox de code opt-in
+(`QUALITY_CODE_EXECUTION`). Restent pour les vagues suivantes : items
+FR/EN, instructions contradictoires et raisonnement multi-étapes, et la
+vérification qu'aucun item n'est saturé sur un run réel pilote.
+
 | Étape | Contenu | Dépend de |
 | --- | --- | --- |
 | 1 | Priorité 0 | — |

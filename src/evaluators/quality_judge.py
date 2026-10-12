@@ -101,6 +101,15 @@ class QualityMessage(BaseModel):
         return self
 
 
+class CodeTestCase(BaseModel):
+    """One executable check: call the function with ``args`` and compare to ``expected``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    args: list[object]
+    expected: object
+
+
 class QualityPrompt(BaseModel):
     """Validated definition of one provider-neutral quality-screen prompt."""
 
@@ -116,6 +125,7 @@ class QualityPrompt(BaseModel):
     strict_output: bool = False
     required_function: str | None = None
     required_parameters: list[str] = Field(default_factory=list)
+    test_cases: list[CodeTestCase] = Field(default_factory=list)
     judge_criteria: list[str] = Field(default_factory=list)
     reference_answer: str | None = None
     weight: float = Field(default=1.0, gt=0.0)
@@ -126,6 +136,11 @@ class QualityPrompt(BaseModel):
         if (self.prompt is None) == (self.messages is None):
             raise ValueError("Provide exactly one of 'prompt' or 'messages'.")
         _validate_evaluation_contract(self.category, self.accepted_answers, self.judge_criteria)
+        if self.category == "code_execution":
+            if not self.test_cases or not self.required_function:
+                raise ValueError("Category 'code_execution' requires test_cases and required_function.")
+            if not self.judge_criteria:
+                raise ValueError("Category 'code_execution' requires judge_criteria for runs without execution.")
         return self
 
     @property
@@ -151,6 +166,7 @@ class QualityPrompt(BaseModel):
             "strict_output": self.strict_output,
             "required_function": self.required_function,
             "required_parameters": self.required_parameters,
+            "test_cases": [case.model_dump() for case in self.test_cases],
         }
 
 
@@ -188,6 +204,7 @@ class CollectResult:
     dimension_count: int = 0
     repetitions: int = 1
     quality_suite_id: str = ""
+    code_execution: bool = False
     # pending_judgments schema:
     # [{
     #   "prompt_id": int,
@@ -438,8 +455,9 @@ class AsyncQualityJudge:
     4. Undecidable responses → saved as pending for a Copilot judge agent (Phase 2).
     """
 
-    def __init__(self, client: AsyncOpenRouterClient) -> None:
+    def __init__(self, client: AsyncOpenRouterClient, execute_code: bool = False) -> None:
         self._client = client
+        self._execute_code = execute_code
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -517,6 +535,7 @@ class AsyncQualityJudge:
             raise ValueError("repetitions must be greater than or equal to 1.")
 
         dataset = load_quality_prompts(prompts_path)
+        suite_version = quality_suite_version(prompts_path)
 
         deterministic_rows: list[dict[str, object]] = []
         pending_judgments: list[dict[str, object]] = []
@@ -562,7 +581,11 @@ class AsyncQualityJudge:
                     continue
 
                 if check is not None:
-                    check_result = check.run(prompt, item.content, entry.evaluation_context)
+                    check_result = check.run(
+                        prompt,
+                        item.content,
+                        {**entry.evaluation_context, "execute_code": self._execute_code},
+                    )
                     if check_result.format_score is not None:
                         deterministic_rows.append(
                             {
@@ -601,7 +624,7 @@ class AsyncQualityJudge:
             for attempt, undecidable in undecidable_by_attempt.items():
                 alias_map = _blind_alias_map(
                     undecidable.keys(),
-                    seed_material=f"{QUALITY_SUITE_VERSION}|{idx}|{attempt}|{prompt}",
+                    seed_material=f"{suite_version}|{idx}|{attempt}|{prompt}",
                 )
                 pending_judgments.append(
                     {
@@ -647,6 +670,7 @@ class AsyncQualityJudge:
             ),
             repetitions=repetitions,
             quality_suite_id=quality_suite_id(prompts_path),
+            code_execution=self._execute_code and any(entry.category == "code_execution" for entry in dataset),
         )
 
     # ── Private helpers ────────────────────────────────────────────────────────
@@ -727,10 +751,16 @@ def load_quality_prompts(prompts_path: Path) -> list[QualityPrompt]:
     return prompts
 
 
+def quality_suite_version(prompts_path: Path) -> str:
+    """Return ``generic-screen-vN`` from a ``*_vN.json`` file name, v1 otherwise."""
+    match = re.search(r"_v(\d+)$", prompts_path.stem)
+    return f"generic-screen-v{match.group(1)}" if match else QUALITY_SUITE_VERSION
+
+
 def quality_suite_id(prompts_path: Path) -> str:
     """Return a content-addressed ID that ties results to an exact prompt suite."""
     digest = hashlib.sha256(prompts_path.read_bytes()).hexdigest()[:12]
-    return f"{QUALITY_SUITE_VERSION}-{digest}"
+    return f"{quality_suite_version(prompts_path)}-{digest}"
 
 
 def _format_judge_context(judge_criteria: list[str] | None, reference_answer: str | None) -> str:
