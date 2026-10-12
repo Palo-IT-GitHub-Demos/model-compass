@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   difficulty and its `draft` status, evaluator, licence and contamination
   status), enforced at load time. Items avoid place names, people and
   addresses because providers redacted them to `[ADDRESS]` in v1. `v1` stays
-  the default baseline and is unchanged; thresholds remain draft
+  unchanged as the legacy baseline; thresholds remain draft
 - Added a restricted code sandbox for `code_execution` prompts, enabled only
   with `QUALITY_CODE_EXECUTION=true`: AST allowlist, isolated subprocess with
   empty environment, timeout and resource limits, and hash-only logging. It is
@@ -226,6 +226,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default `QUALITY_SUITE` is now `v2` (`generic-screen-v2` with the
+  `model-compass-use-cases-v2` catalog) instead of `v1`. Set `QUALITY_SUITE=v1`
+  (or pass `--quality-suite v1`) to reproduce legacy runs; collect and merge
+  must still use the same suite, so a `pending_*.json` collected under v1 now
+  needs `QUALITY_SUITE=v1 make merge`. Thresholds remain draft and the v2
+  suite has not yet been piloted on real models
 - README and Makefile: the mandatory `@judge-coordinator` step (Phase 2) is now
   stated before `make collect` with an explicit cost warning, instead of being
   documented mid-prose after the paid step. Added a condensed "first

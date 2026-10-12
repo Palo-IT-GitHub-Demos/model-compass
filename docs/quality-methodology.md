@@ -274,7 +274,8 @@ Diagnostic sur 12 runs et 3 modèles (2026-09-01 à 2026-09-04) :
 `data/prompts/quality_prompts_v2.json` et
 `data/catalog/model_compass_use_cases_v2.json`. La v2 est une suite
 indépendante (identifiant et hash propres, `generic-screen-v1` inchangé et
-toujours le défaut tant qu'un run pilote n'a pas validé la v2). Elle ne reprend
+conservé comme référence historique ; la v2 est le défaut depuis le basculement
+de `QUALITY_SUITE`, sans run pilote réel préalable). Elle ne reprend
 aucun prompt v1 et vise les cas d'usage prioritaires de
 `docs/research/benchmark-to-use-case-mapping.md` :
 

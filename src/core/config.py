@@ -96,9 +96,10 @@ class Settings(BaseSettings):
     # OpenRouter pre-screen at one run; use 2–5 only for a shortlisted cohort.
     quality_repetitions: int = Field(default=1, ge=1, le=5)
 
-    # Prompt suite and catalog pair: "v1" (generic-screen-v1, immutable baseline)
-    # or "v2" (extended suite). Resolved by ``main._activate_quality_suite``.
-    quality_suite: str = "v1"
+    # Prompt suite and catalog pair: "v2" (generic-screen-v2, default) or "v1"
+    # (generic-screen-v1, immutable legacy baseline). Resolved by
+    # ``main._activate_quality_suite``.
+    quality_suite: str = "v2"
 
     # Run generated code from code_execution prompts in the restricted sandbox
     # (src/evaluators/code_sandbox.py). Off by default: those responses go to

@@ -115,8 +115,8 @@ de calibration humain). Livré : `src/evaluators/quality_diagnostics.py`
 (`QUALITY_CODE_EXECUTION`). Restent : un run pilote réel pour vérifier
 qu'aucun item n'est saturé et calibrer difficulté et seuils, puis le dialogue
 multi-tour (A5). Le multilingue est différé (« ADAPT LATER » dans la
-cartographie) ; `generic-screen-v1` reste le défaut tant que ce pilote n'a pas
-eu lieu.
+cartographie) ; `generic-screen-v2` est devenue le défaut de `QUALITY_SUITE`
+avant ce pilote, `generic-screen-v1` restant la référence historique.
 
 | Étape | Contenu | Dépend de |
 | --- | --- | --- |

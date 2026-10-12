@@ -20,7 +20,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   model catalog without chat-completion cost
 - `make export-html` builds a static dashboard; `make dashboard` launches the
   interactive Streamlit view
-- `QUALITY_SUITE` (`v1` default, `v2`) selects the prompt suite and its
+- `QUALITY_SUITE` (`v2` default, `v1`) selects the prompt suite and its
   catalog; `generic-screen-v1` must stay unchanged and collect/merge must use
   the same suite
 - Generated code is executed only with `QUALITY_CODE_EXECUTION=true` and only
