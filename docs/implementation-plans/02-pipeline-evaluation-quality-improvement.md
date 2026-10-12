@@ -109,11 +109,14 @@ reportés à l'étape 4 (ils changent le comportement des juges et exigent le je
 de calibration humain). Livré : `src/evaluators/quality_diagnostics.py`
 (analyse des items, alpha de Krippendorff), export `results/quality_analysis/`.
 
-Étape 3 (vague 1 de A1) faite : suite `generic-screen-v2` séparée (30 prompts,
+Étape 3 (vague 1 de A1) faite, puis reprise après diagnostic de la v1 : suite
+`generic-screen-v2` indépendante (34 items originaux, blueprint ADR 0002,
 `QUALITY_SUITE=v2`), catalogue v2, sandbox de code opt-in
-(`QUALITY_CODE_EXECUTION`). Restent pour les vagues suivantes : items
-FR/EN, instructions contradictoires et raisonnement multi-étapes, et la
-vérification qu'aucun item n'est saturé sur un run réel pilote.
+(`QUALITY_CODE_EXECUTION`). Restent : un run pilote réel pour vérifier
+qu'aucun item n'est saturé et calibrer difficulté et seuils, puis le dialogue
+multi-tour (A5). Le multilingue est différé (« ADAPT LATER » dans la
+cartographie) ; `generic-screen-v1` reste le défaut tant que ce pilote n'a pas
+eu lieu.
 
 | Étape | Contenu | Dépend de |
 | --- | --- | --- |

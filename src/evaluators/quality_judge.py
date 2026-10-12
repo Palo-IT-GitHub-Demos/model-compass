@@ -25,6 +25,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -111,9 +112,14 @@ class CodeTestCase(BaseModel):
 
 
 class QualityPrompt(BaseModel):
-    """Validated definition of one provider-neutral quality-screen prompt."""
+    """Validated definition of one provider-neutral quality-screen prompt.
 
-    model_config = ConfigDict(extra="forbid")
+    The blueprint fields (``item_id`` onwards) follow ADR 0002. They are optional
+    so the v1 suite stays loadable, and required for every later suite by
+    :func:`validate_suite_blueprint`.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     prompt: str | None = Field(default=None, min_length=1)
     messages: list[QualityMessage] | None = None
@@ -129,6 +135,19 @@ class QualityPrompt(BaseModel):
     judge_criteria: list[str] = Field(default_factory=list)
     reference_answer: str | None = None
     weight: float = Field(default=1.0, gt=0.0)
+    item_id: str | None = Field(default=None, min_length=1)
+    use_case_id: str | None = Field(default=None, min_length=1)
+    measured_construct: str | None = Field(default=None, alias="construct", min_length=1)
+    task_type: (
+        Literal["json", "multiple_choice", "free_response", "programmatic", "multi_turn", "environment"] | None
+    ) = None
+    difficulty: Literal["easy", "medium", "hard"] | None = None
+    difficulty_status: Literal["draft", "pilot", "calibrated"] | None = None
+    language: str | None = Field(default=None, min_length=2)
+    evaluator: Literal["json_exact", "exact_match", "sandbox_tests", "rubric_panel"] | None = None
+    rubric_version: str | None = Field(default=None, min_length=1)
+    license_status: str | None = Field(default=None, min_length=1)
+    contamination_status: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_evaluation_contract(self) -> QualityPrompt:
@@ -748,7 +767,46 @@ def load_quality_prompts(prompts_path: Path) -> list[QualityPrompt]:
             prompts.append(QualityPrompt.model_validate(item))
         except ValueError as exc:
             raise ValueError(f"Quality prompt #{index} is invalid: {exc}") from exc
+    if quality_suite_version(prompts_path) != QUALITY_SUITE_VERSION:
+        validate_suite_blueprint(prompts)
     return prompts
+
+
+_REQUIRED_BLUEPRINT_FIELDS = (
+    "item_id",
+    "use_case_id",
+    "measured_construct",
+    "task_type",
+    "difficulty",
+    "difficulty_status",
+    "language",
+    "evaluator",
+    "license_status",
+    "contamination_status",
+)
+
+
+def validate_suite_blueprint(prompts: list[QualityPrompt]) -> None:
+    """Require the ADR 0002 blueprint on every item of a post-v1 suite.
+
+    Raises:
+        ValueError: Listing every missing field, duplicate ``item_id`` or
+            judged item without a ``rubric_version``.
+    """
+    problems: list[str] = []
+    seen: set[str] = set()
+    for index, prompt in enumerate(prompts):
+        missing = [name for name in _REQUIRED_BLUEPRINT_FIELDS if getattr(prompt, name) is None]
+        if prompt.evaluator == "rubric_panel" and prompt.rubric_version is None:
+            missing.append("rubric_version")
+        if missing:
+            problems.append(f"#{index} is missing {missing}")
+        if prompt.item_id is not None:
+            if prompt.item_id in seen:
+                problems.append(f"#{index} reuses item_id '{prompt.item_id}'")
+            seen.add(prompt.item_id)
+    if problems:
+        raise ValueError("Quality suite blueprint is incomplete: " + "; ".join(problems))
 
 
 def quality_suite_version(prompts_path: Path) -> str:

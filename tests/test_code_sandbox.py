@@ -129,41 +129,58 @@ class TestV2Suite:
         assert len(load_quality_prompts(_V1)) == 16
         assert quality_suite_version(_V1) == "generic-screen-v1"
 
-    def test_v2_extends_v1_with_stable_ids(self) -> None:
-        v1 = json.loads(_V1.read_text())
-        v2 = json.loads(_V2.read_text())
-        assert v2[: len(v1)] == v1
-        assert len(load_quality_prompts(_V2)) == 30
+    def test_v2_is_an_independent_suite_with_full_blueprint(self) -> None:
+        prompts = load_quality_prompts(_V2)
+        assert len(prompts) == 34
         assert quality_suite_id(_V2).startswith("generic-screen-v2-")
+        assert all(p.difficulty_status == "draft" for p in prompts)
+        assert {p.difficulty for p in prompts} == {"easy", "medium", "hard"}
 
-    def test_catalog_v2_references_only_existing_prompts(self) -> None:
+    def test_incomplete_blueprint_is_rejected(self, tmp_path: Path) -> None:
+        items = json.loads(_V2.read_text())
+        del items[0]["construct"]
+        items[1]["item_id"] = items[2]["item_id"]
+        path = tmp_path / "quality_prompts_v2.json"
+        path.write_text(json.dumps(items))
+        with pytest.raises(ValueError, match="construct"):
+            load_quality_prompts(path)
+
+    def test_catalog_v2_partitions_the_suite_by_declared_use_case(self) -> None:
+        prompts = load_quality_prompts(_V2)
         catalog = load_use_case_catalog(_CATALOG_V2)
         assert catalog.catalog_version == "model-compass-use-cases-v2"
-        ids = {pid for use_case in catalog.use_cases for pid in use_case.prompt_ids}
-        assert max(ids) < 30
-        assert len(ids) == 30
+        owned = [pid for use_case in catalog.use_cases for pid in use_case.prompt_ids]
+        assert sorted(owned) == list(range(len(prompts)))
+        for use_case in catalog.use_cases:
+            assert {prompts[pid].use_case_id for pid in use_case.prompt_ids} == {use_case.id}
+
+    def test_items_avoid_pii_like_content_that_providers_redact(self) -> None:
+        # v1 prompts about places were rewritten to "[ADDRESS]" before reaching the models.
+        text = _V2.read_text()
+        assert "@" not in text
+        assert "[ADDRESS]" not in text
 
     def test_reference_solutions_pass_their_own_tests(self) -> None:
         suite = json.loads(_V2.read_text())
         executable = [item for item in suite if item["category"] == "code_execution"]
-        assert len(executable) == 7
+        assert len(executable) == 5
         for item in executable:
             result = run_python_tests(item["reference_answer"], item["required_function"], item["test_cases"])
-            assert (result.status, result.passed, result.total) == (
-                "ok",
-                len(item["test_cases"]),
-                len(item["test_cases"]),
-            )
+            count = len(item["test_cases"])
+            assert (result.status, result.passed, result.total) == ("ok", count, count), item["item_id"]
             assert find_policy_violation(item["reference_answer"]) is None
 
-    def test_dry_run_responses_satisfy_deterministic_v2_items(self) -> None:
-        context_keys = ("required_function", "required_parameters", "test_cases", "expected_json", "strict_output")
-        for item in load_quality_prompts(_V2)[16:]:
-            if item.category not in {"code_execution", "json_output"}:
+    def test_wrong_solutions_fail_the_discriminating_items(self) -> None:
+        item = next(i for i in json.loads(_V2.read_text()) if i["item_id"] == "code_generation-05")
+        naive = "def schedule_conflicts(meetings):\n    return []\n"
+        assert run_python_tests(naive, item["required_function"], item["test_cases"]).passed < len(item["test_cases"])
+
+    def test_every_deterministic_item_accepts_its_dry_run_answer(self) -> None:
+        for item in load_quality_prompts(_V2):
+            if item.evaluator == "rubric_panel":
                 continue
             check = CHECKS[item.category]
             context = {**item.evaluation_context, "execute_code": True}
-            assert set(context_keys) <= set(context)
-            result = check.run(item.display_prompt, _fake_prompt_response(item.display_prompt, "m"), context)
-            assert result.score == 5, (item.display_prompt[:60], result.reason)
-            assert result.format_score in (5, None)
+            answer = _fake_prompt_response(item.display_prompt, "m")
+            result = check.run(item.display_prompt, answer, context)
+            assert (result.score, result.format_score) in {(5, 5), (5, None)}, (item.item_id, result.reason)

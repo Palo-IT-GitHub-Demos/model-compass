@@ -10,10 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added the opt-in `generic-screen-v2` quality suite (`QUALITY_SUITE=v2` or
-  `--quality-suite v2`): 30 prompts that keep the 16 v1 prompts at the same IDs
-  and add 7 executable code items, 4 noisy-text extraction items and 3 judged
-  communication items, with the matching `model-compass-use-cases-v2` catalog;
-  `generic-screen-v1` stays the default and unchanged
+  `--quality-suite v2`): 34 original prompts over 8 use cases (extraction, code,
+  contextual QA, reasoning, classification, summarization, communication,
+  instruction following) with the matching `model-compass-use-cases-v2`
+  catalog. Every item declares the ADR 0002 blueprint (construct, task type,
+  difficulty and its `draft` status, evaluator, licence and contamination
+  status), enforced at load time. Items avoid place names, people and
+  addresses because providers redacted them to `[ADDRESS]` in v1. `v1` stays
+  the default baseline and is unchanged; thresholds remain draft
 - Added a restricted code sandbox for `code_execution` prompts, enabled only
   with `QUALITY_CODE_EXECUTION=true`: AST allowlist, isolated subprocess with
   empty environment, timeout and resource limits, and hash-only logging. It is

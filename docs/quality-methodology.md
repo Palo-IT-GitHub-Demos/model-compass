@@ -254,19 +254,53 @@ contribution.
 
 ## 3 bis. Suite `generic-screen-v2` et exécution de code
 
+### Pourquoi la v1 ne suffit pas
+
+Diagnostic sur 12 runs et 3 modèles (2026-09-01 à 2026-09-04) :
+
+- 9 prompts sur 16 valent 5,00 pour tous les modèles à chaque run : ils sont
+  saturés et ne départagent rien tout en pesant dans la couverture ;
+- les prompts 4 et 6 (« capitale de l'Australie », « plus grande planète du
+  système solaire ») échouent parce que les modèles reçoivent `[ADDRESS]` à la
+  place du lieu : le fournisseur masque les noms de lieux, le texte local est
+  intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
+- les échecs du prompt 3 des premiers runs viennent d'un barème antérieur à la
+  séparation contenu/format (balises markdown comptées comme erreur de contenu) ;
+- seul le prompt 8 (syllogisme répondu `NO`) reflète une vraie erreur de modèle.
+
+### Contenu de la v2
+
 `QUALITY_SUITE=v2` (ou `--quality-suite v2`, à répéter pour `merge`) charge
 `data/prompts/quality_prompts_v2.json` et
-`data/catalog/model_compass_use_cases_v2.json`. `generic-screen-v1` reste la
-valeur par défaut et n'est pas modifié (ADR 0002). La v2 contient les 16 prompts
-v1 aux mêmes identifiants, plus 14 items :
+`data/catalog/model_compass_use_cases_v2.json`. La v2 est une suite
+indépendante (identifiant et hash propres, `generic-screen-v1` inchangé et
+toujours le défaut tant qu'un run pilote n'a pas validé la v2). Elle ne reprend
+aucun prompt v1 et vise les cas d'usage prioritaires de
+`docs/research/benchmark-to-use-case-mapping.md` :
 
-- 7 items de code (`code_execution`, ids 16-22) notés par des cas de test ;
-- 4 extractions de texte bruité avec JSON attendu exact (ids 23-26) ;
-- 3 items de communication notés par les juges (ids 27-29).
+| Cas d'usage | Items | Évaluateur |
+|---|---:|---|
+| Extraction structurée | 5 | JSON exact |
+| Code court | 5 | tests exécutés dans le sandbox |
+| Question-réponse avec contexte | 5 | réponse exacte (dont abstention) |
+| Raisonnement borné | 5 | réponse exacte |
+| Classification et routage | 4 | réponse exacte (dont `UNCLEAR`) |
+| Résumé | 3 | rubrique, panel de juges |
+| Communication concise | 3 | rubrique, panel de juges |
+| Suivi d'instruction | 4 | réponse exacte, 1 rubrique |
 
-Le catalogue v2 rattache ces items aux cas d'usage existants (extraction : 7
-items, code : 8, communication : 5). Les seuils restent provisoires : leur
-calibration est prévue à l'étape 5 du plan 02.
+Chaque item déclare le blueprint de l'ADR 0002 : `item_id`, `use_case_id`,
+`construct`, `task_type`, `difficulty` (facile, moyen, difficile) et son statut
+(`draft`), `language`, `evaluator`, `rubric_version` pour les items jugés,
+`license_status` et `contamination_status`. Le chargement échoue si un champ
+manque ou si un `item_id` est dupliqué. Les difficultés sont des hypothèses
+d'auteur jusqu'à la calibration sur run réel (étape 5 du plan 02) ;
+`contamination_status = internal_unscreened` signifie que les items sont
+originaux mais pas comparés à des corpus publics. Les items évitent noms de
+lieux, de personnes, adresses et courriels, que les fournisseurs masquent.
+
+Les seuils du catalogue v2 (4,0 ; 3,5 pour résumé et communication) sont des
+valeurs provisoires, au même titre que ceux de la v1.
 
 ### Contrat du sandbox de code
 
