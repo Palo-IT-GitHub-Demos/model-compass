@@ -104,6 +104,11 @@ Note : les 17 erreurs de collecte observées venaient du shell, qui utilisait
 
 ## Ordre d'exécution
 
+Statut : étape 1 faite ; étape 2 faite sauf les exemples ancrés de rubrique,
+reportés à l'étape 4 (ils changent le comportement des juges et exigent le jeu
+de calibration humain). Livré : `src/evaluators/quality_diagnostics.py`
+(analyse des items, alpha de Krippendorff), export `results/quality_analysis/`.
+
 | Étape | Contenu | Dépend de |
 | --- | --- | --- |
 | 1 | Priorité 0 | — |

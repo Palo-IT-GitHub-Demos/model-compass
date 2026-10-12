@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `make merge` now exports quality-suite diagnostics under
+  `results/quality_analysis/`: per-prompt item analysis (discrimination,
+  saturated/floor/low-variance flags) and inter-judge agreement
+  (Krippendorff alpha, exact/within-one agreement, per-judge leniency); raw
+  scores are unchanged
 - Repositioned the project as **Model Compass**, with a versioned generic
   use-case catalog and deterministic recommendation artifact under
   `results/recommendations/`; every model remains visible, quality thresholds

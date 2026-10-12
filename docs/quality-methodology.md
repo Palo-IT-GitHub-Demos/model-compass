@@ -213,6 +213,31 @@ de décision fondée sur ce compte (5 = tous remplis, 3 = au moins un partiellem
 rempli, etc.) et l'interdiction explicite de baisser une note pour une
 préférence subjective absente des critères listés.
 
+### Accord inter-juges et analyse des items (sidecars)
+
+`make merge` écrit sous `results/quality_analysis/` deux fichiers qui décrivent
+la fiabilité de l'écran qualité sans jamais modifier les scores bruts :
+
+- `benchmark_<ts>_judge_agreement` : alpha de Krippendorff (intervalle) du
+  panel et par dimension, taux d'accord exact et à ±1 point, score moyen par
+  juge et écart moyen d'un juge par rapport à la moyenne des autres
+  (indulgence/sévérité). `agreement_status = low_agreement` sous
+  alpha = 0,667 (seuil conventionnel « conclusions provisoires »).
+  L'alpha est `NaN` quand tous les scores sont identiques.
+- `benchmark_<ts>_item_analysis` : par prompt, moyenne, écart-type entre
+  modèles et corrélation item-total corrigée (`discrimination`). Statuts :
+  `saturated` (tous les modèles ≥ 4), `floor` (aucun modèle > 2),
+  `low_variance` (écart-type < 0,25), `negative_discrimination` (< −0,1),
+  `insufficient_models` (< 3 modèles) et `suspected_input_corruption`.
+
+Un item `saturated`, `floor` ou `low_variance` ne départage pas les modèles :
+il est candidat à un durcissement ou à un retrait lors de la prochaine version
+du catalogue. Ces statuts n'excluent aucun prompt des agrégats.
+
+Les exemples ancrés (réponses types à 1, 3 et 5) ne sont pas encore ajoutés à
+la rubrique : ils changeraient le comportement des juges et doivent être
+validés sur le jeu de calibration humain prévu à l'étape 4 du plan 02.
+
 ### Validation stricte de la couverture avant fusion
 
 Avant 2026-09-03, un juge qui omettait de noter un alias (erreur de frappe,

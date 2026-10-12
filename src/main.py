@@ -44,6 +44,7 @@ from src.evaluators.cost_analyzer import (
     call_costs_to_dataframe,
     summarize_actual_call_costs,
 )
+from src.evaluators.quality_diagnostics import analyze_items, summarize_judge_agreement
 from src.evaluators.quality_judge import (
     FORMAT_COMPLIANCE_DIMENSION,
     AsyncQualityJudge,
@@ -538,6 +539,7 @@ def _export(
     quality_details: pd.DataFrame | None = None,
     quality_diagnostics: pd.DataFrame | None = None,
     recommendations: pd.DataFrame | None = None,
+    quality_analysis: dict[str, pd.DataFrame] | None = None,
 ) -> Path:
     """Export summary results and available audit artifacts."""
     _RESULTS_DIR.mkdir(exist_ok=True)
@@ -567,6 +569,15 @@ def _export(
         quality_diagnostics.to_csv(f"{diagnostics_stem}.csv", index=False)
         quality_diagnostics.to_json(f"{diagnostics_stem}.json", orient="records", indent=2)
         logger.info("Quality collection diagnostics exported to '%s.{csv,json}'", diagnostics_stem)
+    for name, analysis_df in (quality_analysis or {}).items():
+        if analysis_df.empty:
+            continue
+        analysis_dir = _RESULTS_DIR / "quality_analysis"
+        analysis_dir.mkdir(exist_ok=True)
+        analysis_stem = analysis_dir / f"benchmark_{timestamp}_{name}"
+        analysis_df.to_csv(f"{analysis_stem}.csv", index=False)
+        analysis_df.to_json(f"{analysis_stem}.json", orient="records", indent=2)
+        logger.info("Quality suite analysis exported to '%s.{csv,json}'", analysis_stem)
     if recommendations is not None and not recommendations.empty:
         recommendation_stem = _write_recommendation_artifact(recommendations, stem)
         logger.info("Model Compass recommendations exported to '%s.{csv,json}'", recommendation_stem)
@@ -1093,6 +1104,10 @@ class MergePipeline:
             build_quality_details(quality_df),
             collection_errors,
             recommendations,
+            {
+                "item_analysis": analyze_items(quality_df),
+                "judge_agreement": summarize_judge_agreement(quality_df),
+            },
         )
         score_files = sorted(_INTERMEDIATE_DIR.glob(f"scores_{timestamp}_*.json"))
         manifest_path = _RESULTS_DIR / f"run_{timestamp}.manifest.json"
