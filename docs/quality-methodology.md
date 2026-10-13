@@ -482,6 +482,31 @@ Les modèles éligibles sont ensuite classés dans
 - score de coût du modèle seul : 20 % ;
 - score de performance : 5 %.
 
+**Formule composite (corrigée)** : la note `quality_score` reste une moyenne
+sur **1–5** pour l'éligibilité et les IC. Pour le classement elle devient
+`quality_score_100 = (quality_score - 1) × 25`, bornée à 0–100, comme
+`security_score` (RSI), `cost_score` et `performance_score`. À preuves
+complètes, les poids effectifs $w$ donnent :
+
+$$
+	ext{recommendation\_score} =
+w_q Q_{100} + w_s S_{100} + w_c C_{100} + w_p P_{100},
+\qquad \sum w_i = 1.
+$$
+
+Par défaut, $w_q=0{,}50$, $w_s=0{,}25$, $w_c=0{,}20$ et $w_p=0{,}05$.
+Le coût et la performance sont normalisés sur le **cohort de modèles du run** ;
+la comparaison du score composite suppose donc le même périmètre et les mêmes
+poids. La sensibilité aux variations de poids utilise ces mêmes composantes
+0–100 ; les variations du seuil qualité continuent d'agir sur l'échelle 1–5.
+
+Les artefacts générés avant cette correction utilisaient par erreur la note
+qualité brute sur 1–5 dans la somme pondérée : leurs `recommendation_score`,
+leurs rangs et leurs indicateurs de sensibilité ne sont **pas directement
+comparables** aux nouveaux, même avec le même catalogue. Les scores et
+réponses bruts restent intacts ; recalculer le rapport de recommandation à
+partir des preuves si une comparaison historique est nécessaire.
+
 Les poids peuvent être remplacés par `MODEL_COMPASS_WEIGHTS`, mais les poids
 effectifs et la version du catalogue sont toujours écrits dans le rapport. Une
 preuve manquante produit un statut explicite et aucun rang, plutôt qu'une

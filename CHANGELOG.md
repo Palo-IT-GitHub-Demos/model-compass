@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalize use-case quality to 0–100 before applying recommendation weights
+  and sensitivity scenarios. This corrects the effective weighting but changes
+  composite scores and potentially ranks; historical recommendation exports
+  made with the former mixed-scale formula require recomputation for comparison
+
 ### Added
 
 - Added an opt-in, bounded two-turn dialogue quality screen with nine versioned

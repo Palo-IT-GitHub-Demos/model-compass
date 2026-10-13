@@ -532,6 +532,13 @@ L'artefact de recommandation contient une ligne par couple
 benchmark principal reste une ligne par modèle pour préserver la compatibilité
 avec les exports historiques.
 
+La moyenne `quality_score` (1–5) sert au seuil d'éligibilité ;
+`quality_score_100 = (quality_score - 1) × 25` (0–100) sert à la somme pondérée
+avec RSI, coût et performance, également sur 0–100. Les poids par défaut
+50/25/20/5 s'appliquent donc effectivement à quatre composantes homogènes.
+Les scores/rangs de recommandation des anciens exports (qui utilisaient 1–5
+pour la qualité) doivent être recalculés avant toute comparaison historique.
+
 Le rapport ajoute `quality_score_ci95_low/high`,
 `quality_ci95_overlaps_leader`, `recommendation_sensitivity_rank_min/max`
 et `recommendation_fragile` (poids et seuil ±10 %, voir

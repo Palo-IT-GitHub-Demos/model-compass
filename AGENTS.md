@@ -80,6 +80,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Quality eligibility is evaluated per generic use case before weighted ranking;
   a model below a use-case threshold cannot be recommended because it is cheap
   or fast
+- Recommendation ranking and weight sensitivity use `quality_score_100` (0–100),
+  not the 1–5 `quality_score` used for eligibility; historical ranks calculated
+  on the mixed scale are not comparable without recomputation
 - Every model remains visible for every catalog use case. Equal recommendation
   scores keep the same dense rank; do not add arbitrary provider/model-name
   tie-breakers

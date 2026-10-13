@@ -216,7 +216,9 @@ def _add_sensitivity(report: pd.DataFrame, weight_values: dict[str, float], thre
     other three proportionally to sum to one. Also probe the threshold at
     ±10% relative (clipped to the 1–5 scale). Baseline ranks stay untouched.
     """
-    components = report[[f"{name}_score" for name in _REQUIRED_COMPONENTS]].to_numpy(dtype="float64")
+    components = report[["quality_score_100", "security_score", "cost_score", "performance_score"]].to_numpy(
+        dtype="float64"
+    )
     weights = np.array([weight_values[name] for name in _REQUIRED_COMPONENTS])
     eligible = report["quality_eligible"].to_numpy(dtype=bool)
     complete = report["decision_evidence_complete"].to_numpy(dtype=bool)
@@ -321,14 +323,19 @@ def build_recommendation_report(
             float("nan")
         )
 
-        component_columns = [f"{component}_score" for component in _REQUIRED_COMPONENTS]
-        available = report[component_columns].notna()
+        # The eligibility threshold stays on the 1–5 quality scale, but all
+        # four components of the weighted decision score must use 0–100.
+        component_columns = {
+            component: "quality_score_100" if component == "quality" else f"{component}_score"
+            for component in _REQUIRED_COMPONENTS
+        }
+        available = report[list(component_columns.values())].notna()
         available_weight = sum(
-            available[f"{component}_score"].astype(float) * weight_values[component]
+            available[component_columns[component]].astype(float) * weight_values[component]
             for component in _REQUIRED_COMPONENTS
         )
         weighted_total = sum(
-            pd.to_numeric(report[f"{component}_score"], errors="coerce").fillna(0.0) * weight_values[component]
+            pd.to_numeric(report[component_columns[component]], errors="coerce").fillna(0.0) * weight_values[component]
             for component in _REQUIRED_COMPONENTS
         )
         report["recommendation_score_coverage"] = available_weight.round(4)
