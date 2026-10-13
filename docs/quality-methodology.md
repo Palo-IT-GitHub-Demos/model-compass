@@ -234,9 +234,10 @@ Un item `saturated`, `floor` ou `low_variance` ne départage pas les modèles :
 il est candidat à un durcissement ou à un retrait lors de la prochaine version
 du catalogue. Ces statuts n'excluent aucun prompt des agrégats.
 
-Les exemples ancrés (réponses types à 1, 3 et 5) ne sont pas encore ajoutés à
-la rubrique : ils changeraient le comportement des juges et doivent être
-validés sur le jeu de calibration humain prévu à l'étape 4 du plan 02.
+Des ancres courtes 1, 3 et 5 (`rubric-v2`) sont ajoutées aux 7 items jugés par
+rubrique de la suite v2 et transmises au lot aveugle. Leur effet sur l'accord
+inter-juges n'est pas mesuré : il doit être validé sur le jeu de calibration
+humaine prévu à l'étape 4 du plan 02.
 
 ### Validation stricte de la couverture avant fusion
 

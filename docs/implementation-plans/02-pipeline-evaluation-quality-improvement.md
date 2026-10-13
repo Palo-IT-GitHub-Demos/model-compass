@@ -117,9 +117,9 @@ et B4 (répétitions et incertitude RSI) ne sont pas terminés.
 
 ## Ordre d'exécution
 
-Statut : étape 1 faite ; étape 2 faite sauf les exemples ancrés de rubrique,
-reportés à l'étape 4 (ils changent le comportement des juges et exigent le jeu
-de calibration humain). Livré : `src/evaluators/quality_diagnostics.py`
+Statut : étape 1 faite ; étape 2 faite, y compris les ancres 1/3/5 de rubrique
+(`rubric-v2`, 7 items jugés), dont la validation par calibration humaine reste
+à l'étape 4. Livré : `src/evaluators/quality_diagnostics.py`
 (analyse des items, alpha de Krippendorff), export `results/quality_analysis/`.
 
 Étape 3 (vague 1 de A1) faite, puis reprise après diagnostic de la v1 : suite
