@@ -613,6 +613,8 @@ class TestCollectPipelineRun:
                     "weight": 1.0,
                     "judge_criteria": ["Be helpful."],
                     "reference_answer": None,
+                    "rubric_version": "rubric-v2",
+                    "rubric_anchors": {"1": "Unhelpful.", "3": "Partially helpful.", "5": "Helpful."},
                     "alias_map": {"A": "openai/gpt-4o-mini"},
                     "responses": {"A": "As an AI developed by OpenAI, here you go."},
                     "responses_for_judging": {"A": "As an AI developed by [assistant], here you go."},
@@ -630,12 +632,18 @@ class TestCollectPipelineRun:
         pending_payload = json.loads(pending_path.read_text())
         raw_response = pending_payload["pending_judgments"][0]["responses"]["A"]
         assert "OpenAI" in raw_response
+        assert pending_payload["pending_judgments"][0]["rubric_version"] == "rubric-v2"
 
         judging_path = pending_path.parent / pending_path.name.replace("pending_", "judging_")
         judging_payload = json.loads(judging_path.read_text())
-        judged_response = judging_payload["pending_judgments"][0]["responses"]["A"]
+        blind_item = judging_payload["pending_judgments"][0]
+        judged_response = blind_item["responses"]["A"]
         assert "OpenAI" not in judged_response
-        assert "alias_map" not in judging_payload["pending_judgments"][0]
+        assert blind_item["rubric_version"] == "rubric-v2"
+        assert blind_item["rubric_anchors"] == {"1": "Unhelpful.", "3": "Partially helpful.", "5": "Helpful."}
+        assert "alias_map" not in blind_item
+        assert "responses_for_judging" not in blind_item
+        assert "openai/gpt-4o-mini" not in json.dumps(blind_item)
 
     async def test_logs_error_for_unknown_target_models(
         self,

@@ -751,6 +751,8 @@ def _save_pending(
                 "weight": pj.get("weight", 1.0),
                 "judge_criteria": pj.get("judge_criteria", []),
                 "reference_answer": pj.get("reference_answer"),
+                "rubric_version": pj.get("rubric_version"),
+                "rubric_anchors": pj.get("rubric_anchors"),
                 "prompt_preview": pj.get("prompt_preview", ""),
                 "category": pj.get("category"),
                 # Self-identification-scrubbed copy — falls back to raw "responses"

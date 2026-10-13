@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.api.openrouter_client import AsyncOpenRouterClient, OpenRouterClient
 from src.evaluators.deterministic_eval import CHECKS
@@ -134,6 +134,7 @@ class QualityPrompt(BaseModel):
     test_cases: list[CodeTestCase] = Field(default_factory=list)
     judge_criteria: list[str] = Field(default_factory=list)
     reference_answer: str | None = None
+    rubric_anchors: dict[str, str] | None = None
     weight: float = Field(default=1.0, gt=0.0)
     item_id: str | None = Field(default=None, min_length=1)
     use_case_id: str | None = Field(default=None, min_length=1)
@@ -148,6 +149,19 @@ class QualityPrompt(BaseModel):
     rubric_version: str | None = Field(default=None, min_length=1)
     license_status: str | None = Field(default=None, min_length=1)
     contamination_status: str | None = Field(default=None, min_length=1)
+
+    @field_validator("rubric_anchors", mode="before")
+    @classmethod
+    def validate_rubric_anchors(cls, value: object) -> object:
+        """Accept non-empty anchor text keyed only by the calibrated score levels."""
+        if value is not None and (
+            not isinstance(value, dict)
+            or not value
+            or not value.keys() <= {"1", "3", "5"}
+            or any(not isinstance(text, str) or not text.strip() for text in value.values())
+        ):
+            raise ValueError("rubric_anchors must be a non-empty mapping of 1, 3, 5 to non-blank text")
+        return value
 
     @model_validator(mode="after")
     def validate_evaluation_contract(self) -> QualityPrompt:
@@ -656,6 +670,8 @@ class AsyncQualityJudge:
                         "weight": entry.weight,
                         "judge_criteria": entry.judge_criteria,
                         "reference_answer": entry.reference_answer,
+                        "rubric_version": entry.rubric_version,
+                        "rubric_anchors": entry.rubric_anchors,
                         "alias_map": alias_map,
                         # Raw text — kept for evidence, never rewritten (see AGENTS.md).
                         "responses": {alias: undecidable[mid] for alias, mid in alias_map.items()},

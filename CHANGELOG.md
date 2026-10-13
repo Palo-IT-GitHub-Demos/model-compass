@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional validated `rubric_anchors` on judged quality items and propagation of
+  anchors and rubric version to the blind judging batch; existing suites and
+  batches without anchors remain supported
 - Added the opt-in `generic-screen-v2` quality suite (`QUALITY_SUITE=v2` or
   `--quality-suite v2`): 34 original prompts over 8 use cases (extraction, code,
   contextual QA, reasoning, classification, summarization, communication,
