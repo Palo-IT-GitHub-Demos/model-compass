@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Split pipeline argument parsing, collection, result consolidation, and
+  artifact serialization into focused modules while retaining the existing
+  `src.main` CLI and programmatic façade
 - Added reproducible hierarchical bootstrap 95% intervals for aggregated and
   use-case quality scores (available with full coverage and at least three
   attempts per prompt), and ±10% weight/threshold sensitivity ranges and

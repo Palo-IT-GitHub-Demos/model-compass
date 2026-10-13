@@ -487,7 +487,11 @@ du modèle (`/api/v1/models`).
 
 ## 6. Fusion, recommandation et export (`MergePipeline`)
 
-**Fichier :** `src/main.py`
+**Façade :** `src/main.py`. Le parsing CLI, la collecte concurrente, la
+consolidation de la matrice et les écritures d'artefacts sont respectivement
+dans `src/pipeline_cli.py`, `src/pipeline_collect.py`, `src/pipeline_merge.py`
+et `src/pipeline_artifacts.py`. L'entrée `python -m src.main` et les imports
+historiques restent compatibles.
 
 1. Charge `pending_{ts}.json` (avec `alias_map`) pour retrouver les modèles
 2. Charge tous les `scores_{ts}_*.json` du même timestamp

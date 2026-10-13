@@ -14,6 +14,11 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Core pipeline code lives in `src/`; the versioned generic use-case catalog is
   `data/catalog/model_compass_use_cases.json`; Streamlit and shared presentation helpers
   live in `dashboard/`; operational scripts live in `scripts/`
+- `src/main.py` remains the CLI and compatibility façade; `src/pipeline_cli.py`
+  owns parsing/overrides, `src/pipeline_collect.py` concurrent collection and
+  error budgets, `src/pipeline_merge.py` the benchmark matrix, and
+  `src/pipeline_artifacts.py` persistent outputs and blind judging payloads.
+  The façade passes runtime paths and patchable stages explicitly to these modules
 - The production workflow is split into three phases:
   `make collect` → `@judge-coordinator` → `make merge`
 - `make dry-run` is offline; `make verify` validates the OpenRouter key and

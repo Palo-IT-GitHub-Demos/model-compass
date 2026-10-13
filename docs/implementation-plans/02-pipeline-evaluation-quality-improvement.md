@@ -129,6 +129,13 @@ avant ce pilote, `generic-screen-v1` restant la référence historique.
 | 7 | A5 + B2 | 5, 6 |
 | 8 | D1, D2 en continu | — |
 
+Dette technique D1 (extraction initiale) : parsing CLI, exécution concurrente
+des étapes de collecte, calcul de la matrice fusionnée et sérialisation des
+artefacts disposent désormais de modules dédiés. `src/main.py` conserve les
+classes d'orchestration et les symboles historiques comme façade ; la
+reconstruction des verdicts juges et les chemins dry-run/verify restent dans
+cette façade. D2 (snapshot de non-régression dry-run) reste à traiter.
+
 Jalon 3 (A4/C2, partiel) : les IC bootstrap 95 % et la sensibilité locale aux
 poids et seuils ±10 % sont intégrés aux exports. L'étape 5 n'est pas close :
 la calibration humaine de l'étape 4, le pilote réel v2 et le recalibrage des
