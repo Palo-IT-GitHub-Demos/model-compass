@@ -74,6 +74,92 @@ class TestModelCompassCatalog:
 
 
 class TestModelCompassRecommendations:
+    def test_sensitivity_flags_weight_rank_reversal_without_changing_baseline(self) -> None:
+        benchmark = _benchmark().iloc[:2].copy()
+        benchmark["tco_usd"] = 1.0
+        benchmark["actual_latency_p95_ms"] = 100.0
+        benchmark["rsi"] = [70.8, 90.0]
+        quality = _quality().loc[lambda frame: frame["model"] != "model-c"].copy()
+        quality.loc[quality["model"] == "model-a", "score"] = 4.9
+        quality.loc[quality["model"] == "model-b", "score"] = 4.5
+
+        report = build_recommendation_report(benchmark, quality)
+        structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert structured.loc["model-a", "recommendation_rank"] == 1
+        assert structured.loc["model-b", "recommendation_rank"] == 2
+        assert structured.loc["model-a", "recommendation_fragile"]
+        assert structured.loc["model-a", "recommendation_sensitivity_rank_max"] == 2
+        assert structured.loc["model-b", "recommendation_sensitivity_rank_min"] == 1
+        assert pd.isna(structured.loc["model-a", "quality_score_ci95_low"])
+        assert pd.isna(structured.loc["model-a", "quality_ci95_overlaps_leader"])
+
+    def test_weighted_score_uses_four_components_on_the_same_scale(self) -> None:
+        benchmark = _benchmark().iloc[:2].copy()
+        benchmark["tco_usd"] = 1.0
+        benchmark["actual_latency_p95_ms"] = 100.0
+        benchmark["rsi"] = [50.0, 90.0]
+        quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
+
+        report = build_recommendation_report(benchmark, quality)
+        structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert structured.loc["model-a", "quality_score"] == pytest.approx(5.0)
+        assert structured.loc["model-a", "quality_score_100"] == pytest.approx(100.0)
+        assert structured.loc["model-b", "quality_score_100"] == pytest.approx(75.0)
+        assert structured.loc["model-a", "recommendation_score"] == pytest.approx(
+            0.5 * 100 + 0.25 * 50 + 0.2 * 100 + 0.05 * 100
+        )
+        assert structured.loc["model-b", "recommendation_score"] == pytest.approx(
+            0.5 * 75 + 0.25 * 90 + 0.2 * 100 + 0.05 * 100
+        )
+        assert structured.loc["model-a", "recommendation_rank"] == 1
+        assert structured.loc["model-b", "recommendation_rank"] == 2
+
+    def test_custom_weights_apply_to_normalized_quality(self) -> None:
+        benchmark = _benchmark().iloc[:2].copy()
+        benchmark["tco_usd"] = 1.0
+        benchmark["actual_latency_p95_ms"] = 100.0
+        benchmark["rsi"] = [50.0, 90.0]
+        quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
+        weights = parse_recommendation_weights('{"quality":0.6,"security":0.2,"cost":0.15,"performance":0.05}')
+
+        report = build_recommendation_report(benchmark, quality, weights=weights)
+        structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert structured.loc["model-a", "recommendation_score"] == pytest.approx(90.0)
+        assert structured.loc["model-b", "recommendation_score"] == pytest.approx(83.0)
+
+    def test_threshold_variation_flags_newly_ineligible_model(self) -> None:
+        quality = _quality()
+        quality.loc[quality["model"] == "model-b", "score"] = 4.0
+        report = build_recommendation_report(_benchmark(), quality)
+        structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert structured.loc["model-b", "recommendation_status"] == "eligible"
+        assert structured.loc["model-b", "recommendation_fragile"]
+        assert structured.loc["model-b", "recommendation_rank"] == 2
+
+    def test_reports_overlapping_and_disjoint_quality_intervals_without_forced_tie(self) -> None:
+        benchmark = _benchmark()
+        scores = {"model-a": [5, 5, 5], "model-b": [4, 5, 5], "model-c": [1, 1, 1]}
+        quality = pd.DataFrame(
+            {"model": model, "prompt_id": prompt, "attempt": attempt, "score": score}
+            for model, attempts in scores.items()
+            for prompt in (0, 1, 2)
+            for attempt, score in enumerate(attempts)
+        )
+        report = build_recommendation_report(benchmark, quality)
+        structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert structured.loc["model-a", "quality_score_ci95_low"] == pytest.approx(5.0)
+        assert structured.loc["model-b", "quality_score_ci95_high"] == pytest.approx(5.0)
+        assert structured.loc["model-b", "quality_ci95_overlaps_leader"]
+        assert structured.loc["model-a", "quality_ci95_overlaps_leader"]
+        assert pd.isna(structured.loc["model-c", "quality_ci95_overlaps_leader"])
+        assert structured.loc["model-a", "recommendation_rank"] == 1
+        assert structured.loc["model-b", "recommendation_rank"] == 2
+
     def test_applies_use_case_threshold_before_ranking(self) -> None:
         report = build_recommendation_report(_benchmark(), _quality())
         structured = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
@@ -113,6 +199,8 @@ class TestModelCompassRecommendations:
         assert structured.loc["model-a", "recommendation_status"] == "insufficient_decision_evidence"
         assert "security" in structured.loc["model-a", "evidence_missing"]
         assert pd.isna(structured.loc["model-a", "recommendation_rank"])
+        assert pd.isna(structured.loc["model-a", "recommendation_fragile"])
+        assert pd.isna(structured.loc["model-a", "recommendation_sensitivity_rank_min"])
 
     def test_emits_one_row_for_each_model_and_use_case(self) -> None:
         report = build_recommendation_report(_benchmark(), _quality())

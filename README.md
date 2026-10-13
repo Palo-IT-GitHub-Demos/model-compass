@@ -69,7 +69,7 @@ dashboard/
 data/prompts/
 ├── quality_prompts.json       # Generic screening prompts (JSON, code, reasoning…)
 ├── security_prompts.json      # 5 baseline injection probes
-└── extended_probes.json       # 15 advanced LLM01 red-team probes (JailbreakBench-style)
+└── extended_probes.json       # 23 single-turn probes + 2 bounded LLM01 scenarios
 
 data/catalog/
 └── model_compass_use_cases.json # Versioned generic use cases, prompt mapping and thresholds
@@ -200,24 +200,32 @@ make collect MODELS=selection
 The saved selection is local runtime state under `data/intermediate/` and is
 ignored by Git. Run `make select` again whenever you want to replace it.
 
+The optional two-turn dialogue screen is **separate from the main benchmark**:
+`make dialogue` runs nine bounded scenarios offline with synthetic answers;
+`make dialogue-live MODELS=paid_flagship` makes 18 billable calls per model.
+Its versioned drift and omission metrics are written to separate dialogue
+artifacts, not included in the single-turn scores or recommendations. See
+[the multi-probe methodology](docs/multiprobe-system.md).
+
 `SECURITY=` picks the probe set for that run only: `basic` (5 built-in probes,
 default), `owasp` (30 internally authored probes aligned with the OWASP GenAI
 LLM Top 10 2026 categories — required for the dashboard's RSI/heatmap), or
-`extended` (advanced LLM01 red-team probes, including bounded multi-turn
-scenarios). These are not official OWASP probe files or an OWASP certification.
+`extended` (25 red-team entries across LLM01/02/03/07/10, including two
+bounded LLM01 scenarios). These are not official OWASP probe files or an OWASP certification.
 The profiles serve different purposes:
 
 | Profile | Scope | Recommended use |
 | --- | --- | --- |
 | `basic` | 5 built-in, single-turn injection probes | Fast smoke test and low-cost screening |
 | `owasp` | 30 internal probes aligned with 10 OWASP categories, 3 per category | Broad, repeatable security baseline and heatmap |
-| `extended` | Advanced internal red-team probes focused on `LLM01`, including bounded multi-turn scenarios | Stress test for advanced prompt-injection variants |
+| `extended` | 23 single-turn probes across LLM01/02/03/07/10 and two bounded LLM01 scenarios | Canary-disclosure stress test across contexts |
 
-`extended` is not a broader OWASP taxonomy: it deepens `LLM01` with techniques
+`extended` is not a full OWASP security certification: it deepens `LLM01` with techniques
 such as encoding, Unicode smuggling, jailbreak framing, typoglycemia, few-shot
 authority spoofing and bounded multi-turn escalation (see
 [`docs/multiprobe-system.md`](docs/multiprobe-system.md) for the scenario
-contract). Do not compare its RSI directly with an `owasp` RSI; compare runs
+contract) and adds canary-disclosure probes for four more categories. It does
+not verify tool access, factuality or HTML safety. Do not compare its RSI directly with an `owasp` RSI; compare runs
 only when their scored category set and probe profile/version are the same.
 The Streamlit dashboard's **"Plan a new run"** panel exposes the same profiles
 visually and prints the ready-to-run command.
@@ -325,11 +333,13 @@ All settings are loaded from environment variables (`.env`).
 | `REQUEST_TIMEOUT`         | `60.0`                         | Per-request HTTP timeout, in seconds                                                                                                                                              |
 | `MAX_RETRIES`             | `3`                            | Retry attempts on HTTP 429/5xx, with exponential back-off                                                                                                                        |
 | `MLFLOW_TRACKING_URI`     | `sqlite:///mlruns.db`          | MLflow tracking database (SQLite)                                                                                                                                                  |
-| `SECURITY_MODE`           | `basic`                        | Internal probe set: `basic` (5 built-in), `owasp` (30 probes aligned with the 10 OWASP GenAI LLM Top 10 2026 categories), `extended` (15 advanced single-turn LLM01 red-team probes). Also settable per run: `--security`/`SECURITY=` |
+| `SECURITY_MODE`           | `basic`                        | Internal probe set: `basic` (5 built-in), `owasp` (30 probes aligned with the 10 OWASP GenAI LLM Top 10 2026 categories), `extended` (23 single-turn probes + 2 LLM01 scenarios). Also settable per run: `--security`/`SECURITY=` |
 | `SECURITY_PROBES_PATH`    | —                               | Path to a custom probe JSON file (overrides`SECURITY_MODE` above)                                                                                                                |
 | `MAX_SECURITY_PROBE_ERROR_RATE` | `0.15`                    | Abort a run when security-probe transport failures exceed this ratio                                                                                                             |
 | `QUALITY_REPETITIONS`     | `1`                            | Repeats per generic quality prompt; use`2`–`5` only for shortlist stability checks                                                                                            |
 | `MAX_QUALITY_COLLECTION_ERROR_RATE` | `0.15`                | Abort a run when quality-collection transport failures exceed this ratio                                                                                                         |
+| `QUALITY_SUITE`           | `v2`                           | Quality suite and catalog: `v2` (34 prompts, 8 use cases, default) or `v1` (16 prompts, legacy baseline). Also `--quality-suite`; use the same value for `merge`                    |
+| `QUALITY_CODE_EXECUTION`  | `false`                        | Execute generated code of v2 `code_execution` prompts in the restricted sandbox; when off they are judged by the panel                                                             |
 | `WORKLOAD_PROFILE`        | `enterprise_qa`                | TCO/CER workload profile: `enterprise_qa` \| `code_assistant` \| `document_analysis` \| `chatbot_high_volume`                                                              |
 | `MODEL_COMPASS_WEIGHTS`   | catalog defaults               | Optional JSON override for quality/security/cost/performance weights; values must sum to `1.0`                                                                                  |
 

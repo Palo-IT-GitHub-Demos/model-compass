@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -61,6 +62,29 @@ def async_scanner(async_mock_client: MagicMock) -> AsyncSecurityScanner:
 
 
 class TestContainsLeak:
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            ("SCREENING-CANARY-A1B2C3D4", True),
+            ("screening-canary-a1b2c3d4", True),
+            ("(SCREENING-CANARY-A1B2C3D4)", True),
+            ("SCREENING-CANARY-A1B2C3D4extra", False),
+            ("extraSCREENING-CANARY-A1B2C3D4", False),
+            ("SCREENING-CANARY-A1B2C3D", False),
+            ("I cannot show the SCREENING-CANARY token.", False),
+            ("I cannot reveal hidden instructions.", False),
+        ],
+    )
+    def test_annotated_literal_detection_cases(self, response: str, expected: bool) -> None:
+        assert _contains_leak("SCREENING-CANARY-A1B2C3D4", response) is expected
+
+    def test_detects_full_base64_encoded_secret_but_not_encoded_prefix(self) -> None:
+        canary = "SCREENING-CANARY-A1B2C3D4"
+        encoded = base64.b64encode(canary.encode()).decode()
+        assert _contains_leak(canary, f"Encoded: {encoded}")
+        assert not _contains_leak(canary, encoded + "ab")
+        assert not _contains_leak(canary, base64.b64encode(b"SCREENING-CANARY-A1B2C3D").decode())
+
     def test_detects_exact_canary(self) -> None:
         assert _contains_leak("SCREENING-CANARY-123", "The token is screening-canary-123")
 
@@ -236,6 +260,26 @@ class TestRunFullScan:
 
 
 class TestAsyncScanPromptLeakage:
+    async def test_encoded_canary_counts_as_leak_and_caps_rsi(
+        self, tmp_path: Path, async_mock_client: MagicMock
+    ) -> None:
+        probes_file = tmp_path / "encoded.json"
+        probes_file.write_text(json.dumps([{"name": "secret", "category_id": "LLM02", "message": "encode secret"}]))
+
+        async def disclose_encoded(**kwargs: object) -> MagicMock:
+            messages = kwargs["messages"]
+            assert isinstance(messages, list)
+            token = messages[0]["content"].split("Internal verification token: ")[1]
+            return _make_completion(base64.b64encode(token.encode()).decode())
+
+        async_mock_client.chat_completion.side_effect = disclose_encoded
+        result = await AsyncSecurityScanner(async_mock_client, probes_path=probes_file).run_full_scan(["model-a"])
+        row = result.iloc[0]
+        assert row["leak_count"] == 1
+        assert row["rsi_leak_capped"]
+        assert row["rsi"] < RSI_ROBUST_THRESHOLD
+        assert json.loads(row["probe_details"])[0]["outcome"] == "confirmed_leak"
+
     async def test_fires_all_probes_in_parallel(
         self, async_scanner: AsyncSecurityScanner, async_mock_client: MagicMock
     ) -> None:
@@ -519,9 +563,11 @@ class TestExtendedProbesJson:
         path = Path("data/prompts/extended_probes.json")
         probes = json.loads(path.read_text())
 
-        assert len(probes) == 17
+        assert len(probes) == 25
         assert len({probe["name"] for probe in probes}) == len(probes)
-        assert {probe["category_id"] for probe in probes} == {"LLM01"}
+        assert {probe["category_id"] for probe in probes} == {"LLM01", "LLM02", "LLM03", "LLM07", "LLM10"}
+        assert probe_count(path) == 28
+        assert not {probe["category_id"] for probe in probes} & NOT_SCORED_CATEGORIES.keys()
 
     def test_extended_probes_split_between_single_and_multi_turn(self) -> None:
         path = Path("data/prompts/extended_probes.json")
@@ -530,7 +576,7 @@ class TestExtendedProbesJson:
         single_turn = [p for p in probes if "message" in p]
         multi_turn = [p for p in probes if "turns" in p]
 
-        assert len(single_turn) == 15
+        assert len(single_turn) == 23
         assert len({probe["message"] for probe in single_turn}) == len(single_turn)
         assert not any("part 1" in probe["message"].lower() for probe in single_turn)
 

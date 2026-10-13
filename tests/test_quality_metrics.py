@@ -77,6 +77,41 @@ def _rows() -> list[dict[str, object]]:
 
 
 class TestSummarizeQualityScores:
+    def test_bootstrap_ci_is_reproducible_and_macro_balanced(self) -> None:
+        rows = [
+            {
+                "model": "model-a",
+                "prompt_id": prompt,
+                "attempt": attempt,
+                "score": score,
+                "quality_dimension": dimension,
+                "weight": weight,
+            }
+            for prompt, dimension, weight, scores in (
+                (0, "strong", 2.0, [5, 5, 5]),
+                (1, "strong", 1.0, [4, 5, 5]),
+                (2, "weak", 1.0, [1, 2, 3]),
+            )
+            for attempt, score in enumerate(scores)
+        ]
+        first = summarize_quality_scores(pd.DataFrame(rows), expected_prompt_count=3).iloc[0]
+        shuffled = summarize_quality_scores(pd.DataFrame(rows).sample(frac=1, random_state=42)).iloc[0]
+
+        assert first["avg_quality_score"] == pytest.approx(((2 * 5 + 14 / 3) / 3 + 2) / 2)
+        assert first["avg_quality_score_ci95_low"] < first["avg_quality_score"]
+        assert first["avg_quality_score_ci95_high"] > first["avg_quality_score"]
+        assert (first["avg_quality_score_ci95_low"], first["avg_quality_score_ci95_high"]) == pytest.approx(
+            (shuffled["avg_quality_score_ci95_low"], shuffled["avg_quality_score_ci95_high"])
+        )
+
+    def test_bootstrap_ci_requires_three_attempts_for_every_prompt_and_full_coverage(self) -> None:
+        rows = pd.DataFrame(
+            {"model": ["a"] * 6, "prompt_id": [0] * 3 + [1] * 3, "attempt": [0, 1, 2] * 2, "score": [1, 3, 5, 2, 4, 5]}
+        )
+        assert pd.isna(summarize_quality_scores(rows, expected_prompt_count=3).iloc[0]["avg_quality_score_ci95_low"])
+        assert pd.isna(summarize_quality_scores(rows.loc[rows["attempt"] != 2]).iloc[0]["avg_quality_score_ci95_low"])
+        assert pd.notna(summarize_quality_scores(rows, expected_prompt_count=2).iloc[0]["avg_quality_score_ci95_low"])
+
     def test_macro_averages_dimensions_not_prompt_count(self) -> None:
         summary = summarize_quality_scores(pd.DataFrame(_rows()), expected_prompt_count=4)
         row = summary.loc[summary["model"] == "model-a"].iloc[0]

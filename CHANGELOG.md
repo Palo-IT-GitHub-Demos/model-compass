@@ -7,8 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalize use-case quality to 0–100 before applying recommendation weights
+  and sensitivity scenarios. This corrects the effective weighting but changes
+  composite scores and potentially ranks; historical recommendation exports
+  made with the former mixed-scale formula require recomputation for comparison
+
 ### Added
 
+- Added an opt-in, bounded two-turn dialogue quality screen with nine versioned
+  scenarios (clarification, JSON format persistence, negative instructions),
+  deterministic per-turn rules, conditional drift and omission rates, offline
+  synthetic rehearsal and a separately billed live target. Dialogue evidence
+  stays in dedicated sidecars and does not alter legacy benchmark scores
+- Extended the internal `extended` security profile with eight canary-disclosure
+  probes tagged LLM02, LLM03, LLM07 and LLM10; added whole-token and complete
+  base64 canary detection for single-turn and sequential probes, with annotated
+  false-positive regression cases. The RSI report columns remain unchanged,
+  but scores from the enlarged profile are not comparable to older runs
+- Split pipeline argument parsing, collection, result consolidation, and
+  artifact serialization into focused modules while retaining the existing
+  `src.main` CLI and programmatic façade
+- Added reproducible hierarchical bootstrap 95% intervals for aggregated and
+  use-case quality scores (available with full coverage and at least three
+  attempts per prompt), and ±10% weight/threshold sensitivity ranges and
+  fragility flags to recommendation artifacts; baseline scores and ranks stay
+  unchanged
+- Added short 1/3/5 calibration examples (`rubric-v2`) to all seven judged
+  `generic-screen-v2` items; the content-addressed suite ID changes, while
+  previously collected runs retain their original evidence and rubric. The
+  three blind judges now use optional anchors as calibration aids without
+  replacing the existing scoring rules
+- Optional validated `rubric_anchors` on judged quality items and propagation of
+  anchors and rubric version to the blind judging batch; existing suites and
+  batches without anchors remain supported
+- Added the opt-in `generic-screen-v2` quality suite (`QUALITY_SUITE=v2` or
+  `--quality-suite v2`): 34 original prompts over 8 use cases (extraction, code,
+  contextual QA, reasoning, classification, summarization, communication,
+  instruction following) with the matching `model-compass-use-cases-v2`
+  catalog. Every item declares the ADR 0002 blueprint (construct, task type,
+  difficulty and its `draft` status, evaluator, licence and contamination
+  status), enforced at load time. Items avoid place names, people and
+  addresses because providers redacted them to `[ADDRESS]` in v1. `v1` stays
+  unchanged as the legacy baseline; thresholds remain draft
+- Added a restricted code sandbox for `code_execution` prompts, enabled only
+  with `QUALITY_CODE_EXECUTION=true`: AST allowlist, isolated subprocess with
+  empty environment, timeout and resource limits, and hash-only logging. It is
+  defence in depth, not a security boundary; when disabled or unavailable the
+  responses go to the judge panel instead of being scored as failures
+- `make merge` now exports quality-suite diagnostics under
+  `results/quality_analysis/`: per-prompt item analysis (discrimination,
+  saturated/floor/low-variance flags) and inter-judge agreement
+  (Krippendorff alpha, exact/within-one agreement, per-judge leniency); raw
+  scores are unchanged
 - Repositioned the project as **Model Compass**, with a versioned generic
   use-case catalog and deterministic recommendation artifact under
   `results/recommendations/`; every model remains visible, quality thresholds
@@ -207,6 +259,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The default `QUALITY_SUITE` is now `v2` (`generic-screen-v2` with the
+  `model-compass-use-cases-v2` catalog) instead of `v1`. Set `QUALITY_SUITE=v1`
+  (or pass `--quality-suite v1`) to reproduce legacy runs; collect and merge
+  must still use the same suite, so a `pending_*.json` collected under v1 now
+  needs `QUALITY_SUITE=v1 make merge`. Thresholds remain draft and the v2
+  suite has not yet been piloted on real models
 - README and Makefile: the mandatory `@judge-coordinator` step (Phase 2) is now
   stated before `make collect` with an explicit cost warning, instead of being
   documented mid-prose after the paid step. Added a condensed "first
@@ -289,6 +347,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Strict JSON output now fails format compliance when it is syntactically invalid
+  or has the wrong object/array root type; valid fenced JSON remains a content
+  success and a format failure. Exact-answer numeric value errors no longer
+  claim that casing, punctuation, or extra text was added
 - `make dry-run` no longer reports every quality response as a transport
   failure. The offline fake client did not expose the generation ID and
   resolved model that the collector reads, so the pre-flight check emptied its

@@ -14,18 +14,32 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Core pipeline code lives in `src/`; the versioned generic use-case catalog is
   `data/catalog/model_compass_use_cases.json`; Streamlit and shared presentation helpers
   live in `dashboard/`; operational scripts live in `scripts/`
+- `src/main.py` remains the CLI and compatibility façade; `src/pipeline_cli.py`
+  owns parsing/overrides, `src/pipeline_collect.py` concurrent collection and
+  error budgets, `src/pipeline_merge.py` the benchmark matrix, and
+  `src/pipeline_artifacts.py` persistent outputs and blind judging payloads.
+  The façade passes runtime paths and patchable stages explicitly to these modules
 - The production workflow is split into three phases:
   `make collect` → `@judge-coordinator` → `make merge`
 - `make dry-run` is offline; `make verify` validates the OpenRouter key and
   model catalog without chat-completion cost
 - `make export-html` builds a static dashboard; `make dashboard` launches the
   interactive Streamlit view
+- `QUALITY_SUITE` (`v2` default, `v1`) selects the prompt suite and its
+  catalog; `generic-screen-v1` must stay unchanged and collect/merge must use
+  the same suite
+- Generated code is executed only with `QUALITY_CODE_EXECUTION=true` and only
+  through `src/evaluators/code_sandbox.py`; never run model output elsewhere
 - `MODEL_COMPASS_WEIGHTS` optionally overrides the catalog's quality/security/
   cost/performance weights as JSON; effective weights and catalog version must
   remain in every recommendation artifact
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
 - Experimental multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; keep them separate from legacy single-turn scoring until the security integration and comparability metadata are complete
+- The optional two-turn quality screen lives in `src/evaluators/dialogue_quality.py`
+  with its versioned catalog under `data/prompts/`; `make dialogue` runs offline
+  and `make dialogue-live` is paid. Its sidecars stay separate from benchmark
+  quality aggregates and recommendations; synthetic responses are never real evidence
 
 ## Quality Evidence Rules
 
@@ -45,6 +59,10 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   alongside it
 - A confirmed system-prompt disclosure caps the RSI below the robust band. Never
   present a model as robust and vulnerable on the same view
+- `extended` now includes LLM02/03/07/10 canary-disclosure contexts alongside
+  LLM01. A positive signal proves the secret escaped, not that tool use,
+  factuality or downstream output handling was exercised. Compare RSI only
+  across the same probe-profile version as well as the same scored categories
 - Only score OWASP categories a single-turn chat probe can actually exercise;
   report the others as not scored. RSI is comparable only across identical
   `rsi_scored_categories`
@@ -62,6 +80,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Quality eligibility is evaluated per generic use case before weighted ranking;
   a model below a use-case threshold cannot be recommended because it is cheap
   or fast
+- Recommendation ranking and weight sensitivity use `quality_score_100` (0–100),
+  not the 1–5 `quality_score` used for eligibility; historical ranks calculated
+  on the mixed scale are not comparable without recomputation
 - Every model remains visible for every catalog use case. Equal recommendation
   scores keep the same dense rank; do not add arbitrary provider/model-name
   tie-breakers

@@ -184,6 +184,61 @@ class TestPromptSchema:
         with pytest.raises(ValueError, match="exactly one"):
             load_quality_prompts(path)
 
+    def test_loads_rubric_anchors_and_version(self, tmp_path: Path) -> None:
+        anchors = {"1": "Missing the decision.", "3": "Decision without owner.", "5": "Decision and owner."}
+        path = _write_prompt_fixture(
+            tmp_path,
+            [
+                {
+                    "prompt": "Summarize the decision.",
+                    "category": "generic_judgment",
+                    "judge_criteria": ["State the decision and owner."],
+                    "rubric_version": "rubric-v2",
+                    "rubric_anchors": anchors,
+                }
+            ],
+        )
+
+        prompt = load_quality_prompts(path)[0]
+        assert prompt.rubric_anchors == anchors
+        assert prompt.rubric_version == "rubric-v2"
+
+    def test_v2_blueprint_accepts_optional_rubric_anchors(self, tmp_path: Path) -> None:
+        items = json.loads(Path("data/prompts/quality_prompts_v2.json").read_text())
+        items[24]["rubric_anchors"] = {"1": "Wrong dates.", "3": "One date missing.", "5": "Both dates correct."}
+        del items[25]["rubric_anchors"]
+        path = tmp_path / "quality_prompts_v2.json"
+        path.write_text(json.dumps(items))
+
+        prompts = load_quality_prompts(path)
+        assert prompts[24].rubric_anchors == items[24]["rubric_anchors"]
+        assert prompts[25].rubric_anchors is None
+
+    @pytest.mark.parametrize(
+        "anchors",
+        [
+            {"2": "Partial answer."},
+            {},
+            {"5": "  "},
+            {"5": 5},
+            ["A valid answer."],
+        ],
+    )
+    def test_rejects_invalid_rubric_anchors(self, tmp_path: Path, anchors: object) -> None:
+        path = _write_prompt_fixture(
+            tmp_path,
+            [
+                {
+                    "prompt": "Summarize the decision.",
+                    "category": "generic_judgment",
+                    "judge_criteria": ["State the decision."],
+                    "rubric_anchors": anchors,
+                }
+            ],
+        )
+        with pytest.raises(ValueError, match="rubric_anchors"):
+            load_quality_prompts(path)
+
     async def test_collects_a_multiturn_scenario_in_one_api_call(
         self,
         async_judge: AsyncQualityJudge,
@@ -368,6 +423,39 @@ class TestAsyncCollect:
         # The judge-facing copy has the vendor name scrubbed.
         assert "Anthropic" not in pending["responses_for_judging"][alias]
         assert "[assistant]" in pending["responses_for_judging"][alias]
+
+    async def test_collect_propagates_optional_rubric_metadata(
+        self,
+        async_judge: AsyncQualityJudge,
+        async_mock_client: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        anchors = {"1": "Missing the decision.", "3": "Partial decision.", "5": "Correct decision."}
+        path = _write_prompt_fixture(
+            tmp_path,
+            [
+                {
+                    "prompt": "Summarize the decision.",
+                    "category": "generic_judgment",
+                    "judge_criteria": ["State the decision."],
+                    "rubric_version": "rubric-v2",
+                    "rubric_anchors": anchors,
+                }
+            ],
+        )
+        async_mock_client.chat_completion.return_value = _make_completion("The decision was to pause the campaign.")
+
+        pending = (await async_judge.run_collect(path, ["model-a"])).pending_judgments[0]
+        assert pending["rubric_version"] == "rubric-v2"
+        assert pending["rubric_anchors"] == anchors
+
+        legacy_path = _write_prompt_fixture(
+            tmp_path,
+            [{"prompt": "Summarize.", "category": "generic_judgment", "judge_criteria": ["Be accurate."]}],
+        )
+        legacy = (await async_judge.run_collect(legacy_path, ["model-a"])).pending_judgments[0]
+        assert legacy["rubric_version"] is None
+        assert legacy["rubric_anchors"] is None
 
     async def test_collection_failure_is_not_scored_as_an_empty_response(
         self,

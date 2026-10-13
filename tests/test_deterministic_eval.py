@@ -62,6 +62,35 @@ class TestJsonValidityCheck:
         assert result.score == 5
         assert result.format_score == 1
 
+    def test_strict_json_invalid_syntax_fails_content_and_format(self) -> None:
+        result = JsonValidityCheck().run(
+            "",
+            "[urgent, billing]",
+            {"expected_json": ["urgent", "billing"], "strict_output": True},
+        )
+        assert result.passed is False
+        assert result.score == 1
+        assert result.format_score == 1
+        assert "not syntactically valid JSON" in result.format_reason
+
+    def test_strict_json_fenced_invalid_syntax_still_fails_format(self) -> None:
+        result = JsonValidityCheck().run("", "```json\n[urgent, billing]\n```", {"strict_output": True})
+        assert result.score == 1
+        assert result.format_score == 1
+
+    def test_strict_json_wrong_root_type_fails_format(self) -> None:
+        result = JsonValidityCheck().run("", '["ok"]', {"expected_json": {"status": "ok"}, "strict_output": True})
+        assert result.score == 1
+        assert result.format_score == 1
+        assert "wrong JSON root type" in result.format_reason
+
+    def test_strict_json_wrong_value_preserves_valid_format(self) -> None:
+        result = JsonValidityCheck().run(
+            "", '{"status": "wrong"}', {"expected_json": {"status": "ok"}, "strict_output": True}
+        )
+        assert result.score == 1
+        assert result.format_score == 5
+
     def test_strict_json_without_fences_is_format_compliant(self) -> None:
         check = JsonValidityCheck()
         result = check.run(
@@ -69,12 +98,18 @@ class TestJsonValidityCheck:
             '{"status": "ok"}',
             {"expected_json": {"status": "ok"}, "strict_output": True},
         )
+        assert result.passed is True
         assert result.score == 5
         assert result.format_score == 5
 
     def test_non_strict_json_has_no_format_score(self) -> None:
         check = JsonValidityCheck()
         result = check.run("", '```json\n{"status": "ok"}\n```', {"expected_json": {"status": "ok"}})
+        assert result.format_score is None
+
+    def test_non_strict_invalid_json_has_no_format_score(self) -> None:
+        result = JsonValidityCheck().run("", "[urgent, billing]", {"expected_json": ["urgent", "billing"]})
+        assert result.score == 1
         assert result.format_score is None
 
 
@@ -148,6 +183,23 @@ class TestExactFormatCheck:
         result = check.run("", "The answer is Canberra.", {"accepted_answers": ["Canberra"]})
         assert result.passed is False
         assert result.score == 1
+
+    def test_wrong_numeric_value_does_not_imply_format_failure(self) -> None:
+        result = ExactFormatCheck().run("", "READY:4", {"accepted_answers": ["READY:5"], "strict_output": True})
+        assert result.passed is False
+        assert result.score == 1
+        assert result.format_score == 5
+        assert "value is incorrect" in result.format_reason
+
+    def test_wrong_value_with_extra_text_fails_format(self) -> None:
+        result = ExactFormatCheck().run("", "READY:4 extra", {"accepted_answers": ["READY:5"], "strict_output": True})
+        assert result.score == 1
+        assert result.format_score == 1
+
+    def test_case_change_fails_strict_format_even_if_content_matches(self) -> None:
+        result = ExactFormatCheck().run("", "ready:5", {"accepted_answers": ["READY:5"], "strict_output": True})
+        assert result.score == 5
+        assert result.format_score == 1
 
 
 class TestChecksRegistry:

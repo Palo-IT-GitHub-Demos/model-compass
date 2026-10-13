@@ -82,6 +82,7 @@ class TestMergeResults:
         model_b = result.loc[result["model"] == "model-b"].iloc[0]
 
         assert model_a["avg_quality_score"] == pytest.approx(4.5)
+        assert pd.isna(model_a["avg_quality_score_ci95_low"])
         assert model_a["quality_coverage_rate"] == pytest.approx(1.0)
         assert model_a["quality_dimension_coverage_rate"] == pytest.approx(1.0)
         assert bool(model_a["quality_cer_eligible"])

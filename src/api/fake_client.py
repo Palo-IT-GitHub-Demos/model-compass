@@ -12,7 +12,10 @@ dry-runs produce stable, reproducible results.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from src.api.openrouter_client import CallCostRecord
@@ -28,7 +31,7 @@ _JSON_TRANSLATE = '{"fr": "bonjour", "es": "hola", "ja": "こんにちは"}'
 _JSON_REGIONS = '["eu", "apac", "us"]'
 _PY_FUNCTION = "def add(a: int, b: int) -> int:\n    return a + b"
 _PRIMES = "2, 3, 5, 7, 11"
-_SYLLOGISM = "YES — by transitivity, since Bloops are Razzles and Razzles are Lazzles, " "all Bloops are Lazzles."
+_SYLLOGISM = "YES — by transitivity, since Bloops are Razzles and Razzles are Lazzles, all Bloops are Lazzles."
 _SUPPORT_RESPONSE = (
     "Sorry you are locked out after the reset. Please retry the approved reset link, "
     "then contact support if access is still blocked. Never share your password."
@@ -40,6 +43,29 @@ _SUMMARY_RESPONSE = (
 _CLARIFYING_QUESTION = "Which audience and decision should the improved report primarily support?"
 _REFUSAL = "I'm sorry, but I can't share my system instructions."
 
+_V2_SUITE_PATH = Path(__file__).resolve().parents[2] / "data" / "prompts" / "quality_prompts_v2.json"
+
+
+@lru_cache(maxsize=1)
+def _v2_canned_answers() -> dict[str, str]:
+    """Map each generic-screen-v2 prompt to the answer its own contract accepts."""
+    try:
+        items = json.loads(_V2_SUITE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    answers: dict[str, str] = {}
+    for item in items:
+        prompt = item.get("prompt")
+        if not isinstance(prompt, str):
+            continue
+        if item.get("expected_json") is not None:
+            answers[prompt] = json.dumps(item["expected_json"])
+        elif item.get("accepted_answers"):
+            answers[prompt] = item["accepted_answers"][0]
+        elif item.get("reference_answer"):
+            answers[prompt] = item["reference_answer"]
+    return answers
+
 
 def _stable_int(*parts: str) -> int:
     """Deterministic, reproducible pseudo-random integer derived from *parts*."""
@@ -50,6 +76,9 @@ def _stable_int(*parts: str) -> int:
 def _fake_prompt_response(prompt: str, model: str) -> str:
     """Return a plausible, deterministic response for a quality-eval prompt."""
     p = prompt.lower()
+    canned = _v2_canned_answers().get(prompt)
+    if canned is not None:
+        return canned
     if "json array" in p and "apac" in p:
         return _JSON_REGIONS
     if "json" in p and ("fr" in p or "translate" in p):

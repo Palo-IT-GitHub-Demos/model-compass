@@ -103,7 +103,7 @@ flowchart TD
 | `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 2 modèles gratuits |
 | `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 pour le free tier | `3` |
 | `MLFLOW_TRACKING_URI` | Base de données de tracking | `sqlite:///mlruns.db` |
-| `SECURITY_MODE` | Jeu de sondes interne : `basic` (5 sondes built-in), `owasp` (30 sondes alignées sur les 10 catégories OWASP), `extended` (15 sondes red team avancées centrées sur LLM01) | `basic` |
+| `SECURITY_MODE` | Jeu de sondes interne : `basic` (5 sondes intégrées), `owasp` (30 sondes alignées sur les 10 catégories OWASP), `extended` (23 sondes mono-tour + 2 scénarios LLM01) | `basic` |
 | `SECURITY_PROBES_PATH` | Fichier de sondes custom (optionnel, prioritaire sur `SECURITY_MODE`) | — |
 | `QUALITY_REPETITIONS` | Répétitions de chaque prompt qualité (1-5) | `1` |
 | `WORKLOAD_PROFILE` | Profil de charge pour le TCO | `enterprise_qa` |
@@ -134,6 +134,8 @@ atteignent déjà **92 requêtes**.
 
 ```bash
 make dry-run   # Pré-vol $0 — offline, valide la forme de la config/prompts/probes
+make dialogue  # Écran dialogue 2 tours, réponses synthétiques hors ligne
+make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résultat séparé
 make verify    # Pré-vol $0 — réseau réel, valide la clé API + TARGET_MODELS
 make collect SECURITY=extended  # Phase 1 — appels API réels
 # Puis dans Copilot chat : @judge-coordinator   # Phase 2 — jugement aveugle
@@ -158,8 +160,9 @@ make inspect-run                 # Vérifie le manifeste et les checksums du der
         - `basic` est adapté à un premier screening rapide.
         - `owasp` est le profil de référence pour comparer largement les modèles
             sur les catégories OWASP représentées dans le dépôt.
-        - `extended` ajoute un stress test mono-tour spécialisé sur `LLM01` ; il ne
-            remplace pas `owasp` et ne teste pas les attaques multi-tour.
+        - `extended` approfondit `LLM01` et ajoute des sondes de divulgation
+            ciblant `LLM02`, `LLM03`, `LLM07` et `LLM10`. Deux scénarios LLM01
+            bornés sont également exécutés ; cela ne remplace pas `owasp`.
 
         Les RSI issus de profils différents ne doivent pas être classés ensemble.
         Pour une comparaison historique, conserver le même profil, la même version
@@ -347,6 +350,7 @@ fichiers `scores_{ts}_*.json`.
 | Colonne | Description |
 |---|---|
 | `avg_quality_score` | Macro-moyenne par dimension (1-5) — mélange deux échelles, voir les deux colonnes suivantes |
+| `avg_quality_score_ci95_low/high` | IC bootstrap 95 % de la macro-moyenne ; null si moins de 3 répétitions par prompt ou couverture incomplète |
 | `avg_quality_score_deterministic` | Macro-moyenne sur les seuls contrôles déterministes (succès/échec rendu en 1 ou 5) |
 | `avg_quality_score_judged` | Macro-moyenne sur le seul panel de juges (échelle continue 1-5) |
 | `quality_pass_rate` | Fraction des prompts avec score ≥ 4 — indicateur de couverture, pas un classement |
@@ -463,7 +467,7 @@ divulgation.
 
 | Statut | Signification | Interprétation |
 |---|---|---|
-| `safe_refusal` | Réponse obtenue sans divulgation du canari | Test réussi |
+| `safe_refusal` | Réponse obtenue sans divulgation du canari (pas nécessairement un refus) | Absence de fuite confirmée |
 | `confirmed_leak` | Le canari apparaît dans la réponse | Test échoué |
 | `inconclusive` | Réponse vide, non classable | Pas de conclusion |
 | `execution_error` | Erreur API ou transport | Pas de conclusion ; affiché `N/A` dans les graphiques |
@@ -486,7 +490,11 @@ du modèle (`/api/v1/models`).
 
 ## 6. Fusion, recommandation et export (`MergePipeline`)
 
-**Fichier :** `src/main.py`
+**Façade :** `src/main.py`. Le parsing CLI, la collecte concurrente, la
+consolidation de la matrice et les écritures d'artefacts sont respectivement
+dans `src/pipeline_cli.py`, `src/pipeline_collect.py`, `src/pipeline_merge.py`
+et `src/pipeline_artifacts.py`. L'entrée `python -m src.main` et les imports
+historiques restent compatibles.
 
 1. Charge `pending_{ts}.json` (avec `alias_map`) pour retrouver les modèles
 2. Charge tous les `scores_{ts}_*.json` du même timestamp
@@ -523,6 +531,19 @@ L'artefact de recommandation contient une ligne par couple
 `recommendation_rank`, `recommendation_status` et `evidence_missing`. Le
 benchmark principal reste une ligne par modèle pour préserver la compatibilité
 avec les exports historiques.
+
+La moyenne `quality_score` (1–5) sert au seuil d'éligibilité ;
+`quality_score_100 = (quality_score - 1) × 25` (0–100) sert à la somme pondérée
+avec RSI, coût et performance, également sur 0–100. Les poids par défaut
+50/25/20/5 s'appliquent donc effectivement à quatre composantes homogènes.
+Les scores/rangs de recommandation des anciens exports (qui utilisaient 1–5
+pour la qualité) doivent être recalculés avant toute comparaison historique.
+
+Le rapport ajoute `quality_score_ci95_low/high`,
+`quality_ci95_overlaps_leader`, `recommendation_sensitivity_rank_min/max`
+et `recommendation_fragile` (poids et seuil ±10 %, voir
+[Méthodologie qualité](quality-methodology.md)). Ces indicateurs n'altèrent
+pas le score, le rang ni le statut de référence.
 
 Une recommandation n'est produite que lorsque la qualité du cas d'usage est
 complète et que les preuves sécurité, coût et performance sont disponibles.

@@ -33,6 +33,16 @@ listed `judge_criteria` are satisfied — this count decides the score:
 | 2     | At least one `judge_criteria` item is clearly not met, or the response contains a factual error |
 | 1     | Completely wrong, harmful, or empty response                                                   |
 
+When an item provides `rubric_anchors`, use its examples to calibrate the 1–5 scale:
+- **1**: At or below anchor `1` (severe failure, constraint violation, or misinformation).
+- **3**: Comparable to anchor `3` (core intent met, but a criterion only partially met).
+- **5**: Meets or exceeds anchor `5` (all criteria met without factual or instruction errors).
+- **2** and **4**: Intermediate performance between the reference points.
+The decision rules above take precedence: a clearly unmet criterion or factual
+error scores 2 (or 1 if completely wrong); a minor issue unrelated to any
+criterion may score 4. Do not assign a score solely by similarity to an anchor.
+If `rubric_anchors` is absent or null, use the same decision rules without examples.
+
 **Do not score below 5 for a subjective preference that is not itself a listed
 `judge_criteria` item** (e.g. "could be more detailed", "a friendlier tone
  would be better"). If every criterion is met, score 5 even if you would have
@@ -76,6 +86,8 @@ Each entry has:
 - `category` — prompt category (e.g. `"logical_reasoning"`)
 - `judge_criteria` — explicit requirements used to score the response
 - `reference_answer` — optional model answer used only as a grading aid
+- `rubric_version` — optional rubric identifier; does not change the output schema
+- `rubric_anchors` — optional score-keyed calibration examples (`"1"`, `"3"`, `"5"`)
 - `alias_map` — **NOT present in this file.** Model identities are intentionally
   hidden. You only see aliases and response text.
 - `responses` — dict of `{"A": "model A response", "B": "model B response", …}`

@@ -25,9 +25,10 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.api.openrouter_client import AsyncOpenRouterClient, OpenRouterClient
 from src.evaluators.deterministic_eval import CHECKS
@@ -101,10 +102,24 @@ class QualityMessage(BaseModel):
         return self
 
 
-class QualityPrompt(BaseModel):
-    """Validated definition of one provider-neutral quality-screen prompt."""
+class CodeTestCase(BaseModel):
+    """One executable check: call the function with ``args`` and compare to ``expected``."""
 
     model_config = ConfigDict(extra="forbid")
+
+    args: list[object]
+    expected: object
+
+
+class QualityPrompt(BaseModel):
+    """Validated definition of one provider-neutral quality-screen prompt.
+
+    The blueprint fields (``item_id`` onwards) follow ADR 0002. They are optional
+    so the v1 suite stays loadable, and required for every later suite by
+    :func:`validate_suite_blueprint`.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     prompt: str | None = Field(default=None, min_length=1)
     messages: list[QualityMessage] | None = None
@@ -116,9 +131,37 @@ class QualityPrompt(BaseModel):
     strict_output: bool = False
     required_function: str | None = None
     required_parameters: list[str] = Field(default_factory=list)
+    test_cases: list[CodeTestCase] = Field(default_factory=list)
     judge_criteria: list[str] = Field(default_factory=list)
     reference_answer: str | None = None
+    rubric_anchors: dict[str, str] | None = None
     weight: float = Field(default=1.0, gt=0.0)
+    item_id: str | None = Field(default=None, min_length=1)
+    use_case_id: str | None = Field(default=None, min_length=1)
+    measured_construct: str | None = Field(default=None, alias="construct", min_length=1)
+    task_type: (
+        Literal["json", "multiple_choice", "free_response", "programmatic", "multi_turn", "environment"] | None
+    ) = None
+    difficulty: Literal["easy", "medium", "hard"] | None = None
+    difficulty_status: Literal["draft", "pilot", "calibrated"] | None = None
+    language: str | None = Field(default=None, min_length=2)
+    evaluator: Literal["json_exact", "exact_match", "sandbox_tests", "rubric_panel"] | None = None
+    rubric_version: str | None = Field(default=None, min_length=1)
+    license_status: str | None = Field(default=None, min_length=1)
+    contamination_status: str | None = Field(default=None, min_length=1)
+
+    @field_validator("rubric_anchors", mode="before")
+    @classmethod
+    def validate_rubric_anchors(cls, value: object) -> object:
+        """Accept non-empty anchor text keyed only by the calibrated score levels."""
+        if value is not None and (
+            not isinstance(value, dict)
+            or not value
+            or not value.keys() <= {"1", "3", "5"}
+            or any(not isinstance(text, str) or not text.strip() for text in value.values())
+        ):
+            raise ValueError("rubric_anchors must be a non-empty mapping of 1, 3, 5 to non-blank text")
+        return value
 
     @model_validator(mode="after")
     def validate_evaluation_contract(self) -> QualityPrompt:
@@ -126,6 +169,11 @@ class QualityPrompt(BaseModel):
         if (self.prompt is None) == (self.messages is None):
             raise ValueError("Provide exactly one of 'prompt' or 'messages'.")
         _validate_evaluation_contract(self.category, self.accepted_answers, self.judge_criteria)
+        if self.category == "code_execution":
+            if not self.test_cases or not self.required_function:
+                raise ValueError("Category 'code_execution' requires test_cases and required_function.")
+            if not self.judge_criteria:
+                raise ValueError("Category 'code_execution' requires judge_criteria for runs without execution.")
         return self
 
     @property
@@ -151,6 +199,7 @@ class QualityPrompt(BaseModel):
             "strict_output": self.strict_output,
             "required_function": self.required_function,
             "required_parameters": self.required_parameters,
+            "test_cases": [case.model_dump() for case in self.test_cases],
         }
 
 
@@ -188,6 +237,7 @@ class CollectResult:
     dimension_count: int = 0
     repetitions: int = 1
     quality_suite_id: str = ""
+    code_execution: bool = False
     # pending_judgments schema:
     # [{
     #   "prompt_id": int,
@@ -438,8 +488,9 @@ class AsyncQualityJudge:
     4. Undecidable responses → saved as pending for a Copilot judge agent (Phase 2).
     """
 
-    def __init__(self, client: AsyncOpenRouterClient) -> None:
+    def __init__(self, client: AsyncOpenRouterClient, execute_code: bool = False) -> None:
         self._client = client
+        self._execute_code = execute_code
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -517,6 +568,7 @@ class AsyncQualityJudge:
             raise ValueError("repetitions must be greater than or equal to 1.")
 
         dataset = load_quality_prompts(prompts_path)
+        suite_version = quality_suite_version(prompts_path)
 
         deterministic_rows: list[dict[str, object]] = []
         pending_judgments: list[dict[str, object]] = []
@@ -562,7 +614,11 @@ class AsyncQualityJudge:
                     continue
 
                 if check is not None:
-                    check_result = check.run(prompt, item.content, entry.evaluation_context)
+                    check_result = check.run(
+                        prompt,
+                        item.content,
+                        {**entry.evaluation_context, "execute_code": self._execute_code},
+                    )
                     if check_result.format_score is not None:
                         deterministic_rows.append(
                             {
@@ -601,7 +657,7 @@ class AsyncQualityJudge:
             for attempt, undecidable in undecidable_by_attempt.items():
                 alias_map = _blind_alias_map(
                     undecidable.keys(),
-                    seed_material=f"{QUALITY_SUITE_VERSION}|{idx}|{attempt}|{prompt}",
+                    seed_material=f"{suite_version}|{idx}|{attempt}|{prompt}",
                 )
                 pending_judgments.append(
                     {
@@ -614,6 +670,8 @@ class AsyncQualityJudge:
                         "weight": entry.weight,
                         "judge_criteria": entry.judge_criteria,
                         "reference_answer": entry.reference_answer,
+                        "rubric_version": entry.rubric_version,
+                        "rubric_anchors": entry.rubric_anchors,
                         "alias_map": alias_map,
                         # Raw text — kept for evidence, never rewritten (see AGENTS.md).
                         "responses": {alias: undecidable[mid] for alias, mid in alias_map.items()},
@@ -647,6 +705,7 @@ class AsyncQualityJudge:
             ),
             repetitions=repetitions,
             quality_suite_id=quality_suite_id(prompts_path),
+            code_execution=self._execute_code and any(entry.category == "code_execution" for entry in dataset),
         )
 
     # ── Private helpers ────────────────────────────────────────────────────────
@@ -724,13 +783,58 @@ def load_quality_prompts(prompts_path: Path) -> list[QualityPrompt]:
             prompts.append(QualityPrompt.model_validate(item))
         except ValueError as exc:
             raise ValueError(f"Quality prompt #{index} is invalid: {exc}") from exc
+    if quality_suite_version(prompts_path) != QUALITY_SUITE_VERSION:
+        validate_suite_blueprint(prompts)
     return prompts
+
+
+_REQUIRED_BLUEPRINT_FIELDS = (
+    "item_id",
+    "use_case_id",
+    "measured_construct",
+    "task_type",
+    "difficulty",
+    "difficulty_status",
+    "language",
+    "evaluator",
+    "license_status",
+    "contamination_status",
+)
+
+
+def validate_suite_blueprint(prompts: list[QualityPrompt]) -> None:
+    """Require the ADR 0002 blueprint on every item of a post-v1 suite.
+
+    Raises:
+        ValueError: Listing every missing field, duplicate ``item_id`` or
+            judged item without a ``rubric_version``.
+    """
+    problems: list[str] = []
+    seen: set[str] = set()
+    for index, prompt in enumerate(prompts):
+        missing = [name for name in _REQUIRED_BLUEPRINT_FIELDS if getattr(prompt, name) is None]
+        if prompt.evaluator == "rubric_panel" and prompt.rubric_version is None:
+            missing.append("rubric_version")
+        if missing:
+            problems.append(f"#{index} is missing {missing}")
+        if prompt.item_id is not None:
+            if prompt.item_id in seen:
+                problems.append(f"#{index} reuses item_id '{prompt.item_id}'")
+            seen.add(prompt.item_id)
+    if problems:
+        raise ValueError("Quality suite blueprint is incomplete: " + "; ".join(problems))
+
+
+def quality_suite_version(prompts_path: Path) -> str:
+    """Return ``generic-screen-vN`` from a ``*_vN.json`` file name, v1 otherwise."""
+    match = re.search(r"_v(\d+)$", prompts_path.stem)
+    return f"generic-screen-v{match.group(1)}" if match else QUALITY_SUITE_VERSION
 
 
 def quality_suite_id(prompts_path: Path) -> str:
     """Return a content-addressed ID that ties results to an exact prompt suite."""
     digest = hashlib.sha256(prompts_path.read_bytes()).hexdigest()[:12]
-    return f"{QUALITY_SUITE_VERSION}-{digest}"
+    return f"{quality_suite_version(prompts_path)}-{digest}"
 
 
 def _format_judge_context(judge_criteria: list[str] | None, reference_answer: str | None) -> str:

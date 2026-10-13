@@ -28,7 +28,7 @@ from src.api.openrouter_client import (
     OpenRouterError,
 )
 from src.core.config import Settings, get_settings
-from src.core.model_presets import format_model_presets, resolve_models_arg
+from src.core.model_presets import format_model_presets
 from src.core.model_selector import (
     catalog_entries,
     estimate_cost_usd,
@@ -38,12 +38,11 @@ from src.core.model_selector import (
 )
 from src.core.run_manifest import inspect_run_manifest, write_run_manifest
 from src.evaluators.cost_analyzer import (
-    BUILTIN_WORKLOAD_PROFILES,
     AsyncCostAnalyzer,
     CostAnalyzer,
     call_costs_to_dataframe,
-    summarize_actual_call_costs,
 )
+from src.evaluators.quality_diagnostics import analyze_items, summarize_judge_agreement
 from src.evaluators.quality_judge import (
     FORMAT_COMPLIANCE_DIMENSION,
     AsyncQualityJudge,
@@ -51,7 +50,7 @@ from src.evaluators.quality_judge import (
     load_quality_prompts,
     quality_suite_id,
 )
-from src.evaluators.quality_metrics import build_quality_details, summarize_quality_dimensions, summarize_quality_scores
+from src.evaluators.quality_metrics import build_quality_details
 from src.evaluators.recommendation import (
     DEFAULT_USE_CASE_CATALOG_PATH,
     RecommendationWeights,
@@ -68,6 +67,10 @@ from src.evaluators.security_scanner import (
 )
 from src.observability.events import log_event
 from src.observability.tracker import ExperimentTracker
+from src.pipeline_artifacts import export_results, recommendation_stem, save_pending, write_recommendation_artifact
+from src.pipeline_cli import build_arg_parser, settings_override_from_args
+from src.pipeline_collect import collect_stages, enforce_collect_error_budget
+from src.pipeline_merge import merge_results
 
 logging.basicConfig(
     level=logging.INFO,
@@ -80,6 +83,23 @@ _RESULTS_DIR = Path("results")
 _INTERMEDIATE_DIR = Path("data/intermediate")
 _QUALITY_PROMPTS = Path("data/prompts/quality_prompts.json")
 _USE_CASE_CATALOG = DEFAULT_USE_CASE_CATALOG_PATH
+_QUALITY_SUITES: dict[str, tuple[Path, Path]] = {
+    "v1": (_QUALITY_PROMPTS, DEFAULT_USE_CASE_CATALOG_PATH),
+    "v2": (
+        Path("data/prompts/quality_prompts_v2.json"),
+        Path("data/catalog/model_compass_use_cases_v2.json"),
+    ),
+}
+
+
+def _activate_quality_suite(name: str) -> None:
+    """Point the pipelines at the prompt file and catalog of the named suite."""
+    global _QUALITY_PROMPTS, _USE_CASE_CATALOG
+    if name not in _QUALITY_SUITES:
+        raise ValueError(f"Unknown QUALITY_SUITE '{name}'. Valid values: {', '.join(sorted(_QUALITY_SUITES))}.")
+    _QUALITY_PROMPTS, _USE_CASE_CATALOG = _QUALITY_SUITES[name]
+
+
 _DRY_RUN_DIR = Path("data/dry_run")
 _MIN_QUALITY_COVERAGE_FOR_CER = 0.8
 _TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -340,7 +360,7 @@ class AsyncPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file found at '%s'; skipping.", _QUALITY_PROMPTS)
             return pd.DataFrame()
-        judge = AsyncQualityJudge(client)
+        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
         try:
             df = await judge.run_dataset(
                 _QUALITY_PROMPTS,
@@ -415,121 +435,20 @@ def _merge_results(
     cost-efficiency ratio is only eligible when at least 80% of the configured
     screen prompts were scored, avoiding false precision from partial runs.
     """
-    base = pd.DataFrame({"model": models})
-
-    if not quality_df.empty and "score" in quality_df.columns:
-        quality_summary = summarize_quality_scores(
-            quality_df,
-            expected_prompt_count=quality_prompt_count,
-        )
-        base = base.merge(quality_summary, on="model", how="left")
-
-        dimension_summary = summarize_quality_dimensions(quality_df)
-        if not dimension_summary.empty:
-            dimension_wide = dimension_summary.pivot(
-                index="model", columns="quality_dimension", values="dimension_score"
-            )
-            dimension_wide.columns = [f"quality_dim_{column}" for column in dimension_wide.columns]
-            base = base.merge(dimension_wide.reset_index(), on="model", how="left")
-
-    if quality_collection_errors is not None and not quality_collection_errors.empty:
-        error_summary = (
-            quality_collection_errors.groupby("model", as_index=False)
-            .size()
-            .rename(columns={"size": "quality_collection_error_count"})
-        )
-        base = base.merge(error_summary, on="model", how="left")
-
-    base["quality_collection_error_count"] = base.get("quality_collection_error_count", 0)
-    base["quality_collection_error_count"] = base["quality_collection_error_count"].fillna(0).astype("int32")
-    if quality_prompt_count is not None and quality_prompt_count > 0:
-        expected_attempts = quality_prompt_count * quality_repetitions
-        base["quality_collection_success_rate"] = (
-            1.0 - base["quality_collection_error_count"] / expected_attempts
-        ).clip(lower=0.0, upper=1.0)
-
-    if quality_dimension_count is not None and quality_dimension_count > 0:
-        observed_dimension_count = (
-            base["quality_dimension_count"]
-            if "quality_dimension_count" in base.columns
-            else pd.Series(0.0, index=base.index)
-        )
-        base["quality_dimension_coverage_rate"] = (observed_dimension_count / quality_dimension_count).clip(
-            lower=0.0, upper=1.0
-        )
-
-    if quality_suite_id:
-        base["quality_suite_id"] = quality_suite_id
-
-    if actual_call_costs is not None and not actual_call_costs.empty:
-        base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")
-
-    if not security_df.empty:
-        _wanted = [
-            "model",
-            "leak_count",
-            "is_vulnerable",
-            "zero_data_retention",
-            "rsi",
-            "rsi_scored_category_count",
-            "rsi_scored_probe_count",
-            "rsi_scored_categories",
-            "rsi_leak_capped",
-            "probe_count",
-            "probe_error_count",
-            "probe_error_rate",
-            "probe_details",
-        ]
-        sec_cols = [c for c in _wanted if c in security_df.columns]
-        base = base.merge(security_df[sec_cols], on="model", how="left")
-
-    if not pricing_df.empty and "model_id" in pricing_df.columns:
-        target_pricing = pricing_df[pricing_df["model_id"].isin(models)][
-            [
-                "model_id",
-                "prompt_price_per_token",
-                "completion_price_per_token",
-                "context_length",
-            ]
-        ].rename(columns={"model_id": "model"})
-        base = base.merge(target_pricing, on="model", how="left")
-
-    # ── TCO & CER ─────────────────────────────────────────────────────────────
-    profile = BUILTIN_WORKLOAD_PROFILES.get(workload_profile_name)
-    if profile is not None and not pricing_df.empty and "model_id" in pricing_df.columns:
-        input_price = pd.to_numeric(base["prompt_price_per_token"], errors="coerce")
-        completion_price = pd.to_numeric(base["completion_price_per_token"], errors="coerce")
-        has_pricing = input_price.notna() & completion_price.notna()
-        base["tco_usd"] = (
-            input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens
-        ).where(has_pricing, float("inf"))
-
-        quality_col = "avg_quality_score"
-        if quality_col in base.columns:
-            coverage = (
-                pd.to_numeric(base["quality_coverage_rate"], errors="coerce").fillna(1.0)
-                if "quality_coverage_rate" in base.columns
-                else pd.Series(1.0, index=base.index)
-            )
-            dimension_coverage = (
-                pd.to_numeric(base["quality_dimension_coverage_rate"], errors="coerce").fillna(1.0)
-                if "quality_dimension_coverage_rate" in base.columns
-                else pd.Series(1.0, index=base.index)
-            )
-            base["quality_cer_eligible"] = (
-                base[quality_col].notna() & (coverage >= _MIN_QUALITY_COVERAGE_FOR_CER) & (dimension_coverage >= 1.0)
-            )
-            raw_cer = (
-                (base[quality_col].where(base["quality_cer_eligible"], 0.0).fillna(0.0) / base["tco_usd"])
-                .replace([float("inf"), -float("inf")], 0.0)
-                .fillna(0.0)
-            )
-            max_cer = raw_cer.max()
-            base["cer"] = (raw_cer / max_cer).round(4) if max_cer > 0 else raw_cer
-
-        base["workload_profile"] = workload_profile_name
-
-    return base
+    return merge_results(
+        models,
+        pricing_df,
+        quality_df,
+        security_df,
+        workload_profile_name,
+        quality_prompt_count,
+        quality_dimension_count,
+        quality_repetitions,
+        quality_collection_errors,
+        quality_suite_id,
+        actual_call_costs,
+        min_quality_coverage_for_cer=_MIN_QUALITY_COVERAGE_FOR_CER,
+    )
 
 
 def _export(
@@ -538,53 +457,30 @@ def _export(
     quality_details: pd.DataFrame | None = None,
     quality_diagnostics: pd.DataFrame | None = None,
     recommendations: pd.DataFrame | None = None,
+    quality_analysis: dict[str, pd.DataFrame] | None = None,
 ) -> Path:
     """Export summary results and available audit artifacts."""
-    _RESULTS_DIR.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)
-    stem = _RESULTS_DIR / f"benchmark_{timestamp}"
-    df.to_csv(f"{stem}.csv", index=False)
-    df.to_json(f"{stem}.json", orient="records", indent=2)
-    logger.info("Results exported to '%s.{csv,json}'", stem)
-    if actual_call_costs is not None and not actual_call_costs.empty:
-        call_costs_dir = _RESULTS_DIR / "call_costs"
-        call_costs_dir.mkdir(exist_ok=True)
-        call_costs_stem = call_costs_dir / f"benchmark_{timestamp}_call_costs"
-        actual_call_costs.to_csv(f"{call_costs_stem}.csv", index=False)
-        actual_call_costs.to_json(f"{call_costs_stem}.json", orient="records", indent=2)
-        logger.info("Actual call-cost ledger exported to '%s.{csv,json}'", call_costs_stem)
-    if quality_details is not None and not quality_details.empty:
-        details_dir = _RESULTS_DIR / "quality_details"
-        details_dir.mkdir(exist_ok=True)
-        details_stem = details_dir / f"benchmark_{timestamp}_quality_details"
-        quality_details.to_csv(f"{details_stem}.csv", index=False)
-        quality_details.to_json(f"{details_stem}.json", orient="records", indent=2)
-        logger.info("Quality prompt/response detail exported to '%s.{csv,json}'", details_stem)
-    if quality_diagnostics is not None and not quality_diagnostics.empty:
-        diagnostics_dir = _RESULTS_DIR / "quality_diagnostics"
-        diagnostics_dir.mkdir(exist_ok=True)
-        diagnostics_stem = diagnostics_dir / f"benchmark_{timestamp}_quality_diagnostics"
-        quality_diagnostics.to_csv(f"{diagnostics_stem}.csv", index=False)
-        quality_diagnostics.to_json(f"{diagnostics_stem}.json", orient="records", indent=2)
-        logger.info("Quality collection diagnostics exported to '%s.{csv,json}'", diagnostics_stem)
-    if recommendations is not None and not recommendations.empty:
-        recommendation_stem = _write_recommendation_artifact(recommendations, stem)
-        logger.info("Model Compass recommendations exported to '%s.{csv,json}'", recommendation_stem)
-    return stem
+    return export_results(
+        df,
+        _RESULTS_DIR,
+        _TIMESTAMP_FORMAT,
+        actual_call_costs,
+        quality_details,
+        quality_diagnostics,
+        recommendations,
+        quality_analysis,
+        log=logger,
+    )
 
 
 def _recommendation_stem(benchmark_stem: Path) -> Path:
     """Return the sibling artifact stem for a benchmark's recommendations."""
-    return benchmark_stem.parent / "recommendations" / f"{benchmark_stem.name}_recommendations"
+    return recommendation_stem(benchmark_stem)
 
 
 def _write_recommendation_artifact(recommendations: pd.DataFrame, benchmark_stem: Path) -> Path:
     """Write the one-row-per-use-case/model recommendation artifact."""
-    recommendation_stem = _recommendation_stem(benchmark_stem)
-    recommendation_stem.parent.mkdir(exist_ok=True)
-    recommendations.to_csv(f"{recommendation_stem}.csv", index=False)
-    recommendations.to_json(f"{recommendation_stem}.json", orient="records", indent=2)
-    return recommendation_stem
+    return write_recommendation_artifact(recommendations, benchmark_stem)
 
 
 def _merge_recommendation_weights(
@@ -629,34 +525,13 @@ def _enforce_collect_error_budget(
     max_security_probe_error_rate: float,
 ) -> None:
     """Stop a run when transport/probe failures exceed configured thresholds."""
-    if collect_result.prompt_count > 0 and model_count > 0 and collect_result.repetitions > 0:
-        expected_quality_attempts = collect_result.prompt_count * model_count * collect_result.repetitions
-    else:
-        expected_quality_attempts = 0
-
-    if expected_quality_attempts > 0:
-        quality_error_rate = len(collect_result.collection_errors) / expected_quality_attempts
-        if quality_error_rate > max_quality_collection_error_rate:
-            raise ValueError(
-                "[quality] Collection error budget exceeded: "
-                f"{quality_error_rate:.2%} > {max_quality_collection_error_rate:.2%}. "
-                "Fix upstream transport/provider instability before continuing."
-            )
-
-    if security_df.empty:
-        raise ValueError("[security] Stage produced no rows; refusing to continue with an unvalidated security axis.")
-
-    if "probe_count" in security_df.columns and "probe_error_count" in security_df.columns:
-        probe_count = int(pd.to_numeric(security_df["probe_count"], errors="coerce").fillna(0).sum())
-        probe_error_count = int(pd.to_numeric(security_df["probe_error_count"], errors="coerce").fillna(0).sum())
-        if probe_count > 0:
-            security_probe_error_rate = probe_error_count / probe_count
-            if security_probe_error_rate > max_security_probe_error_rate:
-                raise ValueError(
-                    "[security] Probe error budget exceeded: "
-                    f"{security_probe_error_rate:.2%} > {max_security_probe_error_rate:.2%}. "
-                    "Fix probe/model transport failures before continuing."
-                )
+    enforce_collect_error_budget(
+        collect_result,
+        security_df,
+        model_count=model_count,
+        max_quality_collection_error_rate=max_quality_collection_error_rate,
+        max_security_probe_error_rate=max_security_probe_error_rate,
+    )
 
 
 # ── Split pipeline helpers ─────────────────────────────────────────────────────
@@ -675,67 +550,19 @@ def _save_pending(
     Also writes a **blind** ``judging_{ts}.json`` without ``alias_map`` so
     Copilot judge agents cannot identify which company made each response.
     """
-    _INTERMEDIATE_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)
-    path = _INTERMEDIATE_DIR / f"pending_{timestamp}.json"
-
-    payload = {
-        "timestamp": timestamp,
-        "use_case_catalog_version": load_use_case_catalog(_USE_CASE_CATALOG).catalog_version,
-        "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
-        "models": models,
-        "pricing": pricing_df.to_dict(orient="records") if not pricing_df.empty else [],
-        "security": security_df.to_dict(orient="records") if not security_df.empty else [],
-        "actual_call_costs": actual_call_costs.to_dict(orient="records") if not actual_call_costs.empty else [],
-        "deterministic_scores": collect_result.deterministic_rows,
-        "quality_collection_errors": collect_result.collection_errors,
-        "quality_metadata": {
-            "prompt_count": collect_result.prompt_count,
-            "dimension_count": collect_result.dimension_count,
-            "repetitions": collect_result.repetitions,
-            "suite_id": collect_result.quality_suite_id,
-        },
-        "pending_judgments": collect_result.pending_judgments,
-    }
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-    size_bytes = path.stat().st_size
-    if size_bytes > _MAX_INTERMEDIATE_FILE_BYTES:
-        logger.warning(
-            "Intermediate file '%s' is %.1f MB (> %.0f MB) — consider reducing "
-            "TARGET_MODELS, quality prompt count, or QUALITY_REPETITIONS to avoid disk pressure.",
-            path,
-            size_bytes / (1024 * 1024),
-            _MAX_INTERMEDIATE_FILE_BYTES / (1024 * 1024),
-        )
-    logger.info("Intermediate file saved → '%s'", path)
-
-    # ── Blind judging file (no alias_map) ──────────────────────────────────────
-    judging_path = _INTERMEDIATE_DIR / f"judging_{timestamp}.json"
-    judging_payload = {
-        "timestamp": timestamp,
-        "pending_judgments": [
-            {
-                "prompt_id": pj["prompt_id"],
-                "prompt": pj["prompt"],
-                "attempt": pj.get("attempt", 0),
-                "quality_dimension": pj.get("quality_dimension", "legacy"),
-                "weight": pj.get("weight", 1.0),
-                "judge_criteria": pj.get("judge_criteria", []),
-                "reference_answer": pj.get("reference_answer"),
-                "prompt_preview": pj.get("prompt_preview", ""),
-                "category": pj.get("category"),
-                # Self-identification-scrubbed copy — falls back to raw "responses"
-                # for pending files written before this field existed.
-                "responses": pj.get("responses_for_judging", pj["responses"]),
-                # alias_map intentionally omitted — blind evaluation
-            }
-            for pj in collect_result.pending_judgments
-        ],
-    }
-    judging_path.write_text(json.dumps(judging_payload, indent=2, ensure_ascii=False))
-    logger.info("Blind judging file saved → '%s'", judging_path)
-
-    return path
+    return save_pending(
+        models,
+        pricing_df,
+        security_df,
+        collect_result,
+        actual_call_costs,
+        _INTERMEDIATE_DIR,
+        _USE_CASE_CATALOG,
+        _TIMESTAMP_FORMAT,
+        _MAX_INTERMEDIATE_FILE_BYTES,
+        recommendation_weights,
+        log=logger,
+    )
 
 
 def _latest_file(directory: Path, pattern: str) -> Path | None:
@@ -806,13 +633,14 @@ class CollectPipeline:
         )
         _warn_on_free_tier_request_volume(estimated_free_tier_requests)
 
-        async with AsyncOpenRouterClient(self._settings) as client:
-            pricing_df, security_df, collect_result = await asyncio.gather(
-                self._run_cost_stage(client),
-                self._run_security_stage(client, models),
-                self._run_quality_collect(client, models),
-            )
-            actual_call_costs = call_costs_to_dataframe(client.call_costs)
+        pricing_df, security_df, collect_result, actual_call_costs = await collect_stages(
+            self._settings,
+            models,
+            AsyncOpenRouterClient,
+            self._run_cost_stage,
+            self._run_security_stage,
+            self._run_quality_collect,
+        )
 
         _warn_on_empty_stage("cost", pricing_df)
         _warn_on_empty_stage("security", security_df)
@@ -925,7 +753,7 @@ class CollectPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file at '%s'; skipping.", _QUALITY_PROMPTS)
             return CollectResult()
-        judge = AsyncQualityJudge(client)
+        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
         try:
             result = await judge.run_collect(
                 _QUALITY_PROMPTS,
@@ -1093,6 +921,10 @@ class MergePipeline:
             build_quality_details(quality_df),
             collection_errors,
             recommendations,
+            {
+                "item_analysis": analyze_items(quality_df),
+                "judge_agreement": summarize_judge_agreement(quality_df),
+            },
         )
         score_files = sorted(_INTERMEDIATE_DIR.glob(f"scores_{timestamp}_*.json"))
         manifest_path = _RESULTS_DIR / f"run_{timestamp}.manifest.json"
@@ -1581,6 +1413,7 @@ class DryRunPipeline(CollectPipeline):
                 "dimension_count": collect_result.dimension_count,
                 "repetitions": collect_result.repetitions,
                 "suite_id": collect_result.quality_suite_id,
+                "code_execution": collect_result.code_execution,
             },
         }
         pending_path = _DRY_RUN_DIR / f"pending_{timestamp}.json"
@@ -1730,57 +1563,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     ``sys.exit(1)`` error path, instead of argparse's ``sys.exit(2)`` —
     preserving the CLI's existing exit-code contract.
     """
-    parser = argparse.ArgumentParser(
-        prog="python -m src.main",
-        description="OpenRouter LLM evaluation pipeline.",
-    )
-    parser.add_argument(
-        "subcommand",
-        nargs="?",
-        default="collect",
-        help="collect|run|merge|dry-run|verify|models (default: collect)",
-    )
-    parser.add_argument(
-        "--models",
-        default=None,
-        help=(
-            "Model-set preset name (see 'python -m src.main models') or a "
-            "comma-separated list of explicit model IDs. Overrides "
-            "TARGET_MODELS for this run only. Ignored by merge/models."
-        ),
-    )
-    parser.add_argument(
-        "--security",
-        choices=sorted(_SECURITY_MODE_PROBE_PATHS),
-        default=None,
-        help=("Security probe set for this run only. Overrides SECURITY_MODE. " "Ignored by merge/models."),
-    )
-    parser.add_argument("--paid-only", action="store_true", help="Keep only paid models for 'select'.")
-    parser.add_argument("--free-only", action="store_true", help="Keep only zero-priced/free-tier models for 'select'.")
-    parser.add_argument("--max-input-price", type=float, default=None, help="Maximum input price per 1M tokens.")
-    parser.add_argument("--max-output-price", type=float, default=None, help="Maximum output price per 1M tokens.")
-    parser.add_argument("--min-context", type=int, default=None, help="Minimum context length in tokens.")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=6,
-        help="Default maximum models for 'select' (default: 6; enter another value to change it).",
-    )
-    return parser
+    return build_arg_parser(_SECURITY_MODE_PROBE_PATHS, _QUALITY_SUITES)
 
 
 def _settings_override_from_args(args: argparse.Namespace) -> Settings | None:
     """Build a per-run Settings override from CLI flags, or None if none were given."""
-    overrides: dict[str, Any] = {}
-    if args.models:
-        resolved = resolve_models_arg(args.models, strict=True)
-        overrides["target_models"] = ",".join(resolved)
-    if args.security:
-        overrides["security_mode"] = args.security
-        overrides["security_probes_path"] = None  # an explicit --security wins over a stale custom path
-    if not overrides:
-        return None
-    return get_settings().model_copy(update=overrides)
+    return settings_override_from_args(args, get_settings)
 
 
 async def _select_models_command(args: argparse.Namespace) -> None:
@@ -1921,6 +1709,8 @@ def main() -> None:
             return
 
         settings = _settings_override_from_args(args) if subcommand in _SETTINGS_AWARE_SUBCOMMANDS else None
+        if subcommand in (*_SETTINGS_AWARE_SUBCOMMANDS, "merge"):
+            _activate_quality_suite((_settings_override_from_args(args) or get_settings()).quality_suite)
 
         if subcommand in ("run", "collect"):
             pipeline = CollectPipeline(settings) if settings else CollectPipeline()

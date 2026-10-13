@@ -13,8 +13,11 @@ import math
 from pathlib import Path
 from typing import Final
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from src.evaluators.quality_metrics import bootstrap_quality_interval
 
 DEFAULT_USE_CASE_CATALOG_PATH: Final[Path] = Path("data/catalog/model_compass_use_cases.json")
 _QUALITY_MINIMUM: Final[float] = 1.0
@@ -206,6 +209,54 @@ def _missing_components(row: pd.Series) -> str:
     return ", ".join(component for component in _REQUIRED_COMPONENTS if pd.isna(row[f"{component}_score"]))
 
 
+def _add_sensitivity(report: pd.DataFrame, weight_values: dict[str, float], threshold: float) -> None:
+    """Annotate rank/eligibility changes across one-at-a-time ±10% scenarios.
+
+    Perturb one weight by 10% relative to its effective value and rescale the
+    other three proportionally to sum to one. Also probe the threshold at
+    ±10% relative (clipped to the 1–5 scale). Baseline ranks stay untouched.
+    """
+    components = report[["quality_score_100", "security_score", "cost_score", "performance_score"]].to_numpy(
+        dtype="float64"
+    )
+    weights = np.array([weight_values[name] for name in _REQUIRED_COMPONENTS])
+    eligible = report["quality_eligible"].to_numpy(dtype=bool)
+    complete = report["decision_evidence_complete"].to_numpy(dtype=bool)
+    quality = report["quality_score"].to_numpy(dtype="float64")
+    coverage = report["quality_coverage_rate"].to_numpy(dtype="float64")
+    scenarios = []
+    for index in range(len(weights)):
+        for factor in (0.9, 1.1):
+            changed = weights.copy()
+            changed[index] *= factor
+            changed /= changed.sum()
+            scenarios.append((changed, threshold))
+    for factor in (0.9, 1.1):
+        scenarios.append((weights, float(np.clip(threshold * factor, _QUALITY_MINIMUM, _QUALITY_MAXIMUM))))
+
+    scenario_ranks = []
+    scenario_eligibility = []
+    for candidate_weights, candidate_threshold in scenarios:
+        candidate_eligible = (quality >= candidate_threshold) & (coverage >= 1.0)
+        scores = np.round(components @ candidate_weights, 4)
+        ranked = pd.Series(np.where(candidate_eligible & complete, scores, np.nan))
+        scenario_ranks.append(ranked.rank(method="dense", ascending=False).to_numpy())
+        scenario_eligibility.append(candidate_eligible)
+    ranks = np.stack(scenario_ranks, axis=1)
+    eligible_variants = np.stack(scenario_eligibility, axis=1)
+    baseline = report["recommendation_rank"].to_numpy(dtype="float64", na_value=np.nan)
+    valid = np.isfinite(ranks).any(axis=1)
+    # nanmin/nanmax would warn for rows with no eligible scenario.
+    low = np.where(valid, np.min(np.where(np.isnan(ranks), np.inf, ranks), axis=1), np.nan)
+    high = np.where(valid, np.max(np.where(np.isnan(ranks), -np.inf, ranks), axis=1), np.nan)
+    report["recommendation_sensitivity_rank_min"] = pd.array(low, dtype="Int64")
+    report["recommendation_sensitivity_rank_max"] = pd.array(high, dtype="Int64")
+    changed_rank = np.any(~np.isclose(ranks, baseline[:, None], equal_nan=True), axis=1)
+    changed_eligibility = np.any(eligible_variants != eligible[:, None], axis=1)
+    report["recommendation_fragile"] = pd.array(changed_rank | changed_eligibility, dtype="boolean")
+    report.loc[~complete, "recommendation_fragile"] = pd.NA
+
+
 def build_recommendation_report(
     benchmark_df: pd.DataFrame,
     quality_df: pd.DataFrame,
@@ -242,6 +293,21 @@ def build_recommendation_report(
     for use_case in catalog.use_cases:
         quality_frame = _quality_by_use_case(quality_df, model_frame["model"].tolist(), use_case)
         report = model_frame.merge(quality_frame, on="model", how="left")
+        if {"model", "prompt_id", "score"}.issubset(quality_df.columns):
+            case_rows = quality_df.loc[
+                pd.to_numeric(quality_df["prompt_id"], errors="coerce").isin(use_case.prompt_ids)
+            ]
+            bounds = [
+                (model, *bootstrap_quality_interval(group, seed_key=f"{use_case.id}:{model}", macro_dimensions=False))
+                for model, group in case_rows.groupby("model", sort=True)
+            ]
+            interval_frame = pd.DataFrame(
+                bounds, columns=["model", "quality_score_ci95_low", "quality_score_ci95_high"]
+            )
+            report = report.merge(interval_frame, on="model", how="left")
+        else:
+            report["quality_score_ci95_low"] = float("nan")
+            report["quality_score_ci95_high"] = float("nan")
         report = report.merge(metric_frame, on="model", how="left")
         report["use_case_id"] = use_case.id
         report["use_case_name"] = use_case.name
@@ -253,15 +319,23 @@ def build_recommendation_report(
         report["quality_eligible"] = (
             report["quality_score"].ge(use_case.minimum_quality_score) & report["quality_coverage_rate"].ge(1.0)
         ).fillna(False)
+        report.loc[report["quality_coverage_rate"].lt(1.0), ["quality_score_ci95_low", "quality_score_ci95_high"]] = (
+            float("nan")
+        )
 
-        component_columns = [f"{component}_score" for component in _REQUIRED_COMPONENTS]
-        available = report[component_columns].notna()
+        # The eligibility threshold stays on the 1–5 quality scale, but all
+        # four components of the weighted decision score must use 0–100.
+        component_columns = {
+            component: "quality_score_100" if component == "quality" else f"{component}_score"
+            for component in _REQUIRED_COMPONENTS
+        }
+        available = report[list(component_columns.values())].notna()
         available_weight = sum(
-            available[f"{component}_score"].astype(float) * weight_values[component]
+            available[component_columns[component]].astype(float) * weight_values[component]
             for component in _REQUIRED_COMPONENTS
         )
         weighted_total = sum(
-            pd.to_numeric(report[f"{component}_score"], errors="coerce").fillna(0.0) * weight_values[component]
+            pd.to_numeric(report[component_columns[component]], errors="coerce").fillna(0.0) * weight_values[component]
             for component in _REQUIRED_COMPONENTS
         )
         report["recommendation_score_coverage"] = available_weight.round(4)
@@ -287,6 +361,25 @@ def build_recommendation_report(
         status.loc[report["recommendation_rank"].notna() & report["recommendation_rank"].gt(1)] = "eligible"
         status.loc[report["recommendation_rank"].eq(1)] = "recommended"
         report["recommendation_status"] = status
+        _add_sensitivity(report, weight_values, use_case.minimum_quality_score)
+        leaders = report.loc[report["recommendation_rank"].eq(1)]
+        available_ci = report["quality_score_ci95_low"].notna() & report["quality_score_ci95_high"].notna()
+        report["quality_ci95_overlaps_leader"] = pd.array([pd.NA] * len(report), dtype="boolean")
+        valid_leaders = leaders.dropna(subset=["quality_score_ci95_low", "quality_score_ci95_high"])
+        if not valid_leaders.empty:
+            overlap = (
+                (
+                    report["quality_score_ci95_low"].to_numpy(dtype="float64")[:, None]
+                    <= valid_leaders["quality_score_ci95_high"].to_numpy(dtype="float64")
+                )
+                & (
+                    report["quality_score_ci95_high"].to_numpy(dtype="float64")[:, None]
+                    >= valid_leaders["quality_score_ci95_low"].to_numpy(dtype="float64")
+                )
+            ).any(axis=1)
+            report.loc[available_ci & report["quality_eligible"], "quality_ci95_overlaps_leader"] = overlap[
+                (available_ci & report["quality_eligible"]).to_numpy()
+            ]
         reports.append(report)
 
     columns = [
@@ -297,6 +390,9 @@ def build_recommendation_report(
         "prompt_ids",
         "model",
         "quality_score",
+        "quality_score_ci95_low",
+        "quality_score_ci95_high",
+        "quality_ci95_overlaps_leader",
         "quality_score_100",
         "quality_coverage_rate",
         "quality_prompt_count",
@@ -313,6 +409,9 @@ def build_recommendation_report(
         "evidence_missing",
         "recommendation_rank",
         "recommendation_status",
+        "recommendation_sensitivity_rank_min",
+        "recommendation_sensitivity_rank_max",
+        "recommendation_fragile",
     ]
     records = [record for report in reports for record in report[columns].to_dict(orient="records")]
     return pd.DataFrame.from_records(records, columns=columns)

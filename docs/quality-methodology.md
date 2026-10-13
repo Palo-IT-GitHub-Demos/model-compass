@@ -213,6 +213,32 @@ de décision fondée sur ce compte (5 = tous remplis, 3 = au moins un partiellem
 rempli, etc.) et l'interdiction explicite de baisser une note pour une
 préférence subjective absente des critères listés.
 
+### Accord inter-juges et analyse des items (sidecars)
+
+`make merge` écrit sous `results/quality_analysis/` deux fichiers qui décrivent
+la fiabilité de l'écran qualité sans jamais modifier les scores bruts :
+
+- `benchmark_<ts>_judge_agreement` : alpha de Krippendorff (intervalle) du
+  panel et par dimension, taux d'accord exact et à ±1 point, score moyen par
+  juge et écart moyen d'un juge par rapport à la moyenne des autres
+  (indulgence/sévérité). `agreement_status = low_agreement` sous
+  alpha = 0,667 (seuil conventionnel « conclusions provisoires »).
+  L'alpha est `NaN` quand tous les scores sont identiques.
+- `benchmark_<ts>_item_analysis` : par prompt, moyenne, écart-type entre
+  modèles et corrélation item-total corrigée (`discrimination`). Statuts :
+  `saturated` (tous les modèles ≥ 4), `floor` (aucun modèle > 2),
+  `low_variance` (écart-type < 0,25), `negative_discrimination` (< −0,1),
+  `insufficient_models` (< 3 modèles) et `suspected_input_corruption`.
+
+Un item `saturated`, `floor` ou `low_variance` ne départage pas les modèles :
+il est candidat à un durcissement ou à un retrait lors de la prochaine version
+du catalogue. Ces statuts n'excluent aucun prompt des agrégats.
+
+Des ancres courtes 1, 3 et 5 (`rubric-v2`) sont ajoutées aux 7 items jugés par
+rubrique de la suite v2 et transmises au lot aveugle. Leur effet sur l'accord
+inter-juges n'est pas mesuré : il doit être validé sur le jeu de calibration
+humaine prévu à l'étape 4 du plan 02.
+
 ### Validation stricte de la couverture avant fusion
 
 Avant 2026-09-03, un juge qui omettait de noter un alias (erreur de frappe,
@@ -226,6 +252,81 @@ volontairement plus strict qu'un score individuel malformé (qui reste ignoré
 avec un avertissement) : une couverture partielle change silencieusement le
 sens du score moyen, une valeur isolée invalide ne fait que le priver d'une
 contribution.
+
+## 3 bis. Suite `generic-screen-v2` et exécution de code
+
+### Pourquoi la v1 ne suffit pas
+
+Diagnostic sur 12 runs et 3 modèles (2026-09-01 à 2026-09-04) :
+
+- 9 prompts sur 16 valent 5,00 pour tous les modèles à chaque run : ils sont
+  saturés et ne départagent rien tout en pesant dans la couverture ;
+- les prompts 4 et 6 (« capitale de l'Australie », « plus grande planète du
+  système solaire ») échouent parce que les modèles reçoivent `[ADDRESS]` à la
+  place du lieu : le fournisseur masque les noms de lieux, le texte local est
+  intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
+- les échecs du prompt 3 des premiers runs viennent d'un barème antérieur à la
+  séparation contenu/format (balises markdown comptées comme erreur de contenu) ;
+- seul le prompt 8 (syllogisme répondu `NO`) reflète une vraie erreur de modèle.
+
+### Contenu de la v2
+
+`QUALITY_SUITE=v2` (ou `--quality-suite v2`, à répéter pour `merge`) charge
+`data/prompts/quality_prompts_v2.json` et
+`data/catalog/model_compass_use_cases_v2.json`. La v2 est une suite
+indépendante (identifiant et hash propres, `generic-screen-v1` inchangé et
+conservé comme référence historique ; la v2 est le défaut depuis le basculement
+de `QUALITY_SUITE`, sans run pilote réel préalable). Elle ne reprend
+aucun prompt v1 et vise les cas d'usage prioritaires de
+`docs/research/benchmark-to-use-case-mapping.md` :
+
+| Cas d'usage | Items | Évaluateur |
+|---|---:|---|
+| Extraction structurée | 5 | JSON exact |
+| Code court | 5 | tests exécutés dans le sandbox |
+| Question-réponse avec contexte | 5 | réponse exacte (dont abstention) |
+| Raisonnement borné | 5 | réponse exacte |
+| Classification et routage | 4 | réponse exacte (dont `UNCLEAR`) |
+| Résumé | 3 | rubrique, panel de juges |
+| Communication concise | 3 | rubrique, panel de juges |
+| Suivi d'instruction | 4 | réponse exacte, 1 rubrique |
+
+Chaque item déclare le blueprint de l'ADR 0002 : `item_id`, `use_case_id`,
+`construct`, `task_type`, `difficulty` (facile, moyen, difficile) et son statut
+(`draft`), `language`, `evaluator`, `rubric_version` pour les items jugés,
+`license_status` et `contamination_status`. Le chargement échoue si un champ
+manque ou si un `item_id` est dupliqué. Les difficultés sont des hypothèses
+d'auteur jusqu'à la calibration sur run réel (étape 5 du plan 02) ;
+`contamination_status = internal_unscreened` signifie que les items sont
+originaux mais pas comparés à des corpus publics. Les items évitent noms de
+lieux, de personnes, adresses et courriels, que les fournisseurs masquent.
+
+Les seuils du catalogue v2 (4,0 ; 3,5 pour résumé et communication) sont des
+valeurs provisoires, au même titre que ceux de la v1.
+
+### Contrat du sandbox de code
+
+L'ADR 0002 exige un sandbox, des limites de ressources, des logs et une
+attribution avant toute exécution de code généré. Contrat appliqué par
+`src/evaluators/code_sandbox.py` :
+
+- **Opt-in** : rien ne s'exécute sans `QUALITY_CODE_EXECUTION=true`. Sinon les
+  réponses `code_execution` sont envoyées au panel de juges (critères fournis).
+  `quality_metadata.code_execution` indique ce qui a été utilisé.
+- **Avant exécution** : analyse AST ; imports limités à une liste blanche de la
+  bibliothèque standard, appels (`open`, `eval`, `exec`, `getattr`…) et attributs
+  dunder dangereux refusés. Un refus est un échec de la réponse (score 1, raison
+  explicite).
+- **Exécution** : sous-processus Python isolé (`-I -S`), environnement vide,
+  répertoire temporaire, timeout de 5 s, limite CPU et taille de fichier
+  (plus la mémoire sous Linux), sortie de l'utilisateur supprimée.
+- **Notation** : 5 si tous les cas passent, sinon 1 ; la raison indique
+  `x/y` cas passés. Si le sandbox est indisponible, la réponse est renvoyée
+  aux juges et non comptée comme échec du modèle.
+- **Logs** : hash du code, fonction, statut, cas passés, durée ; jamais le code.
+- **Limite assumée** : défense en profondeur, pas une frontière de sécurité. Le
+  réseau n'est bloqué que par la liste blanche d'imports et la mémoire n'est pas
+  limitée sous macOS. À réserver aux réponses de modèles évalués.
 
 ## 4. Couverture du périmètre
 
@@ -316,6 +417,40 @@ prompts d'une dimension, puis les dimensions. Une répétition ne donne donc pas
 plus de poids au prompt dans la note finale. `quality_stability_score` résume la
 dispersion inter-tentatives et doit être lu avec les réponses détaillées.
 
+### Intervalles bootstrap 95 % et sensibilité (A4/C2)
+
+La fusion publie `avg_quality_score_ci95_low/high` dans le benchmark et
+`quality_score_ci95_low/high` pour chaque cas d'usage dans les recommandations.
+Sur 2 000 tirages reproductibles (graine locale dérivée du modèle, et du cas
+d'usage le cas échéant), le bootstrap rééchantillonne les prompts **dans chaque
+dimension**, puis les tentatives de chaque prompt avec remise. Il recalcule
+la moyenne pondérée par dimension, puis la macro-moyenne ; pour un cas d'usage,
+il recalcule la moyenne plate de ses prompts. Les bornes sont les quantiles
+2,5 % et 97,5 % des tirages. Les scores et les rangs publiés restent inchangés.
+
+Il faut au moins **3 tentatives distinctes sur chaque prompt scoré** et la
+couverture complète des prompts attendus ; sinon les bornes sont `null`.
+Dans le benchmark global, les exclusions pour corruption d'entrée suspectée
+sont aussi retirées du dénominateur, conformément au score existant. Ces IC
+reflètent le rééchantillonnage de cette suite et de ces tentatives, **pas** une garantie
+de généralisation aux tâches métier. `quality_ci95_overlaps_leader` indique
+le chevauchement des IC de qualité avec au moins un premier du classement,
+pour les modèles éligibles avec IC disponible. Un chevauchement n'est pas
+une preuve d'égalité statistique : les ex æquo restent définis uniquement
+par l'égalité des scores de recommandation.
+
+`recommendation_sensitivity_rank_min/max` et `recommendation_fragile`
+décrivent 10 scénarios déterministes par cas d'usage : chacun des quatre
+poids effectifs varie séparément de ±10 % **relatifs**, avec renormalisation
+des quatre poids à 1 ; le seuil qualité varie également de ±10 % relatifs,
+borné à l'échelle 1–5. Les autres poids et seuils restent fixes à chaque
+scénario. `recommendation_fragile=true` si l'éligibilité ou le rang diffère
+du scénario de référence ; les bornes de rang ignorent les scénarios où le
+modèle n'a pas de rang. Une preuve de décision incomplète produit `null`
+pour cette alerte, pas une fausse stabilité. Cette analyse locale ne remplace
+ni la calibration humaine des seuils provisoires ni un test de toutes les
+combinaisons de poids.
+
 Pour `k=1`, une mauvaise réponse objective porte
 `verification_status=optional_openrouter_recheck`. Une commande manuelle peut
 envoyer deux rechecks supplémentaires au même modèle via OpenRouter. Pour
@@ -348,12 +483,43 @@ Les modèles éligibles sont ensuite classés dans
 - score de coût du modèle seul : 20 % ;
 - score de performance : 5 %.
 
+**Formule composite (corrigée)** : la note `quality_score` reste une moyenne
+sur **1–5** pour l'éligibilité et les IC. Pour le classement elle devient
+`quality_score_100 = (quality_score - 1) × 25`, bornée à 0–100, comme
+`security_score` (RSI), `cost_score` et `performance_score`. À preuves
+complètes, les poids effectifs $w$ donnent :
+
+$$
+	ext{recommendation\_score} =
+w_q Q_{100} + w_s S_{100} + w_c C_{100} + w_p P_{100},
+\qquad \sum w_i = 1.
+$$
+
+Par défaut, $w_q=0{,}50$, $w_s=0{,}25$, $w_c=0{,}20$ et $w_p=0{,}05$.
+Le coût et la performance sont normalisés sur le **cohort de modèles du run** ;
+la comparaison du score composite suppose donc le même périmètre et les mêmes
+poids. La sensibilité aux variations de poids utilise ces mêmes composantes
+0–100 ; les variations du seuil qualité continuent d'agir sur l'échelle 1–5.
+
+Les artefacts générés avant cette correction utilisaient par erreur la note
+qualité brute sur 1–5 dans la somme pondérée : leurs `recommendation_score`,
+leurs rangs et leurs indicateurs de sensibilité ne sont **pas directement
+comparables** aux nouveaux, même avec le même catalogue. Les scores et
+réponses bruts restent intacts ; recalculer le rapport de recommandation à
+partir des preuves si une comparaison historique est nécessaire.
+
 Les poids peuvent être remplacés par `MODEL_COMPASS_WEIGHTS`, mais les poids
 effectifs et la version du catalogue sont toujours écrits dans le rapport. Une
 preuve manquante produit un statut explicite et aucun rang, plutôt qu'une
 valeur de remplacement optimiste. Les scores égaux restent ex æquo.
 
 ## 7. Comparaison avec gen-e2-eval
+
+L'écran dialogue expérimental (9 scénarios de deux tours, opt-in) est décrit
+dans [Système multiprobe](multiprobe-system.md).
+Ses taux de dérive et d'omission sont des **preuves séparées**, non ajoutées
+aux scores ou recommandations mono-tour. Le mode `make dialogue` est synthétique
+et ne mesure aucun modèle réel ; `make dialogue-live` engage des appels payants.
 
 Le score qualité de ce projet et la validation métier de `gen-e2-eval` ne sont
 pas directement comparables, car ils ne mesurent pas le même objet.
