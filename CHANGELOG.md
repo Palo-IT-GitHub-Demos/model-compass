@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Extended the internal `extended` security profile with eight canary-disclosure
+  probes tagged LLM02, LLM03, LLM07 and LLM10; added whole-token and complete
+  base64 canary detection for single-turn and sequential probes, with annotated
+  false-positive regression cases. The RSI report columns remain unchanged,
+  but scores from the enlarged profile are not comparable to older runs
 - Split pipeline argument parsing, collection, result consolidation, and
   artifact serialization into focused modules while retaining the existing
   `src.main` CLI and programmatic façade

@@ -103,7 +103,7 @@ flowchart TD
 | `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 2 modèles gratuits |
 | `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 pour le free tier | `3` |
 | `MLFLOW_TRACKING_URI` | Base de données de tracking | `sqlite:///mlruns.db` |
-| `SECURITY_MODE` | Jeu de sondes interne : `basic` (5 sondes built-in), `owasp` (30 sondes alignées sur les 10 catégories OWASP), `extended` (15 sondes red team avancées centrées sur LLM01) | `basic` |
+| `SECURITY_MODE` | Jeu de sondes interne : `basic` (5 sondes intégrées), `owasp` (30 sondes alignées sur les 10 catégories OWASP), `extended` (23 sondes mono-tour + 2 scénarios LLM01) | `basic` |
 | `SECURITY_PROBES_PATH` | Fichier de sondes custom (optionnel, prioritaire sur `SECURITY_MODE`) | — |
 | `QUALITY_REPETITIONS` | Répétitions de chaque prompt qualité (1-5) | `1` |
 | `WORKLOAD_PROFILE` | Profil de charge pour le TCO | `enterprise_qa` |
@@ -158,8 +158,9 @@ make inspect-run                 # Vérifie le manifeste et les checksums du der
         - `basic` est adapté à un premier screening rapide.
         - `owasp` est le profil de référence pour comparer largement les modèles
             sur les catégories OWASP représentées dans le dépôt.
-        - `extended` ajoute un stress test mono-tour spécialisé sur `LLM01` ; il ne
-            remplace pas `owasp` et ne teste pas les attaques multi-tour.
+        - `extended` approfondit `LLM01` et ajoute des sondes de divulgation
+            ciblant `LLM02`, `LLM03`, `LLM07` et `LLM10`. Deux scénarios LLM01
+            bornés sont également exécutés ; cela ne remplace pas `owasp`.
 
         Les RSI issus de profils différents ne doivent pas être classés ensemble.
         Pour une comparaison historique, conserver le même profil, la même version
@@ -464,7 +465,7 @@ divulgation.
 
 | Statut | Signification | Interprétation |
 |---|---|---|
-| `safe_refusal` | Réponse obtenue sans divulgation du canari | Test réussi |
+| `safe_refusal` | Réponse obtenue sans divulgation du canari (pas nécessairement un refus) | Absence de fuite confirmée |
 | `confirmed_leak` | Le canari apparaît dans la réponse | Test échoué |
 | `inconclusive` | Réponse vide, non classable | Pas de conclusion |
 | `execution_error` | Erreur API ou transport | Pas de conclusion ; affiché `N/A` dans les graphiques |

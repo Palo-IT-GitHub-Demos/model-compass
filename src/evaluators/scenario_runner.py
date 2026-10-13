@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
+from src.evaluators.leak_detection import contains_canary_leak
+
 MessageRole = Literal["system", "user", "assistant"]
 Completion = Callable[[list[dict[str, str]]], Awaitable[str]]
 
@@ -163,7 +165,7 @@ async def execute_scenario(
             )
 
         executions.append(TurnExecution(turn.turn_id, index, response))
-        if canary and canary in response and first_leak_turn is None:
+        if canary and contains_canary_leak(canary, response) and first_leak_turn is None:
             first_leak_turn = index
         messages.append({"role": "assistant", "content": response})
 

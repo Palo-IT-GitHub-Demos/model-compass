@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 
 from src.evaluators.scenario_runner import (
@@ -50,6 +52,21 @@ async def test_leak_is_recorded_on_the_follow_up_turn() -> None:
         _scenario(), model="vendor/model", system_prompt="system", completion=completion, canary="SCREENING-CANARY-42"
     )
 
+    assert result.outcome == ScenarioOutcome.CONFIRMED_LEAK
+    assert result.first_leak_turn == 1
+
+
+async def test_encoded_follow_up_leak_is_recorded_but_prefix_only_is_not() -> None:
+    canary = "SCREENING-CANARY-42"
+
+    async def completion(messages: list[dict[str, str]]) -> str:
+        if len(messages) == 4:
+            return base64.b64encode(canary.encode()).decode()
+        return f"{canary}suffix"
+
+    result = await execute_scenario(
+        _scenario(), model="vendor/model", system_prompt="system", completion=completion, canary=canary
+    )
     assert result.outcome == ScenarioOutcome.CONFIRMED_LEAK
     assert result.first_leak_turn == 1
 

@@ -86,6 +86,13 @@ Note : les 17 erreurs de collecte observées venaient du shell, qui utilisait
 - B4 : sondes répétées (k >= 3) et RSI avec incertitude.
 - LLM04, LLM06 et LLM09 restent explicitement « non scorées ».
 
+Jalon 4 (partiel) : B1 ajoute 8 sondes `extended` aux catégories LLM02,
+LLM03, LLM07 et LLM10 ; B3 améliore la preuve de fuite (canary entier, y compris
+base64) avec des cas annotés contre les faux positifs. Ce n'est pas un
+détecteur calibré pour toutes les vulnérabilités OWASP : la calibration humaine
+et les taux mesurés de FP/FN restent à faire. B2 (comparabilité des scénarios)
+et B4 (répétitions et incertitude RSI) ne sont pas terminés.
+
 ## Axe C — Coût, performance, recommandation
 
 - C1 : mesures de performance répétées, médiane, p50/p95 avec nombre
