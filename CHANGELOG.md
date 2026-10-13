@@ -314,6 +314,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Strict JSON output now fails format compliance when it is syntactically invalid
+  or has the wrong object/array root type; valid fenced JSON remains a content
+  success and a format failure. Exact-answer numeric value errors no longer
+  claim that casing, punctuation, or extra text was added
 - `make dry-run` no longer reports every quality response as a transport
   failure. The offline fake client did not expose the generation ID and
   resolved model that the collector reads, so the pre-flight check emptied its

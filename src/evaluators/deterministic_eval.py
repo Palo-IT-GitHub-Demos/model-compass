@@ -83,6 +83,11 @@ class JsonValidityCheck:
         try:
             parsed = json.loads(content)
             expected_json = _get_context_value(evaluation, "expected_json")
+            if fmt and isinstance(expected_json, dict | list) and not isinstance(parsed, type(expected_json)):
+                fmt = {
+                    "format_score": 1,
+                    "format_reason": "Response has the wrong JSON root type for the required object or array.",
+                }
             if expected_json is not None and parsed != expected_json:
                 return CheckResult(
                     passed=False,
@@ -101,6 +106,8 @@ class JsonValidityCheck:
                 **fmt,
             )
         except json.JSONDecodeError as exc:
+            if fmt:
+                fmt = {"format_score": 1, "format_reason": "Response is not syntactically valid JSON."}
             return CheckResult(
                 passed=False,
                 score=1,
@@ -280,12 +287,17 @@ class ExactFormatCheck:
             fmt: dict[str, Any] = {}
             if _is_strict_output(evaluation):
                 literal = response.strip() in {answer.strip() for answer in accepted_answers}
+                bare_answer_shape = not matches and _matches_bare_answer_shape(response.strip(), accepted_answers)
                 fmt = {
-                    "format_score": 5 if literal else 1,
+                    "format_score": 5 if literal or bare_answer_shape else 1,
                     "format_reason": (
                         "Response is exactly the accepted answer, with no extra text."
                         if literal
-                        else "Response was asked for the bare answer only, but adds casing, punctuation or extra text."
+                        else (
+                            "Response follows the required bare-answer format, but its value is incorrect."
+                            if bare_answer_shape
+                            else "Response differs from the required bare-answer format or value."
+                        )
                     ),
                 }
             if matches:
@@ -391,3 +403,24 @@ def _format_compliance(
 def _normalize_exact_text(value: str) -> str:
     """Normalize whitespace and casing while preserving meaningful punctuation."""
     return re.sub(r"\s+", " ", value.strip()).casefold()
+
+
+def _matches_bare_answer_shape(response: str, accepted_answers: list[str]) -> bool:
+    """Keep the required punctuation, spacing and case while allowing a wrong value."""
+    for answer in accepted_answers:
+        tokens = re.findall(r"[A-Z]+[a-z]*|[a-z]+|\d+|[^A-Za-z0-9]+", answer.strip())
+        pattern = "".join(
+            r"[A-Z]+"
+            if token.isupper()
+            else r"[A-Z][a-z]*"
+            if token.istitle()
+            else r"[a-z]+"
+            if token.islower()
+            else r"\d+"
+            if token.isdecimal()
+            else re.escape(token)
+            for token in tokens
+        )
+        if re.fullmatch(pattern, response):
+            return True
+    return False
