@@ -36,8 +36,9 @@ Read the complete latest judging file with `read_file`. Note its top-level
 `tools: []` and **cannot read this file themselves**, so this literal string
 must be spelled out in the delegation message, not just implied by the JSON
 you paste in. Pass the exact `pending_judgments` array, including prompts,
-criteria, reference answers and aliased responses, in each of the three
-delegation messages.
+criteria, reference answers, `rubric_version` and `rubric_anchors` when present,
+and aliased responses, in each of the three delegation messages. Do not strip,
+rewrite or invent anchors; legacy items without anchors still use their criteria.
 
 ### Step 3 — Delegate to the 3 judge agents in parallel
 

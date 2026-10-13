@@ -206,6 +206,7 @@ class TestPromptSchema:
     def test_v2_blueprint_accepts_optional_rubric_anchors(self, tmp_path: Path) -> None:
         items = json.loads(Path("data/prompts/quality_prompts_v2.json").read_text())
         items[24]["rubric_anchors"] = {"1": "Wrong dates.", "3": "One date missing.", "5": "Both dates correct."}
+        del items[25]["rubric_anchors"]
         path = tmp_path / "quality_prompts_v2.json"
         path.write_text(json.dumps(items))
 

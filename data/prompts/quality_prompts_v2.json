@@ -781,7 +781,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The beta launch went ahead on 3 June because the login review found no issues; the budget doubled.",
+      "3": "A review found concerns with the login flow, so the beta launch moves from 3 June to 24 June.",
+      "5": "The beta launch moves from 3 June to 24 June to address two critical login-flow issues found in the security review."
+    }
   },
   {
     "prompt": "Write a summary for an executive in at most 40 words.\nNotes: '- Discussed Q3 churn. - Decision: pause the loyalty email campaign until the new segmentation is ready. - The data lead owns the segmentation and will deliver it by 15 July. - The cafeteria menu was also mentioned.'",
@@ -804,7 +809,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The cafeteria will serve a new menu next week, and Q3 churn has been solved.",
+      "3": "The loyalty email campaign is paused pending segmentation; the data lead plans to deliver it around 15 July.",
+      "5": "Pause the loyalty email campaign until the new segmentation is ready; the data lead owns it and will deliver it by 15 July."
+    }
   },
   {
     "prompt": "Summarize the report for customers in two sentences.\nReport: 'The outage lasted 47 minutes. Customer data was not exposed. The root cause was an expired certificate, not a software release. A follow-up audit of all certificates is scheduled.'",
@@ -828,7 +838,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "A software release exposed customer records during a two-hour outage. No further checks are planned.",
+      "3": "The 47-minute outage did not expose customer data. An expired certificate caused it, and a follow-up review of the certificates is being arranged.",
+      "5": "The 47-minute outage was caused by an expired certificate, not a software release, and no customer data was exposed. An audit of all certificates is scheduled."
+    }
   },
   {
     "prompt": "A customer writes: 'My order arrived damaged and I want my money back right now.' Write a reply in no more than 60 words.",
@@ -851,7 +866,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "You must have damaged the order yourself. We will refund you $200 tomorrow, guaranteed.",
+      "3": "I'm sorry your order arrived damaged. Please contact our support team so we can look into a refund or replacement.",
+      "5": "I'm sorry your order arrived damaged. Please send your order number and a photo of the damage so we can review a refund or replacement promptly."
+    }
   },
   {
     "prompt": "Rewrite this sentence for a formal business email, keeping the meaning and using fewer than 25 words: 'Hey, we messed up the invoice, sorry, will fix it asap.'",
@@ -874,7 +894,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Your invoice was correct; we will charge an extra $500 by Friday.",
+      "3": "We apologise for the invoice error and hope to correct it soon.",
+      "5": "We apologise for the invoice error and will send a corrected invoice as soon as possible."
+    }
   },
   {
     "prompt": "In at most three sentences, explain to a non-technical manager why a web service can become slow after a sudden spike in visitors.",
@@ -897,7 +922,12 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The visitor spike is irrelevant; quantum shards definitely failed, and p99 tail latency will remain infinite.",
+      "3": "A sudden rush of visitors may saturate the service, leaving requests waiting in line.",
+      "5": "When many people visit at once, the service may not have enough capacity to answer everyone immediately. Some requests then wait, so pages can load more slowly."
+    }
   },
   {
     "prompt": "Write the numbers 1 to 5 in reverse order, separated by ' > ', and nothing else.",
@@ -976,6 +1006,11 @@
     "difficulty_status": "draft",
     "license_status": "internal_original",
     "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v1"
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Replace the dashboard with a blue bar chart today; that will fix it.",
+      "3": "What would make the dashboard better for you?",
+      "5": "Which decision should the dashboard help its main audience make?"
+    }
   }
 ]

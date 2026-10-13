@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added short 1/3/5 calibration examples (`rubric-v2`) to all seven judged
+  `generic-screen-v2` items; the content-addressed suite ID changes, while
+  previously collected runs retain their original evidence and rubric. The
+  three blind judges now use optional anchors as calibration aids without
+  replacing the existing scoring rules
 - Optional validated `rubric_anchors` on judged quality items and propagation of
   anchors and rubric version to the blind judging batch; existing suites and
   batches without anchors remain supported
