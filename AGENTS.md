@@ -36,6 +36,10 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
 - Experimental multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; keep them separate from legacy single-turn scoring until the security integration and comparability metadata are complete
+- The optional two-turn quality screen lives in `src/evaluators/dialogue_quality.py`
+  with its versioned catalog under `data/prompts/`; `make dialogue` runs offline
+  and `make dialogue-live` is paid. Its sidecars stay separate from benchmark
+  quality aggregates and recommendations; synthetic responses are never real evidence
 
 ## Quality Evidence Rules
 

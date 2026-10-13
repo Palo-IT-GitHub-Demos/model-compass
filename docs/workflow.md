@@ -134,6 +134,8 @@ atteignent déjà **92 requêtes**.
 
 ```bash
 make dry-run   # Pré-vol $0 — offline, valide la forme de la config/prompts/probes
+make dialogue  # Écran dialogue 2 tours, réponses synthétiques hors ligne
+make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résultat séparé
 make verify    # Pré-vol $0 — réseau réel, valide la clé API + TARGET_MODELS
 make collect SECURITY=extended  # Phase 1 — appels API réels
 # Puis dans Copilot chat : @judge-coordinator   # Phase 2 — jugement aveugle

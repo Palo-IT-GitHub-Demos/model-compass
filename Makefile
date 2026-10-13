@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge dashboard verify dry-run inspect-run select export-gen-e2 export-html verify-quality models
+.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge dashboard verify dry-run dialogue dialogue-live inspect-run select export-gen-e2 export-html verify-quality models
 
 PYTHON ?= .venv/bin/python
 
@@ -54,6 +54,12 @@ verify: ## Real but free preflight — API key + TARGET_MODELS against the live 
 
 dry-run: ## Fully offline simulation of the whole pipeline — NO OpenRouter call, NO judge agent (MODELS=/SECURITY= optional)
 	$(PYTHON) -m src.main dry-run $(if $(MODELS),--models "$(MODELS)") $(if $(SECURITY),--security $(SECURITY))
+
+dialogue: ## Separate, fully offline two-turn quality screen (MODELS= optional)
+	$(PYTHON) -m src.dialogue_cli $(if $(MODELS),--models "$(MODELS)")
+
+dialogue-live: ## PAID — separate two-turn quality screen via OpenRouter (MODELS= optional)
+	$(PYTHON) -m src.dialogue_cli --live $(if $(MODELS),--models "$(MODELS)")
 
 inspect-run: ## Verify the latest run manifest and artifact checksums
 	$(PYTHON) -m src.main inspect-run

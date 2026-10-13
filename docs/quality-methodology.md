@@ -489,6 +489,12 @@ valeur de remplacement optimiste. Les scores égaux restent ex æquo.
 
 ## 7. Comparaison avec gen-e2-eval
 
+L'écran dialogue expérimental (9 scénarios de deux tours, opt-in) est décrit
+dans [Système multiprobe](multiprobe-system.md).
+Ses taux de dérive et d'omission sont des **preuves séparées**, non ajoutées
+aux scores ou recommandations mono-tour. Le mode `make dialogue` est synthétique
+et ne mesure aucun modèle réel ; `make dialogue-live` engage des appels payants.
+
 Le score qualité de ce projet et la validation métier de `gen-e2-eval` ne sont
 pas directement comparables, car ils ne mesurent pas le même objet.
 

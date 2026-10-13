@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added an opt-in, bounded two-turn dialogue quality screen with nine versioned
+  scenarios (clarification, JSON format persistence, negative instructions),
+  deterministic per-turn rules, conditional drift and omission rates, offline
+  synthetic rehearsal and a separately billed live target. Dialogue evidence
+  stays in dedicated sidecars and does not alter legacy benchmark scores
 - Extended the internal `extended` security profile with eight canary-disclosure
   probes tagged LLM02, LLM03, LLM07 and LLM10; added whole-token and complete
   base64 canary detection for single-turn and sequential probes, with annotated

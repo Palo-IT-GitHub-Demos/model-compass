@@ -70,6 +70,12 @@ Note : les 17 erreurs de collecte observées venaient du shell, qui utilisait
 - Même rubrique et mêmes garde-fous ; score séparé du mono-tour tant que la
   comparabilité n'est pas validée.
 
+Jalon 5 : 9 scénarios qualité à deux tours, règles déterministes versionnées,
+exécution via `scenario_runner.py` et exports séparés. `make dialogue` permet
+une répétition synthétique gratuite ; `make dialogue-live` est explicitement
+payant. La comparabilité avec l'écran mono-tour, une revue humaine des règles
+et un pilote réel restent à effectuer avant toute intégration au classement.
+
 ### A6. Anti-contamination et traçabilité
 
 - Variantes paramétrées déterministes (graine fixée) pour les items très

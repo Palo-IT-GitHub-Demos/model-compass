@@ -200,6 +200,13 @@ make collect MODELS=selection
 The saved selection is local runtime state under `data/intermediate/` and is
 ignored by Git. Run `make select` again whenever you want to replace it.
 
+The optional two-turn dialogue screen is **separate from the main benchmark**:
+`make dialogue` runs nine bounded scenarios offline with synthetic answers;
+`make dialogue-live MODELS=paid_flagship` makes 18 billable calls per model.
+Its versioned drift and omission metrics are written to separate dialogue
+artifacts, not included in the single-turn scores or recommendations. See
+[the multi-probe methodology](docs/multiprobe-system.md).
+
 `SECURITY=` picks the probe set for that run only: `basic` (5 built-in probes,
 default), `owasp` (30 internally authored probes aligned with the OWASP GenAI
 LLM Top 10 2026 categories — required for the dashboard's RSI/heatmap), or

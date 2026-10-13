@@ -5,12 +5,10 @@ une brique indépendante du reste du pipeline qui exécute des échanges à
 plusieurs tours avec un modèle en conservant un historique borné.
 
 !!! note "Portée de ce document"
-    Ce système est actuellement **branché uniquement sur le scanner de
-    sécurité** (`SECURITY_MODE=extended`, voir
-    [méthodologie sécurité](security-methodology.md)). Son application future
-    (qualité, autre axe, ou périmètre différent) n'est **pas encore décidée** —
-    ce document couvre le contrat et son unique intégration actuelle, pas une
-    feuille de route.
+    Le runner sert au scanner de sécurité (`SECURITY_MODE=extended`) **et** à
+    un écran qualité dialogue indépendant, explicitement activé via
+    `make dialogue` (hors ligne) ou `make dialogue-live` (payant). Les scores
+    de dialogue ne sont pas fusionnés avec le benchmark mono-tour.
 
 ## Pourquoi
 
@@ -63,6 +61,53 @@ exécute les tours dans l'ordre :
 la convertit en `ScenarioDefinition` via `_scenario_for_probe()` puis l'exécute
 avec `execute_scenario()`. Les probes historiques (`message` uniquement)
 continuent d'utiliser le chemin mono-tour existant, inchangé.
+
+## Écran qualité dialogue borné (A5)
+
+Le catalogue indépendant `data/prompts/dialogue_scenarios_v1.json` définit
+**9 trajectoires de 2 tours** : clarification puis action (3), ré-attaque du
+format JSON (3) et maintien d'une instruction négative (3). Chaque définition
+contient un cas d'usage générique, ses deux messages, les règles par tour et
+deux réponses synthétiques **exclusivement pour le test hors ligne**.
+`src/evaluators/dialogue_quality.py` valide l'intégralité du catalogue
+(notamment unicité des identifiants, deux tours non vides, règles valides),
+produit un `suite_id` adressé par contenu (consignes et règles comprises),
+puis utilise `execute_scenario()` : la réponse T1 fait partie de l'historique
+envoyé au modèle en T2. Limites : 2 tours et 2 048 mots de réponse cumulés ;
+en mode réel, `max_tokens=512` par appel et `temperature=0`.
+
+Le correcteur **sans juge LLM** applique les règles `question` (une question
+terminée par `?`), `exact`, `json_object` (objet JSON strict, clés et valeurs
+attendues), `contains` et `forbidden` (expression délimitée, casse ignorée).
+Ce sont des vérifications de format et de contenu littéral, non une preuve
+générale de qualité sémantique : un refus ou une paraphrase peuvent être mal
+classés ; une phrase négative contenant une expression interdite peut compter
+comme violation. Les rubriques sont versionnées par le hash de suite.
+
+| Colonne du sidecar | Définition |
+| --- | --- |
+| `t1_pass`, `t2_pass` | Ensemble des règles du tour satisfait ; null si tour non observable |
+| `completion_rate` | Part de scénarios dont les deux tours ont une réponse |
+| `t1_integrity_rate`, `t2_integrity_rate` | Part des tours observables respectant leurs règles |
+| `drift_eligible_count` | Nombre de scénarios complets avec T1 valide |
+| `drift_rate` | Parmi ces scénarios, fraction dont T2 viole au moins une règle |
+| `omission_rate` | Parmi ces scénarios, fraction où une règle positive attendue en T2 disparaît |
+
+Une erreur de transport au T2 produit `scenario_aborted`, un T2 manquant et
+une dérive **indéterminée**, jamais un succès ni une dérive artificielle.
+Les exports séparés `details` et `summary` (`csv` + `json`) vont sous
+`data/dry_run/dialogue/` pour l'offline, `results/dialogue/` pour le réel.
+Les détails ne contiennent pas de réponse brute ; `suite_id`, modèle, cas
+d'usage, `outcome`, `evidence_source` (`synthetic_offline` ou `openrouter`)
+et nombres de tours sont conservés. Les colonnes de
+`results/benchmark_*` et `results/recommendations/*` restent inchangées ;
+ces valeurs ne modifient ni la qualité mono-tour ni l'éligibilité.
+
+```bash
+make dialogue                          # 0 appel réseau, 1 modèle synthétique
+make dialogue MODELS=paid_flagship    # hors ligne, noms de modèles personnalisés
+make dialogue-live MODELS=paid_flagship  # 18 appels facturables par modèle
+```
 
 Champs ajoutés à `ProbeResult` pour les probes séquentielles, sans toucher aux
 champs existants :
@@ -139,11 +184,10 @@ Ajouter une entrée avec un champ `turns` (liste de chaînes non vides) dans
   sidecar versionné dédié aux scénarios.
 - Aucun champ de scénario dans le manifeste de run, `MergePipeline` ou MLflow.
 - Aucune vue dashboard dédiée aux trajectoires multi-tour.
-- Aucune réutilisation pour l'évaluation qualité.
+- Aucune fusion des métriques dialogue avec les résultats qualité mono-tour.
 
-Ces points ne sont pas des oublis : ils dépendent de décisions de périmètre
-produit encore ouvertes. Le runner et son intégration sécurité sont
-fonctionnels et testés indépendamment de ces décisions.
+Ces points dépendent de décisions de périmètre produit encore ouvertes. Le
+runner, son intégration sécurité et l'écran dialogue restent indépendants.
 
 ## Tests
 
@@ -151,3 +195,5 @@ fonctionnels et testés indépendamment de ces décisions.
   bon tour, réponse vide, échec intermédiaire, limites, hash de suite).
 - `tests/test_security_scanner.py` — intégration (probe séquentielle réelle,
   comptage des tours, distinction mono-tour/multi-tour dans `extended`).
+- `tests/test_dialogue_quality.py` — validation du catalogue, métriques
+  conditionnelles et chemins hors ligne/réel simulé.
