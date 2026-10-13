@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added reproducible hierarchical bootstrap 95% intervals for aggregated and
+  use-case quality scores (available with full coverage and at least three
+  attempts per prompt), and ±10% weight/threshold sensitivity ranges and
+  fragility flags to recommendation artifacts; baseline scores and ranks stay
+  unchanged
 - Added short 1/3/5 calibration examples (`rubric-v2`) to all seven judged
   `generic-screen-v2` items; the content-addressed suite ID changes, while
   previously collected runs retain their original evidence and rubric. The

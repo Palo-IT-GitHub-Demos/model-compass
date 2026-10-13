@@ -8,11 +8,16 @@ coverage, stability and dimension-balanced scores alongside the legacy
 
 from __future__ import annotations
 
+import hashlib
+
+import numpy as np
 import pandas as pd
 
 _SUMMARY_COLUMNS = [
     "model",
     "avg_quality_score",
+    "avg_quality_score_ci95_low",
+    "avg_quality_score_ci95_high",
     "avg_quality_score_deterministic",
     "avg_quality_score_judged",
     "quality_pass_rate",
@@ -33,6 +38,7 @@ INPUT_CORRUPTION_STATUS = "suspected_input_corruption"
 
 _MIN_MODELS_FOR_CORRUPTION_SIGNAL = 2
 _PASSING_SCORE = 4.0
+_BOOTSTRAP_SAMPLES = 2000
 _CONTENT_SOURCE = "deterministic"
 _JUDGED_SOURCE_PREFIX = "copilot"
 _DISAGREEMENT_THRESHOLD = 2
@@ -189,6 +195,62 @@ def _prompt_and_dimension_frames(work_df: pd.DataFrame) -> tuple[pd.DataFrame, p
     return prompt_df, dimension_df
 
 
+def bootstrap_quality_interval(
+    quality_df: pd.DataFrame,
+    *,
+    seed_key: str,
+    macro_dimensions: bool = True,
+) -> tuple[float, float]:
+    """Percentile 95% CI from hierarchical prompt/attempt resampling.
+
+    Resample prompts within each dimension, then attempts within each sampled
+    prompt. The same weighted dimension macro-average as the published score is
+    recomputed in every draw. A single-attempt or partially repeated screen
+    cannot quantify run-to-run variability and returns missing bounds.
+    """
+    required = {"prompt_id", "score", "attempt"}
+    if quality_df.empty or not required.issubset(quality_df.columns):
+        return float("nan"), float("nan")
+    work = quality_df.copy()
+    work["score"] = pd.to_numeric(work["score"], errors="coerce")
+    work = work.dropna(subset=["score", "prompt_id", "attempt"])
+    if work.empty:
+        return float("nan"), float("nan")
+    if "quality_dimension" not in work.columns or not macro_dimensions:
+        work["quality_dimension"] = "all"
+    else:
+        work["quality_dimension"] = work["quality_dimension"].fillna("legacy")
+    if "weight" not in work.columns:
+        work["weight"] = 1.0
+    work["weight"] = pd.to_numeric(work["weight"], errors="coerce").fillna(1.0)
+    if (work["weight"] <= 0).any():
+        return float("nan"), float("nan")
+
+    # Stable across process runs and row ordering, without changing global RNG.
+    seed = int.from_bytes(hashlib.sha256(seed_key.encode("utf-8")).digest()[:8], "big")
+    rng = np.random.default_rng(seed)
+    dimensions: list[np.ndarray] = []
+    for _, dimension in work.groupby("quality_dimension", sort=True):
+        prompts = list(dimension.groupby("prompt_id", sort=True))
+        if any(prompt["attempt"].nunique() < 3 for _, prompt in prompts):
+            return float("nan"), float("nan")
+        weights = np.array([float(prompt["weight"].iloc[0]) for _, prompt in prompts])
+        indices = rng.integers(len(prompts), size=(_BOOTSTRAP_SAMPLES, len(prompts)))
+        sampled_weights = weights[indices]
+        sampled_scores = np.zeros(indices.shape, dtype="float64")
+        for prompt_index, (_, prompt) in enumerate(prompts):
+            values = prompt.sort_values("attempt")["score"].to_numpy(dtype="float64")
+            # Separate attempt draw for every sampled copy of a prompt.
+            attempt_means = rng.choice(values, size=(_BOOTSTRAP_SAMPLES, len(prompts), len(values)), replace=True).mean(
+                axis=2
+            )
+            sampled_scores += np.where(indices == prompt_index, attempt_means, 0.0)
+        dimensions.append((sampled_scores * sampled_weights).sum(axis=1) / sampled_weights.sum(axis=1))
+    draws = np.stack(dimensions, axis=1).mean(axis=1)
+    low, high = np.quantile(draws, [0.025, 0.975])
+    return float(low), float(high)
+
+
 def summarize_quality_dimensions(quality_df: pd.DataFrame) -> pd.DataFrame:
     """Return a long-format per-model, per-dimension quality breakdown.
 
@@ -302,6 +364,15 @@ def summarize_quality_scores(
         avg_quality_score=("dimension_score", "mean"),
         quality_dimension_count=("quality_dimension", "nunique"),
     )
+    intervals = [
+        (model, *bootstrap_quality_interval(group, seed_key=str(model)))
+        for model, group in work_df.groupby("model", sort=True)
+    ]
+    summary_df = summary_df.merge(
+        pd.DataFrame(intervals, columns=["model", "avg_quality_score_ci95_low", "avg_quality_score_ci95_high"]),
+        on="model",
+        how="left",
+    )
     prompt_summary_df = (
         prompt_df.assign(passed=(prompt_df["score"] >= 4.0).astype("float32"))
         .groupby("model", as_index=False)
@@ -311,6 +382,9 @@ def summarize_quality_scores(
         )
     )
     summary_df = summary_df.merge(prompt_summary_df, on="model", how="left")
+    if expected_prompt_count is not None:
+        incomplete = summary_df["quality_prompt_count"] < max(expected_prompt_count - excluded_prompt_count, 1)
+        summary_df.loc[incomplete, ["avg_quality_score_ci95_low", "avg_quality_score_ci95_high"]] = float("nan")
 
     source_flags_df = prompt_df.assign(
         deterministic=prompt_df["source"].str.startswith("deterministic").astype("int32"),

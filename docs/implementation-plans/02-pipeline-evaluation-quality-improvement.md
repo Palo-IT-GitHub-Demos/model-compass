@@ -129,6 +129,12 @@ avant ce pilote, `generic-screen-v1` restant la référence historique.
 | 7 | A5 + B2 | 5, 6 |
 | 8 | D1, D2 en continu | — |
 
+Jalon 3 (A4/C2, partiel) : les IC bootstrap 95 % et la sensibilité locale aux
+poids et seuils ±10 % sont intégrés aux exports. L'étape 5 n'est pas close :
+la calibration humaine de l'étape 4, le pilote réel v2 et le recalibrage des
+seuils par version du catalogue restent à effectuer. Les intervalles et alertes
+ne constituent pas à eux seuls une validation statistique des recommandations.
+
 ## Risques
 
 - Coût : plus d'items, de répétitions et de juges ; utiliser `make dry-run`,

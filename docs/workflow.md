@@ -347,6 +347,7 @@ fichiers `scores_{ts}_*.json`.
 | Colonne | Description |
 |---|---|
 | `avg_quality_score` | Macro-moyenne par dimension (1-5) — mélange deux échelles, voir les deux colonnes suivantes |
+| `avg_quality_score_ci95_low/high` | IC bootstrap 95 % de la macro-moyenne ; null si moins de 3 répétitions par prompt ou couverture incomplète |
 | `avg_quality_score_deterministic` | Macro-moyenne sur les seuls contrôles déterministes (succès/échec rendu en 1 ou 5) |
 | `avg_quality_score_judged` | Macro-moyenne sur le seul panel de juges (échelle continue 1-5) |
 | `quality_pass_rate` | Fraction des prompts avec score ≥ 4 — indicateur de couverture, pas un classement |
@@ -523,6 +524,12 @@ L'artefact de recommandation contient une ligne par couple
 `recommendation_rank`, `recommendation_status` et `evidence_missing`. Le
 benchmark principal reste une ligne par modèle pour préserver la compatibilité
 avec les exports historiques.
+
+Le rapport ajoute `quality_score_ci95_low/high`,
+`quality_ci95_overlaps_leader`, `recommendation_sensitivity_rank_min/max`
+et `recommendation_fragile` (poids et seuil ±10 %, voir
+[Méthodologie qualité](quality-methodology.md)). Ces indicateurs n'altèrent
+pas le score, le rang ni le statut de référence.
 
 Une recommandation n'est produite que lorsque la qualité du cas d'usage est
 complète et que les preuves sécurité, coût et performance sont disponibles.

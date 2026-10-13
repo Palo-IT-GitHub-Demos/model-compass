@@ -326,6 +326,7 @@ attribution avant toute exécution de code généré. Contrat appliqué par
 - **Limite assumée** : défense en profondeur, pas une frontière de sécurité. Le
   réseau n'est bloqué que par la liste blanche d'imports et la mémoire n'est pas
   limitée sous macOS. À réserver aux réponses de modèles évalués.
+
 ## 4. Couverture du périmètre
 
 Le module de correction déterministe résume lui-même sa limite :
@@ -414,6 +415,40 @@ Le score agrégé moyenne d'abord les tentatives d'un même prompt, puis les
 prompts d'une dimension, puis les dimensions. Une répétition ne donne donc pas
 plus de poids au prompt dans la note finale. `quality_stability_score` résume la
 dispersion inter-tentatives et doit être lu avec les réponses détaillées.
+
+### Intervalles bootstrap 95 % et sensibilité (A4/C2)
+
+La fusion publie `avg_quality_score_ci95_low/high` dans le benchmark et
+`quality_score_ci95_low/high` pour chaque cas d'usage dans les recommandations.
+Sur 2 000 tirages reproductibles (graine locale dérivée du modèle, et du cas
+d'usage le cas échéant), le bootstrap rééchantillonne les prompts **dans chaque
+dimension**, puis les tentatives de chaque prompt avec remise. Il recalcule
+la moyenne pondérée par dimension, puis la macro-moyenne ; pour un cas d'usage,
+il recalcule la moyenne plate de ses prompts. Les bornes sont les quantiles
+2,5 % et 97,5 % des tirages. Les scores et les rangs publiés restent inchangés.
+
+Il faut au moins **3 tentatives distinctes sur chaque prompt scoré** et la
+couverture complète des prompts attendus ; sinon les bornes sont `null`.
+Dans le benchmark global, les exclusions pour corruption d'entrée suspectée
+sont aussi retirées du dénominateur, conformément au score existant. Ces IC
+reflètent le rééchantillonnage de cette suite et de ces tentatives, **pas** une garantie
+de généralisation aux tâches métier. `quality_ci95_overlaps_leader` indique
+le chevauchement des IC de qualité avec au moins un premier du classement,
+pour les modèles éligibles avec IC disponible. Un chevauchement n'est pas
+une preuve d'égalité statistique : les ex æquo restent définis uniquement
+par l'égalité des scores de recommandation.
+
+`recommendation_sensitivity_rank_min/max` et `recommendation_fragile`
+décrivent 10 scénarios déterministes par cas d'usage : chacun des quatre
+poids effectifs varie séparément de ±10 % **relatifs**, avec renormalisation
+des quatre poids à 1 ; le seuil qualité varie également de ±10 % relatifs,
+borné à l'échelle 1–5. Les autres poids et seuils restent fixes à chaque
+scénario. `recommendation_fragile=true` si l'éligibilité ou le rang diffère
+du scénario de référence ; les bornes de rang ignorent les scénarios où le
+modèle n'a pas de rang. Une preuve de décision incomplète produit `null`
+pour cette alerte, pas une fausse stabilité. Cette analyse locale ne remplace
+ni la calibration humaine des seuils provisoires ni un test de toutes les
+combinaisons de poids.
 
 Pour `k=1`, une mauvaise réponse objective porte
 `verification_status=optional_openrouter_recheck`. Une commande manuelle peut
