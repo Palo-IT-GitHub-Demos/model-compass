@@ -3,17 +3,21 @@
 PYTHON ?= .venv/bin/python
 
 help: ## Show this help
+	@echo "Standard evaluation path (README, Quick Start):"
+	@echo "  make select -> make verify MODELS=selection SECURITY=owasp"
+	@echo "  -> make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3"
+	@echo "  -> @judge-coordinator in Copilot Chat -> make merge -> make export-html"
+	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 install: ## Install production dependencies
 	pip install -e .
-	npm install --omit=dev
 
 dev: ## Install all dependencies (including dev)
 	pip install -e ".[dev,docs]"
-	npm install
-	pre-commit install
+	$(PYTHON) -m pre_commit install
+	$(PYTHON) -m pre_commit install --hook-type commit-msg
 
 test: ## Run all tests (Python)
 	$(PYTHON) -m pytest --tb=short
@@ -23,15 +27,12 @@ test-cov: ## Run tests with a coverage report (requires pytest-cov, see [dev] ex
 
 lint: ## Run all linters
 	$(PYTHON) -m ruff check .
-	npm run lint
 
 fmt: ## Auto-format all code
 	$(PYTHON) -m ruff format .
-	npm run format
 
 type-check: ## Run type checkers
 	$(PYTHON) -m mypy src/
-	npm run type-check
 
 docs-build: ## Build documentation and validate links strictly
 	$(PYTHON) -m mkdocs build --strict

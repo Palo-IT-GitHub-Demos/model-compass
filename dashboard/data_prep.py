@@ -368,3 +368,26 @@ def load_recommendations(benchmark_path: Path) -> pd.DataFrame:
         return pd.DataFrame()
     recommendations_df = pd.read_csv(recommendations_path)
     return recommendations_df if "model" in recommendations_df.columns else pd.DataFrame()
+
+
+def run_provenance(benchmark_df: pd.DataFrame, recommendations_df: pd.DataFrame) -> dict[str, str]:
+    """Return the identifiers two runs must share before their results are compared."""
+
+    def recorded(frame: pd.DataFrame, column: str) -> str:
+        values = sorted(frame[column].dropna().astype(str).unique()) if column in frame.columns else []
+        return ", ".join(values) or "not recorded"
+
+    weights = recorded(recommendations_df, "recommendation_weights")
+    try:
+        shares = json.loads(weights)
+        weights = " · ".join(f"{name} {shares[name]:.0%}" for name in ("quality", "security", "cost", "performance"))
+    except (ValueError, KeyError, TypeError):
+        pass
+    return {
+        "Methodology": recorded(benchmark_df, "methodology_version"),
+        "Quality suite": recorded(benchmark_df, "quality_suite_id"),
+        "Use-case catalog": recorded(recommendations_df, "catalog_version"),
+        "Security probe set": recorded(benchmark_df, "security_probe_set_id"),
+        "Decision weights": weights,
+        "Workload profile": recorded(benchmark_df, "workload_profile"),
+    }

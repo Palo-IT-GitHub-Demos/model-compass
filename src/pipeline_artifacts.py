@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.quality_judge import CollectResult
 from src.evaluators.recommendation import RecommendationWeights, load_use_case_catalog
 
@@ -104,6 +105,7 @@ def save_pending(
     path = intermediate_dir / f"pending_{timestamp}.json"
     payload = {
         "timestamp": timestamp,
+        "methodology_version": METHODOLOGY_VERSION,
         "use_case_catalog_version": load_use_case_catalog(catalog_path).catalog_version,
         "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
         "models": models,

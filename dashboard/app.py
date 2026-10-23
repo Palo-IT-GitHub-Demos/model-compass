@@ -23,6 +23,7 @@ from dashboard.data_prep import numeric_series as _numeric_series
 from dashboard.data_prep import parse_judge_verdicts as _parse_judge_verdicts
 from dashboard.data_prep import quality_dimension_long_frame as _quality_dimension_long_frame
 from dashboard.data_prep import quality_tier as _quality_tier
+from dashboard.data_prep import run_provenance as _run_provenance
 from dashboard.data_prep import safest_summary as _safest_summary
 from dashboard.data_prep import security_long_frame as _security_long_frame
 from dashboard.data_prep import security_probe_details_frame as _security_probe_details_frame
@@ -48,8 +49,8 @@ _SECURITY_MODE_HELP = {
         "categories — populates the heatmap/RSI below."
     ),
     "extended": (
-        "15 advanced red-team probes focused on LLM01 prompt injection "
-        "(base64, Unicode smuggling, DAN, typoglycemia, few-shot spoofing…)."
+        "23 single-turn probes across LLM01/02/03/07/10 plus 2 bounded LLM01 "
+        "multi-turn scenarios (encoding, Unicode smuggling, jailbreak framing…)."
     ),
 }
 
@@ -189,6 +190,11 @@ recommendations_df = _load_recommendations(selected_file)
 if not recommendations_df.empty:
     recommendations_df = recommendations_df[recommendations_df["model"].isin(selected_models)]
 
+st.caption(
+    "Compare runs only when all of these match — "
+    + " · ".join(f"{label}: `{value}`" for label, value in _run_provenance(df, recommendations_df).items())
+)
+
 (
     tab_overview,
     tab_recommendations,
@@ -264,8 +270,7 @@ with tab_overview:
             safest_detail,
             border=True,
             help=(
-                "Highest Robustness Safety Index (RSI, 0–100), or the count of leak-free models "
-                "if RSI isn't available."
+                "Highest Robustness Safety Index (RSI, 0–100), or the count of leak-free models if RSI isn't available."
             ),
         )
 
@@ -311,7 +316,8 @@ with tab_recommendations:
     st.subheader("Model Compass recommendations")
     st.caption(
         "Each model is scored for every generic use case. Quality eligibility is checked first; "
-        "the weighted score ranks only models with complete quality, security, cost and performance evidence."
+        "the weighted score ranks only models with complete quality, security, cost and performance evidence. "
+        "Cost uses the workload-weighted USD/M token price; performance uses p95 latency and fixed catalog scales."
     )
     if recommendations_df.empty:
         st.info(
@@ -341,6 +347,7 @@ with tab_recommendations:
             "quality_coverage_rate",
             "security_score",
             "cost_score",
+            "cost_usd_per_1m_tokens",
             "performance_score",
             "evidence_missing",
         ]
@@ -372,6 +379,11 @@ with tab_recommendations:
                 ),
                 "cost_score": st.column_config.ProgressColumn(
                     "Cost component", format="%.1f", min_value=0, max_value=100
+                ),
+                "cost_usd_per_1m_tokens": st.column_config.NumberColumn(
+                    "Blended USD / 1M tokens",
+                    format="$%.2f",
+                    help="Input/output prices blended using the selected workload profile.",
                 ),
                 "performance_score": st.column_config.ProgressColumn(
                     "Performance component", format="%.1f", min_value=0, max_value=100
@@ -431,9 +443,7 @@ with tab_quality:
             "CER eligible",
             int(cer_eligible.sum()),
             border=True,
-            help=(
-                "Models with enough coverage (≥ 80% prompts, 100% dimensions) to trust their " "Cost-Efficiency Ratio."
-            ),
+            help=("Models with enough coverage (≥ 80% prompts, 100% dimensions) to trust their Cost-Efficiency Ratio."),
         )
 
     if "quality_stability_score" not in df.columns or stability.notna().sum() == 0:
@@ -494,8 +504,7 @@ with tab_quality:
             "quality_tier": st.column_config.TextColumn(
                 "At a glance",
                 help=(
-                    "Dashboard-only banding of the quality score: Excellent ≥ 4.5, Good ≥ 3.5, "
-                    "Fair ≥ 2.5, Poor < 2.5."
+                    "Dashboard-only banding of the quality score: Excellent ≥ 4.5, Good ≥ 3.5, Fair ≥ 2.5, Poor < 2.5."
                 ),
             ),
             "quality_pass_rate": st.column_config.NumberColumn(
@@ -857,9 +866,7 @@ with tab_security:
             column_config={
                 "security_status": st.column_config.TextColumn(
                     "Status",
-                    help=(
-                        "Safe: no leak. Partial risk: leaked on ≥ 1 probe. Vulnerable: leaked on a " "built-in probe."
-                    ),
+                    help=("Safe: no leak. Partial risk: leaked on ≥ 1 probe. Vulnerable: leaked on a built-in probe."),
                 ),
                 "rsi": st.column_config.ProgressColumn(
                     "RSI",

@@ -87,6 +87,7 @@ class TestMergeResults:
         assert model_a["quality_dimension_coverage_rate"] == pytest.approx(1.0)
         assert bool(model_a["quality_cer_eligible"])
         assert model_a["cer"] > 0.0
+        assert model_a["cost_usd_per_1m_tokens"] == pytest.approx(4.0 / 3.0)
 
         assert model_b["quality_coverage_rate"] == pytest.approx(0.5)
         assert model_b["quality_dimension_coverage_rate"] == pytest.approx(0.5)

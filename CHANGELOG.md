@@ -7,15 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+## [0.3.0] — 2026-10-23 — First frozen Model Compass methodology
 
-- Normalize use-case quality to 0–100 before applying recommendation weights
-  and sensitivity scenarios. This corrects the effective weighting but changes
-  composite scores and potentially ranks; historical recommendation exports
-  made with the former mixed-scale formula require recomputation for comparison
+First frozen scoring methodology, labelled `0.3.0` after this release: the
+`generic-screen-v2` quality suite, the versioned use-case catalogs, internal
+`basic`/`owasp`/`extended` probe profiles and the 0–100 recommendation formula.
+Cost and latency use catalog-versioned logarithmic anchors. The label only
+changes when a later release changes scores or ranks. Runs merged before this
+release carry no methodology version and must not be ranked together with newer
+runs.
 
-### Added
+### Added in 0.3.0
 
+- `methodology_version` (`src/core/methodology.py`) in every benchmark row,
+  recommendation row, pending file, run manifest and MLflow run. `make merge`
+  refuses a pending file with a missing or mismatched methodology version
+- `security_probe_set_id`, a content-addressed ID of the exact security probe
+  set (`basic-…`, `owasp-…`, `extended-…`), in every security row and benchmark
+- Both dashboards state the methodology, quality suite, catalog, security probe
+  set, decision weights and workload profile of the displayed run, with
+  `not recorded` for older runs
+- `cost_usd_per_1m_tokens`, the TCO blended across the selected workload's input
+  and output tokens, in the benchmark matrix
+- The unit-cost metric beside the cost component in recommendation CSVs and
+  both dashboards, so the normalized value remains auditable
+- A tested Python `commit-msg` hook enforcing the repository's Conventional
+  Commit header rules without Node.js or commitlint
 - Added an opt-in, bounded two-turn dialogue quality screen with nine versioned
   scenarios (clarification, JSON format persistence, negative instructions),
   deterministic per-turn rules, conditional drift and omission rates, offline
@@ -257,8 +274,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for: unsanitized HTML/script embedding, unparameterized SQL construction,
   Markdown-based data exfiltration
 
-### Changed
+### Changed in 0.3.0
 
+- README Quick Start is now a single standard evaluation path, also printed by
+  `make help`; presets, alternative profiles and optional workflows moved to an
+  Advanced section. The documentation site separates current guides from
+  project history (briefs, audit, plans)
+- Corrected stale documentation: free-tier request counts for the default v2
+  suite, `extended` probe counts, the active v2 catalog, judge models, dashboard
+  pages, and unused template variables removed from `.env.example`
+- Removed unused TypeScript/npm and Compose scaffolding from this Python-only
+  repository; moved GitHub's contribution and security policies under `.github/`
+- Replaced cohort-relative cost/performance normalization with the fixed log
+  scales in catalog v1.1/v2.1. Cost is blended USD per million tokens (0.10–100);
+  performance is p95 latency (1–30 seconds). Missing p95 is missing evidence,
+  not replaced with throughput. This changes recommendation scores/ranks; old
+  recommendation artifacts must be recomputed before comparison
+- Versioned the catalogs as `model-compass-use-cases-v1.1` and
+  `model-compass-use-cases-v2.1` to include the fixed scoring anchors
 - The default `QUALITY_SUITE` is now `v2` (`generic-screen-v2` with the
   `model-compass-use-cases-v2` catalog) instead of `v1`. Set `QUALITY_SUITE=v1`
   (or pass `--quality-suite v1`) to reproduce legacy runs; collect and merge
@@ -345,8 +378,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anchor, with two documented project-specific deviations) now explained in a
   code comment directly above the dict
 
-### Fixed
+### Fixed in 0.3.0
 
+- The static report always printed the default 50/25/20/5 weights, even when
+  `MODEL_COMPASS_WEIGHTS` changed them; it now shows the weights recorded in the
+  recommendation artifact
+- Normalize use-case quality to 0–100 before applying recommendation weights
+  and sensitivity scenarios. This corrects the effective weighting but changes
+  composite scores and potentially ranks; historical recommendation exports
+  made with the former mixed-scale formula require recomputation for comparison
 - Strict JSON output now fails format compliance when it is syntactically invalid
   or has the wrong object/array root type; valid fenced JSON remains a content
   success and a format failure. Exact-answer numeric value errors no longer

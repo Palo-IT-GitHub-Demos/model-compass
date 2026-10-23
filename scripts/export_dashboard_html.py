@@ -4,7 +4,7 @@ Reuses the exact same data-prep (:mod:`dashboard.data_prep`) and chart-building
 (:mod:`dashboard.pareto`, :mod:`dashboard.security_viz`) code as the live
 Streamlit app (``dashboard/app.py``), so the static export can never drift
 from the live view. The output is a single ``.html`` file — open it in any
-browser, no server required — with a French glossary explaining every acronym
+browser, no server required — with a glossary explaining every acronym
 (RSI, TCO, CER, ZDR, OWASP...).
 
 Usage
@@ -44,6 +44,7 @@ from dashboard.data_prep import (  # noqa: E402
     load_recommendations,
     quality_dimension_long_frame,
     quality_tier,
+    run_provenance,
     safest_summary,
     security_long_frame,
     security_probe_details_frame,
@@ -306,8 +307,7 @@ def _quality_section(df: pd.DataFrame) -> str:
     heatmap = ""
     if not dimension_long_df.empty:
         heatmap = (
-            f'<div class="chart">{_fig_html(build_quality_dimension_heatmap(dimension_long_df), include_js=True)}'
-            "</div>"
+            f'<div class="chart">{_fig_html(build_quality_dimension_heatmap(dimension_long_df), include_js=True)}</div>'
         )
 
     return f"""
@@ -341,6 +341,7 @@ def _recommendations_section(recommendations_df: pd.DataFrame) -> str:
         "quality_coverage_rate",
         "security_score",
         "cost_score",
+        "cost_usd_per_1m_tokens",
         "performance_score",
         "evidence_missing",
     ]
@@ -354,18 +355,19 @@ def _recommendations_section(recommendations_df: pd.DataFrame) -> str:
             "quality_coverage_rate": "{:.0%}",
             "security_score": "{:.1f}",
             "cost_score": "{:.1f}",
+            "cost_usd_per_1m_tokens": "${:.2f}",
             "performance_score": "{:.1f}",
         },
         status_column="recommendation_status",
     )
-    catalog_version = escape(str(recommendations_df["catalog_version"].iloc[0]))
     return f"""
     <h2 id="recommendations">Model Compass</h2>
     <p class="callout"><strong>How to read this:</strong> every model remains visible for every
     generic use case. A model must first pass that use case's quality threshold; only then can the
     weighted decision score rank it. Equal scores keep the same rank. The final choice remains human.</p>
-    <p class="meta">Use-case catalog: <strong>{catalog_version}</strong> · Weights: quality 50%,
-    security 25%, cost 20%, performance 5%.</p>
+    <p class="callout">Cost is the workload-weighted USD per million tokens; performance uses p95 latency.
+    Both component scores use fixed logarithmic anchors recorded in the versioned catalog, not the other
+    models selected for this run.</p>
     <div class="table-wrap">{table}</div>
     """
 
@@ -700,9 +702,18 @@ def build_page(
     active_page: str,
     page_body: str,
     href_prefix: str = "",
+    provenance: dict[str, str] | None = None,
 ) -> str:
     """Assemble one standalone page of the static dashboard."""
     generated_at = datetime.now(UTC).isoformat(timespec="seconds")
+    provenance_items = " · ".join(
+        f"{escape(label)}: <strong>{escape(value)}</strong>" for label, value in (provenance or {}).items()
+    )
+    provenance_html = (
+        f'<p class="meta">Compare runs only when all of these match — {provenance_items}</p>'
+        if provenance_items
+        else ""
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -715,6 +726,7 @@ def build_page(
 <h1>Model Compass dashboard</h1>
 <p class="subtitle">Evidence-based selection of OpenRouter models by generic use case.</p>
 <p class="meta">Source: {source_label} — generated on {generated_at}</p>
+{provenance_html}
 {_navigation_html(active_page, href_prefix)}
 {page_body}
 </body>
@@ -733,6 +745,7 @@ def build_reports(
     security_probe_df = security_probe_details_frame(df)
     quality_details = quality_details_df if quality_details_df is not None else pd.DataFrame()
     recommendations = recommendations_df if recommendations_df is not None else pd.DataFrame()
+    provenance = run_provenance(df, recommendations)
     pages = {
         "index.html": ("Overview", "overview", f"{_GLOSSARY_HTML}{_overview_section(df)}"),
         "recommendations.html": ("Model Compass", "recommendations", _recommendations_section(recommendations)),
@@ -755,6 +768,7 @@ def build_reports(
             page_title,
             active_page,
             page_body,
+            provenance=provenance,
         )
         for filename, (page_title, active_page, page_body) in pages.items()
     }
@@ -808,10 +822,11 @@ def main(argv: list[str] | None = None) -> int:
             args.profile,
             profile,
             results_path.name,
-            "Vue d'ensemble",
+            "Overview",
             "overview",
             f"{_GLOSSARY_HTML}{_overview_section(df)}",
             href_prefix=f"{bundle_dir.name}/",
+            provenance=run_provenance(df, recommendations_df),
         ),
         encoding="utf-8",
     )

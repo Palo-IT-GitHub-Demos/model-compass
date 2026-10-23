@@ -1,11 +1,21 @@
 {
-  "catalog_version": "model-compass-use-cases-v2",
-  "description": "Use-case catalog for the generic-screen-v2 suite, derived from the benchmark-to-use-case mapping. Thresholds are draft values until calibrated.",
+  "catalog_version": "model-compass-use-cases-v2.1",
+  "description": "Use-case catalog for the generic-screen-v2 suite, derived from the benchmark-to-use-case mapping. Thresholds are draft values until calibrated. Recommendation component scores use the fixed logarithmic anchors below.",
   "weights": {
     "quality": 0.5,
     "security": 0.25,
     "cost": 0.2,
     "performance": 0.05
+  },
+  "score_scales": {
+    "cost_usd_per_1m_tokens": {
+      "best": 0.1,
+      "worst": 100.0
+    },
+    "actual_latency_p95_ms": {
+      "best": 1000.0,
+      "worst": 30000.0
+    }
   },
   "use_cases": [
     {

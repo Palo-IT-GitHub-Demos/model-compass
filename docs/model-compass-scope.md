@@ -37,10 +37,28 @@ Le pipeline est volontairement générique et réutilisable :
 L'humain fait ensuite correspondre les résultats génériques aux besoins du
 dossier qu'il connaît.
 
-## Catalogue initial
+## Catalogue actif
 
-Le catalogue est défini dans `data/catalog/model_compass_use_cases.json`.
-La version initiale relie les prompts qualité existants à six cas d'usage :
+Le catalogue par défaut est `data/catalog/model_compass_use_cases_v2.json`
+(`model-compass-use-cases-v2.1`, suite `generic-screen-v2`). Il relie les 34
+prompts qualité à huit cas d'usage :
+
+| Cas d'usage | Prompts | Seuil |
+| --- | ---: | ---: |
+| Structured extraction | 0-4 | 4,0 / 5 |
+| Code generation | 5-9 | 4,0 / 5 |
+| Contextual question answering | 10-14 | 4,0 / 5 |
+| Reasoning and analysis | 15-19 | 4,0 / 5 |
+| Classification and routing | 20-23 | 4,0 / 5 |
+| Summarization | 24-26 | 3,5 / 5 |
+| Concise communication | 27-29 | 3,5 / 5 |
+| Instruction following | 30-33 | 4,0 / 5 |
+
+### Catalogue v1 (référence historique)
+
+Le catalogue `data/catalog/model_compass_use_cases.json`
+(`model-compass-use-cases-v1.1`) reste utilisé avec `QUALITY_SUITE=v1`. Il
+relie les 16 prompts de la suite v1 à six cas d'usage :
 
 | Cas d'usage | Prompts | Seuil initial |
 | --- | ---: | ---: |
@@ -84,8 +102,8 @@ Le score de décision utilise quatre composantes normalisées sur 0-100 :
 | --- | ---: | --- |
 | Qualité fonctionnelle | 50 % | Score qualité du cas d'usage, échelle 1-5 normalisée |
 | Sécurité générique | 25 % | RSI, échelle 0-100 |
-| Coût du modèle seul | 20 % | TCO du profil, normalisé avec le coût le plus bas en meilleur score |
-| Performance | 5 % | Latence P95, ou tokens/seconde si la latence manque |
+| Coût du modèle seul | 20 % | Prix moyen pondéré par le profil, en USD par million de tokens ; bornes logarithmiques fixes dans le catalogue |
+| Performance | 5 % | Latence p95 ; bornes logarithmiques fixes dans le catalogue |
 
 ```text
 score_decision =
@@ -104,6 +122,14 @@ MODEL_COMPASS_WEIGHTS='{"quality":0.60,"security":0.20,"cost":0.15,"performance"
 
 Les poids doivent être positifs et leur somme doit être égale à `1.0`. Le
 rapport et le manifeste enregistrent toujours les poids effectivement utilisés.
+
+Les catalogues `model-compass-use-cases-v1.1` et `model-compass-use-cases-v2.1`
+fixent les bornes du calcul : 0,10–100 USD par million de tokens et 1–30
+secondes pour la latence p95. En dessous de la borne meilleure le score est 100 ;
+au-dessus de la borne moins bonne il est 0 ; entre les deux l'échelle est
+logarithmique. Un coût nul (modèle gratuit) vaut 100. Ces scores ne sont pas
+recalculés relativement aux modèles du run. Si la latence p95 manque, la preuve
+de performance est absente ; le débit tokens/s ne la remplace pas.
 
 Si une composante manque, le modèle reste visible mais reçoit le statut
 `insufficient_decision_evidence` et aucun rang de recommandation. Le pipeline

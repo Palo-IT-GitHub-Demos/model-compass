@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -54,7 +55,7 @@ def _write_sample_recommendations(tmp_path: Path) -> None:
     pd.DataFrame(
         {
             "use_case_name": ["Structured extraction"],
-            "catalog_version": ["model-compass-use-cases-v1"],
+            "catalog_version": ["model-compass-use-cases-v1.1"],
             "model": ["openai/gpt-4o-mini"],
             "recommendation_status": ["recommended"],
             "recommendation_rank": [1],
@@ -63,8 +64,10 @@ def _write_sample_recommendations(tmp_path: Path) -> None:
             "quality_coverage_rate": [1.0],
             "security_score": [80.0],
             "cost_score": [95.0],
+            "cost_usd_per_1m_tokens": [0.5],
             "performance_score": [90.0],
             "evidence_missing": [""],
+            "recommendation_weights": [json.dumps({"cost": 0.1, "performance": 0.1, "quality": 0.7, "security": 0.1})],
         }
     ).to_csv(recommendations_dir / "benchmark_test_recommendations.csv", index=False)
 
@@ -114,6 +117,23 @@ class TestMainCli:
         assert "p50 is the typical response time" in performance
         assert "Model Compass" in recommendations
         assert "Structured extraction" in recommendations
+
+    def test_every_page_states_the_recorded_run_provenance(self, tmp_path: Path) -> None:
+        rows = [{**row, "methodology_version": "0.3.0"} for row in _SAMPLE_ROWS]
+        results = tmp_path / "benchmark_test.csv"
+        pd.DataFrame(rows).to_csv(results, index=False)
+        _write_sample_recommendations(tmp_path)
+        output = tmp_path / "dashboard.html"
+        main(["--results", str(results), "--output", str(output)])
+
+        for page in [output, *sorted((tmp_path / "dashboard").glob("*.html"))]:
+            html = page.read_text(encoding="utf-8")
+            assert "Methodology: <strong>0.3.0</strong>" in html, page.name
+            assert "Use-case catalog: <strong>model-compass-use-cases-v1.1</strong>" in html, page.name
+            assert "quality 70%" in html, page.name
+            assert "Security probe set: <strong>not recorded</strong>" in html, page.name
+        recommendations = (tmp_path / "dashboard" / "recommendations.html").read_text(encoding="utf-8")
+        assert "quality 50%" not in recommendations
 
     def test_every_page_with_a_chart_loads_plotly(self, tmp_path: Path) -> None:
         """Each page is a standalone file: relying on another page to have loaded

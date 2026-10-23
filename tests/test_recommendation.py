@@ -5,8 +5,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.recommendation import (
     DEFAULT_USE_CASE_CATALOG_PATH,
+    LogScaleBounds,
+    _normalize_lower_log_score,
     build_recommendation_report,
     load_use_case_catalog,
     parse_recommendation_weights,
@@ -18,18 +21,21 @@ def _benchmark(*, complete: bool = True) -> pd.DataFrame:
         {
             "model": "model-a",
             "tco_usd": 1.0,
+            "cost_usd_per_1m_tokens": 0.1,
             "rsi": 90.0,
             "actual_latency_p95_ms": 100.0,
         },
         {
             "model": "model-b",
             "tco_usd": 2.0,
+            "cost_usd_per_1m_tokens": 1.0,
             "rsi": 80.0,
             "actual_latency_p95_ms": 200.0,
         },
         {
             "model": "model-c",
             "tco_usd": 3.0,
+            "cost_usd_per_1m_tokens": 10.0,
             "rsi": 70.0,
             "actual_latency_p95_ms": 300.0,
         },
@@ -58,9 +64,40 @@ class TestModelCompassCatalog:
     def test_catalog_is_versioned_and_has_normalized_weights(self) -> None:
         catalog = load_use_case_catalog(DEFAULT_USE_CASE_CATALOG_PATH)
 
-        assert catalog.catalog_version == "model-compass-use-cases-v1"
+        assert catalog.catalog_version == "model-compass-use-cases-v1.1"
         assert len(catalog.use_cases) == 6
         assert sum(catalog.weights.model_dump().values()) == pytest.approx(1.0)
+        assert catalog.score_scales.cost_usd_per_1m_tokens.best == pytest.approx(0.1)
+        assert catalog.score_scales.cost_usd_per_1m_tokens.worst == pytest.approx(100.0)
+        assert catalog.score_scales.actual_latency_p95_ms.best == pytest.approx(1000.0)
+        assert catalog.score_scales.actual_latency_p95_ms.worst == pytest.approx(30000.0)
+
+    def test_log_scale_bounds_require_positive_increasing_anchors(self) -> None:
+        with pytest.raises(ValueError, match="best < worst"):
+            LogScaleBounds(best=1.0, worst=1.0)
+
+        with pytest.raises(ValueError):
+            LogScaleBounds(best=0.0, worst=1.0)
+
+    def test_cost_log_scale_uses_fixed_anchors_and_preserves_missing_values(self) -> None:
+        scores = _normalize_lower_log_score(
+            pd.Series([0.0, 0.1, 1.0, 10.0, 100.0, 200.0, -1.0, float("nan")]),
+            LogScaleBounds(best=0.1, worst=100.0),
+            zero_is_best=True,
+        )
+
+        assert scores.iloc[:6].tolist() == pytest.approx([100.0, 100.0, 200.0 / 3.0, 100.0 / 3.0, 0.0, 0.0])
+        assert pd.isna(scores.iloc[6])
+        assert pd.isna(scores.iloc[7])
+
+    def test_latency_log_scale_uses_fixed_anchors_and_rejects_zero(self) -> None:
+        scores = _normalize_lower_log_score(
+            pd.Series([1000.0, 30000.0, 60000.0, 0.0]),
+            LogScaleBounds(best=1000.0, worst=30000.0),
+        )
+
+        assert scores.iloc[:3].tolist() == [100.0, 0.0, 0.0]
+        assert pd.isna(scores.iloc[3])
 
     def test_accepts_a_valid_weight_override(self) -> None:
         weights = parse_recommendation_weights('{"quality":0.6,"security":0.2,"cost":0.15,"performance":0.05}')
@@ -74,9 +111,15 @@ class TestModelCompassCatalog:
 
 
 class TestModelCompassRecommendations:
+    def test_every_row_records_the_methodology_version(self) -> None:
+        report = build_recommendation_report(_benchmark(), _quality())
+
+        assert set(report["methodology_version"]) == {METHODOLOGY_VERSION}
+
     def test_sensitivity_flags_weight_rank_reversal_without_changing_baseline(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
+        benchmark["cost_usd_per_1m_tokens"] = 0.1
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [70.8, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"].copy()
@@ -97,6 +140,7 @@ class TestModelCompassRecommendations:
     def test_weighted_score_uses_four_components_on_the_same_scale(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
+        benchmark["cost_usd_per_1m_tokens"] = 0.1
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [50.0, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
@@ -119,6 +163,7 @@ class TestModelCompassRecommendations:
     def test_custom_weights_apply_to_normalized_quality(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
+        benchmark["cost_usd_per_1m_tokens"] = 0.1
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [50.0, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
@@ -179,6 +224,7 @@ class TestModelCompassRecommendations:
             90.0,
             100.0,
         ]
+        benchmark.loc[benchmark["model"] == "model-b", "cost_usd_per_1m_tokens"] = 0.1
         quality = _quality()
         quality.loc[quality["model"] == "model-b", "score"] = 5.0
 
@@ -201,6 +247,33 @@ class TestModelCompassRecommendations:
         assert pd.isna(structured.loc["model-a", "recommendation_rank"])
         assert pd.isna(structured.loc["model-a", "recommendation_fragile"])
         assert pd.isna(structured.loc["model-a", "recommendation_sensitivity_rank_min"])
+
+    def test_fixed_cost_and_latency_scores_do_not_depend_on_model_cohort(self) -> None:
+        baseline = _benchmark().iloc[:2].copy()
+        baseline_quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
+        expanded = _benchmark().copy()
+        expanded.loc[expanded["model"] == "model-c", "cost_usd_per_1m_tokens"] = 1000.0
+        expanded.loc[expanded["model"] == "model-c", "actual_latency_p95_ms"] = 60000.0
+
+        baseline_report = build_recommendation_report(baseline, baseline_quality)
+        expanded_report = build_recommendation_report(expanded, _quality())
+        baseline_ab = baseline_report.set_index("model").loc[["model-a", "model-b"]]
+        expanded_ab = expanded_report.set_index("model").loc[["model-a", "model-b"]]
+
+        pd.testing.assert_frame_equal(
+            baseline_ab[["cost_score", "performance_score", "recommendation_score", "recommendation_rank"]],
+            expanded_ab[["cost_score", "performance_score", "recommendation_score", "recommendation_rank"]],
+        )
+
+    def test_performance_requires_p95_latency_not_throughput_fallback(self) -> None:
+        benchmark = _benchmark().drop(columns="actual_latency_p95_ms")
+        benchmark["actual_tokens_per_second"] = [100.0, 200.0, 300.0]
+
+        report = build_recommendation_report(benchmark, _quality())
+
+        assert set(report["performance_basis"]) == {"unavailable"}
+        assert report["performance_score"].isna().all()
+        assert report["evidence_missing"].str.contains("performance").all()
 
     def test_emits_one_row_for_each_model_and_use_case(self) -> None:
         report = build_recommendation_report(_benchmark(), _quality())

@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from src.core.config import Settings
+from src.core.methodology import METHODOLOGY_VERSION
 from src.core.model_presets import MODEL_PRESETS
 from src.core.run_manifest import build_run_manifest, inspect_run_manifest
 from src.evaluators.quality_judge import CollectResult
@@ -41,6 +42,7 @@ def _pending_with_two_models() -> dict[str, object]:
     alias_map = {"A": "openai/gpt-4o", "B": "anthropic/claude-3.5"}
     return {
         "timestamp": "20260101_000000",
+        "methodology_version": METHODOLOGY_VERSION,
         "models": list(alias_map.values()),
         "pending_judgments": [
             {
@@ -692,6 +694,7 @@ class TestMergePipelineRun:
     ) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["openai/gpt-4o-mini"],
             "pricing": [
                 {
@@ -727,12 +730,57 @@ class TestMergePipelineRun:
 
         assert not result.empty
         assert result.loc[0, "model"] == "openai/gpt-4o-mini"
+        assert result.loc[0, "methodology_version"] == METHODOLOGY_VERSION
         assert list(results_dir.glob("benchmark_*.csv"))
         assert list(results_dir.glob("benchmark_*.json"))
+        manifest = json.loads((results_dir / "run_20260101_000000.manifest.json").read_text(encoding="utf-8"))
+        assert manifest["metadata"]["methodology_version"] == METHODOLOGY_VERSION
+
+    def test_rejects_pending_collected_under_another_methodology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending = {
+            "timestamp": "20260101_000000",
+            "methodology_version": "0.2.0",
+            "models": ["model-a"],
+            "pricing": [],
+            "security": [],
+            "actual_call_costs": [],
+            "deterministic_scores": [],
+            "pending_judgments": [],
+            "quality_collection_errors": [],
+        }
+        pending_path = tmp_path / "pending_20260101_000000.json"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+        monkeypatch.setattr("src.main._RESULTS_DIR", tmp_path / "results")
+
+        with pytest.raises(ValueError, match="methodology version is missing or differs"):
+            MergePipeline().run(pending_path=pending_path)
+
+    def test_rejects_pending_without_a_methodology_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending = {
+            "timestamp": "20260101_000000",
+            "models": ["model-a"],
+            "pricing": [],
+            "security": [],
+            "actual_call_costs": [],
+            "deterministic_scores": [],
+            "pending_judgments": [],
+            "quality_collection_errors": [],
+        }
+        pending_path = tmp_path / "pending_20260101_000000.json"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+        monkeypatch.setattr("src.main._RESULTS_DIR", tmp_path / "results")
+
+        with pytest.raises(ValueError, match="methodology version is missing or differs"):
+            MergePipeline().run(pending_path=pending_path)
 
     def test_exports_quality_collection_diagnostics(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["model-a"],
             "pricing": [],
             "security": [],
@@ -771,6 +819,7 @@ class TestMergePipelineRun:
     ) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["openai/gpt-4o-mini"],
             "pricing": [
                 {

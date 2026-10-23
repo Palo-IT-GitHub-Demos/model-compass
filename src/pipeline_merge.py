@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.cost_analyzer import BUILTIN_WORKLOAD_PROFILES, summarize_actual_call_costs
 from src.evaluators.quality_metrics import summarize_quality_dimensions, summarize_quality_scores
 
@@ -65,6 +66,7 @@ def merge_results(
 
     if quality_suite_id:
         base["quality_suite_id"] = quality_suite_id
+    base["methodology_version"] = METHODOLOGY_VERSION
 
     if actual_call_costs is not None and not actual_call_costs.empty:
         base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")
@@ -80,6 +82,7 @@ def merge_results(
             "rsi_scored_probe_count",
             "rsi_scored_categories",
             "rsi_leak_capped",
+            "security_probe_set_id",
             "probe_count",
             "probe_error_count",
             "probe_error_rate",
@@ -102,6 +105,10 @@ def merge_results(
         base["tco_usd"] = (
             input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens
         ).where(has_pricing, float("inf"))
+        monthly_tokens = profile.monthly_prompt_tokens + profile.monthly_completion_tokens
+        base["cost_usd_per_1m_tokens"] = (
+            base["tco_usd"].replace([float("inf"), -float("inf")], float("nan")) / monthly_tokens * 1_000_000
+        )
 
         quality_col = "avg_quality_score"
         if quality_col in base.columns:

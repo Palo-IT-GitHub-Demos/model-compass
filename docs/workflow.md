@@ -12,12 +12,16 @@ visualisation des résultats.
 | Choisir des modèles avant le run | `make select` | Questions interactives, présélection recommandée, autres modèles compatibles et sauvegarde locale sous `selection` |
 | Ouvrir le dernier rapport partageable | Ouvrir `results/dashboard_<timestamp>.html` | Page d'accueil avec liens vers Qualité, Preuves, Sécurité et Coûts |
 | Explorer les résultats en direct | `make dashboard` | Dashboard Streamlit sur `http://localhost:8501` |
-| Vérifier la configuration sans coût | `make verify SECURITY=extended` | Validation de la clé, des modèles et des sondes, sans complétion |
-| Produire un nouveau rapport | `make collect SECURITY=extended` → `@judge-coordinator` → `make merge` → `make export-html` | Benchmark CSV/JSON et rapport HTML multi-pages |
+| Vérifier la configuration sans coût | `make verify MODELS=selection SECURITY=owasp` | Validation de la clé, des modèles et des sondes, sans complétion |
+| Produire un nouveau rapport (parcours standard) | `make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3` → `@judge-coordinator` → `make merge` → `make export-html` | Benchmark CSV/JSON et rapport HTML multi-pages |
 
 Les fichiers dans `results/` sont horodatés. Après une nouvelle fusion, ouvre
 le fichier `dashboard_<timestamp>.html` dont le timestamp correspond au nouveau
 fichier `benchmark_<timestamp>.csv`.
+
+Chaque page du rapport affiche la version de méthodologie, la suite qualité, le
+catalogue, le jeu de sondes de sécurité, les poids et le profil de charge du
+run. Deux runs ne se comparent que si toutes ces valeurs sont identiques.
 
 ---
 
@@ -100,12 +104,14 @@ flowchart TD
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `OPENROUTER_API_KEY` | Clé API OpenRouter (obligatoire) | — |
-| `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 2 modèles gratuits |
+| `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 3 modèles gratuits intégrés (`.env.example` en définit 2) |
 | `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 pour le free tier | `3` |
 | `MLFLOW_TRACKING_URI` | Base de données de tracking | `sqlite:///mlruns.db` |
 | `SECURITY_MODE` | Jeu de sondes interne : `basic` (5 sondes intégrées), `owasp` (30 sondes alignées sur les 10 catégories OWASP), `extended` (23 sondes mono-tour + 2 scénarios LLM01) | `basic` |
 | `SECURITY_PROBES_PATH` | Fichier de sondes custom (optionnel, prioritaire sur `SECURITY_MODE`) | — |
-| `QUALITY_REPETITIONS` | Répétitions de chaque prompt qualité (1-5) | `1` |
+| `QUALITY_REPETITIONS` | Répétitions de chaque prompt qualité (1-5) ; 3 dans le parcours standard | `1` |
+| `QUALITY_SUITE` | Suite qualité et catalogue : `v2` (34 prompts, 8 cas d'usage) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v2` |
+| `QUALITY_CODE_EXECUTION` | Exécute le code généré des prompts `code_execution` dans le sandbox restreint au lieu de le faire juger | `false` |
 | `WORKLOAD_PROFILE` | Profil de charge pour le TCO | `enterprise_qa` |
 | `MODEL_COMPASS_WEIGHTS` | JSON optionnel pour remplacer les poids qualité/sécurité/coût/performance | Poids du catalogue |
 
@@ -123,25 +129,30 @@ flowchart TD
 | < 10 USD | 20 | 50 |
 | ≥ 10 USD | 20 | 1000 |
 
-Un run sur deux modèles gratuits avec le jeu `basic` (16 prompts qualité × 2
-modèles + 5 sondes de sécurité × 2 modèles = **42 requêtes**) reste sous le
-plafond indicatif de 50/jour d'un compte sans crédit. Avec trois modèles, le
-total passerait à **63 requêtes** ; avec
-`SECURITY_PROBES_PATH=data/prompts/owasp_probes.json` (30 sondes), deux modèles
-atteignent déjà **92 requêtes**.
-→ Acheter au moins 10 USD de crédits avant un run complet sur des modèles
-`:free`, même si l'objectif est de rester à 0 USD de coût réel.
+Avec la suite `v2` par défaut, un run sur deux modèles gratuits avec le jeu
+`basic` (34 prompts qualité × 2 modèles + 5 sondes de sécurité × 2 modèles)
+envoie **78 requêtes**, déjà au-dessus du plafond de 50/jour d'un compte sans
+crédit. Avec trois modèles, le total passe à **117 requêtes** ; avec le profil
+`owasp` (30 sondes), deux modèles atteignent **128 requêtes**, et le parcours
+standard (`QUALITY_REPETITIONS=3`) **264 requêtes**. `make verify` et
+`make collect` affichent un avertissement avant tout appel quand le plafond est
+dépassé.
+→ Acheter au moins 10 USD de crédits avant un run sur des modèles `:free`,
+même si l'objectif est de rester à 0 USD de coût réel.
 
 ```bash
 make dry-run   # Pré-vol $0 — offline, valide la forme de la config/prompts/probes
-make dialogue  # Écran dialogue 2 tours, réponses synthétiques hors ligne
-make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résultat séparé
-make verify    # Pré-vol $0 — réseau réel, valide la clé API + TARGET_MODELS
-make collect SECURITY=extended  # Phase 1 — appels API réels
-# Puis dans Copilot chat : @judge-coordinator   # Phase 2 — jugement aveugle
+make select    # Choix interactif des modèles, sauvegardé sous "selection"
+make verify MODELS=selection SECURITY=owasp      # Pré-vol $0 — clé API, modèles, sondes
+make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3  # Phase 1 — payant
+# Puis dans Copilot chat : @judge-coordinator    # Phase 2 — jugement aveugle
 make merge                       # Phase 3 — résultats fusionnés
 make export-html                 # Rapport HTML navigable
 make inspect-run                 # Vérifie le manifeste et les checksums du dernier merge
+
+# Optionnel, hors parcours standard
+make dialogue  # Écran dialogue 2 tours, réponses synthétiques hors ligne
+make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résultat séparé
 ```
 
 !!! tip "Choisir les modèles et le niveau de sécurité sans éditer .env"
@@ -152,57 +163,57 @@ make inspect-run                 # Vérifie le manifeste et les checksums du der
     make verify MODELS=paid_flagship SECURITY=owasp
     make collect MODELS=paid_flagship SECURITY=owasp
     ```
-        ### Choisir le profil de sécurité
 
-        Les noms `basic`, `owasp` et `extended` désignent des profils de sondes
-        internes, pas des niveaux de conformité ni des suites officielles OWASP.
+### Choisir le profil de sécurité
 
-        - `basic` est adapté à un premier screening rapide.
-        - `owasp` est le profil de référence pour comparer largement les modèles
-            sur les catégories OWASP représentées dans le dépôt.
-        - `extended` approfondit `LLM01` et ajoute des sondes de divulgation
-            ciblant `LLM02`, `LLM03`, `LLM07` et `LLM10`. Deux scénarios LLM01
-            bornés sont également exécutés ; cela ne remplace pas `owasp`.
+Les noms `basic`, `owasp` et `extended` désignent des profils de sondes
+internes, pas des niveaux de conformité ni des suites officielles OWASP.
 
-        Les RSI issus de profils différents ne doivent pas être classés ensemble.
-        Pour une comparaison historique, conserver le même profil, la même version
-        des sondes, le même périmètre `rsi_scored_categories` et la même formule de
-        score.
+- `basic` est adapté à un premier screening rapide.
+- `owasp` est le profil du parcours standard, pour comparer largement les
+  modèles sur les catégories OWASP représentées dans le dépôt.
+- `extended` approfondit `LLM01` et ajoute des sondes de divulgation
+  ciblant `LLM02`, `LLM03`, `LLM07` et `LLM10`. Deux scénarios LLM01
+  bornés sont également exécutés ; cela ne remplace pas `owasp`.
 
-        `make select` pose les questions de type de modèle, de prix, de contexte et
-    de nombre de résultats. Appuyer sur **Entrée** ou saisir `skip` conserve la
-    valeur par défaut. Après les résultats, `0` accepte toute la présélection
-    recommandée ; une liste comme `2,7` permet aussi de choisir des modèles dans
-    la section « autres modèles compatibles ». La sélection est sauvegardée sous
-    `data/intermediate/model_selection.json` et réutilisée avec :
-    ```bash
-    make verify MODELS=selection
-    make collect MODELS=selection
-    ```
-    Le tableau de bord Streamlit reste principalement une surface d'analyse
-    après le run ; son panneau « Plan a new run » est une aide secondaire.
+Les RSI issus de profils différents ne doivent pas être classés ensemble.
+Pour une comparaison historique, conserver le même `security_probe_set_id`
+(affiché en tête du rapport), le même périmètre `rsi_scored_categories` et la
+même version de méthodologie.
 
-### Fondation multi-probe
+### Scénarios multi-tours
 
-Le dépôt prépare un runner réutilisable pour les scénarios de sécurité et, plus
-tard, pour des évaluations qualité conversationnelles. La première implémentation
-est volontairement isolée : elle est testée offline mais n'est pas encore
-appelée par `make collect`. Les profils sécurité actuels restent donc mono-tour
-et leurs scores historiques restent comparables.
-
-Le futur modèle de scénario distinguera :
+Le profil `extended` exécute ses deux scénarios LLM01 avec le runner de
+`src/evaluators/scenario_runner.py`, appelé par `make collect`. L'écran qualité
+dialogue (`make dialogue`, `make dialogue-live`) utilise le même runner mais
+reste séparé du benchmark et des recommandations. Le contrat distingue :
 
 - un **scénario** : une trajectoire complète avec limites et catégorie ;
 - un **tour** : un message utilisateur et la réponse produite ;
 - une **tentative** : un retry technique du même tour ;
 - un **résultat de trajectoire** : refus sûr, fuite confirmée, résultat
-    inconclusif ou scénario interrompu.
+  inconclusif ou scénario interrompu.
 
-Les limites `max_turns` et `max_total_tokens` sont obligatoires dans le contrat
-expérimental. Elles sont nécessaires pour estimer les quotas gratuits, le coût
-des modèles payants et le pire cas avant toute collecte.
+Les limites `max_turns` et `max_total_tokens` sont obligatoires. Elles
+permettent d'estimer les quotas gratuits, le coût des modèles payants et le
+pire cas avant toute collecte. Détails : [Système multiprobe](multiprobe-system.md).
 
 ### Sélection dynamique
+
+`make select` pose les questions de type de modèle, de prix, de contexte et
+de nombre de résultats. Appuyer sur **Entrée** ou saisir `skip` conserve la
+valeur par défaut. Après les résultats, `0` accepte toute la présélection
+recommandée ; une liste comme `2,7` permet aussi de choisir des modèles dans
+la section « autres modèles compatibles ». La sélection est sauvegardée sous
+`data/intermediate/model_selection.json` et réutilisée avec :
+
+```bash
+make verify MODELS=selection
+make collect MODELS=selection
+```
+
+Le tableau de bord Streamlit reste principalement une surface d'analyse
+après le run ; son panneau « Plan a new run » est une aide secondaire.
 
 `make select` lit le catalogue OpenRouter avec `GET /models`, sans lancer de
 complétion. Les options équivalentes en ligne de commande sont :
@@ -277,20 +288,26 @@ Le ledger complet est exporté dans `results/call_costs/`.
     sur vos tâches métier. Utilisez gen-e2-eval pour une évaluation par
     use-case après la recommandation générique.
 
-### Suite de prompts (`data/prompts/quality_prompts.json`)
+### Suite de prompts (`data/prompts/quality_prompts_v2.json`)
 
-16 prompts répartis sur 6 dimensions — toujours les mêmes, versionnés par hash
-(`quality_suite_id`) :
+La suite par défaut `generic-screen-v2` compte 34 prompts répartis sur 8
+dimensions — toujours les mêmes, versionnés par hash (`quality_suite_id`) :
 
 | Dimension | Prompts | Type de vérification |
 |---|---|---|
-| `structured_output` | 3 | JSON exact attendu, `strict_output=true` |
-| `code_correctness` | 1 | Contrat de fonction Python, vérifié sans exécuter le code |
-| `factual_sanity` | 3 | Réponse exacte parmi les acceptées |
-| `elementary_reasoning` | 3 | Calcul, séquence, syllogisme |
-| `instruction_reliability` | 3 | Format exact (séquence, token précis) |
-| `concise_communication` | 3 | Critères explicites fournis aux juges |
+| `structured_output` | 5 | JSON exact attendu |
+| `code_correctness` | 5 | Tests exécutés dans le sandbox si `QUALITY_CODE_EXECUTION=true`, sinon panel de juges |
+| `contextual_accuracy` | 5 | Réponse exacte parmi les acceptées |
+| `elementary_reasoning` | 5 | Réponse exacte parmi les acceptées |
+| `classification_accuracy` | 4 | Réponse exacte parmi les acceptées |
+| `instruction_reliability` | 4 | Réponse exacte (3) et panel de juges (1) |
+| `summarization_quality` | 3 | Panel de juges, critères et ancres explicites |
+| `concise_communication` | 3 | Panel de juges, critères et ancres explicites |
 | `output_format_compliance` | dérivée | Respect littéral du contrat `strict_output`, noté à part du contenu |
+
+La suite historique `generic-screen-v1` (`quality_prompts.json`, 16 prompts,
+6 dimensions) reste disponible avec `QUALITY_SUITE=v1` pour reproduire les
+anciens runs ; voir [Méthodologie qualité](quality-methodology.md).
 
 Un test utilise soit `prompt` (un échange utilisateur), soit `messages` (un
 scénario multi-tours). Un scénario est transmis à OpenRouter comme une unique
@@ -332,7 +349,7 @@ Les trois évaluations sont invoquées **en parallèle** :
 
 | Agent | Modèle | Sortie |
 |---|---|---|
-| `@judge-anthropic` | Claude Sonnet 4.5 | `scores_{ts}_anthropic.json` |
+| `@judge-anthropic` | Claude Sonnet 5 | `scores_{ts}_anthropic.json` |
 | `@judge-openai` | GPT-4o | `scores_{ts}_openai.json` |
 | `@judge-google` | Gemini 2.5 Pro | `scores_{ts}_google.json` |
 
@@ -501,7 +518,8 @@ historiques restent compatibles.
 3. Moyenne les scores multi-juges par `(prompt_id, attempt, model_id)`
 4. Agrège le ledger de coût réel par modèle (`summarize_actual_call_costs`)
 5. Fusionne pricing + sécurité + qualité + coûts réels
-6. Charge le catalogue `data/catalog/model_compass_use_cases.json`
+6. Charge le catalogue de la suite active (`data/catalog/model_compass_use_cases_v2.json`
+    par défaut, `model_compass_use_cases.json` pour la v1)
 7. Applique le seuil qualité de chaque cas d'usage, puis calcule le score
     pondéré Model Compass pour les modèles éligibles
 8. Conserve les égalités et les statuts de preuve manquante sans inventer de
@@ -536,8 +554,20 @@ La moyenne `quality_score` (1–5) sert au seuil d'éligibilité ;
 `quality_score_100 = (quality_score - 1) × 25` (0–100) sert à la somme pondérée
 avec RSI, coût et performance, également sur 0–100. Les poids par défaut
 50/25/20/5 s'appliquent donc effectivement à quatre composantes homogènes.
-Les scores/rangs de recommandation des anciens exports (qui utilisaient 1–5
-pour la qualité) doivent être recalculés avant toute comparaison historique.
+Le coût est le prix moyen pondéré par le profil de charge, en dollars par
+million de tokens (`cost_usd_per_1m_tokens`), et la performance est la latence
+p95 en millisecondes (`actual_latency_p95_ms`). Les deux utilisent des bornes
+logarithmiques fixes définies dans le catalogue actif : coût 0,10–100 USD/M,
+latence 1–30 secondes. Le score est 100 à la borne « best » et 0 à la borne
+« worst » ; les valeurs hors plage sont plafonnées. Un coût nul (modèle gratuit)
+reçoit 100. La note ne change pas quand on ajoute ou retire un modèle du run.
+Sans latence p95, la preuve de performance est manquante — le débit tokens/s
+n'est pas utilisé comme substitut. Les catalogues v1.1 et v2.1 enregistrent
+ces bornes ; leurs scores ne sont comparables qu'à version de méthode,
+catalogue, poids et profil de charge identiques.
+
+Les scores/rangs des exports antérieurs à cette formule fixe ne sont pas
+directement comparables et doivent être recalculés à partir des preuves brutes.
 
 Le rapport ajoute `quality_score_ci95_low/high`,
 `quality_ci95_overlaps_leader`, `recommendation_sensitivity_rank_min/max`
@@ -585,15 +615,20 @@ Chaque run enregistre :
 make dashboard   # → http://localhost:8501
 ```
 
-Le dashboard Streamlit propose 5 vues :
+Le dashboard Streamlit propose 8 vues, sous une ligne qui rappelle la version
+de méthodologie, la suite, le catalogue, le jeu de sondes, les poids et le
+profil de charge du run :
 
 | Onglet | Contenu |
 |---|---|
 | **Overview** | Scatter Qualité × Coût avec frontière de Pareto, code couleur sécurité |
+| **Model Compass** | Recommandations par cas d'usage : seuil, statut, rang et composantes |
 | **Quality screen** | Couverture par dimension, stabilité, éligibilité CER, erreurs de collecte |
-| **Security** | Heatmap OWASP (vulnérabilité par catégorie), RSI, ZDR |
-| **Cost Intelligence** | TCO projeté, coût réel du run, CER, quadrant Coût × Sécurité |
 | **Prompts & responses** | Réponse de chaque modèle, état de sonde et justification de notation |
+| **Security** | Heatmap OWASP (vulnérabilité par catégorie), RSI, ZDR |
+| **Cost intelligence** | TCO projeté, coût réel du run, CER, quadrant Coût × Sécurité |
+| **Performance** | Latences p50/p95 et tokens par seconde |
+| **Raw data** | Toutes les colonnes du benchmark |
 
 La frontière de Pareto est indiquée par une ligne pointillée et des marqueurs
 diamant. Elle peut ne contenir qu'un seul point : c'est normal quand un seul
@@ -606,9 +641,10 @@ make export-html
 ```
 
 Cette commande génère `results/dashboard_<timestamp>.html`, la page d'entrée,
-et `results/dashboard_<timestamp>/` avec `index.html`, `quality.html`,
-`evidence.html`, `security.html` et `cost.html`. Ouvrir la page d'entrée dans
-un navigateur suffit ; aucun serveur n'est nécessaire.
+et `results/dashboard_<timestamp>/` avec `index.html`, `recommendations.html`,
+`quality.html`, `evidence.html`, `security.html`, `cost.html` et
+`performance.html`. Ouvrir la page d'entrée dans un navigateur suffit ; aucun
+serveur n'est nécessaire.
 
 ---
 
@@ -673,18 +709,16 @@ make verify        # réseau réel — GET /key + GET /models, valide la clé AP
                    # chaque entrée TARGET_MODELS contre le catalogue live (aucune completion)
 
 # Pipeline standard
-make collect
+make select
+make verify MODELS=selection SECURITY=owasp
+make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3
 # → Copilot chat : @judge-coordinator
 make merge
+make export-html
 
-# Sondes OWASP complètes
-make collect SECURITY=owasp
-
-# Mesure de stabilité (2 passages par prompt)
-QUALITY_REPETITIONS=2 make collect
-
-# Profil de charge différent pour le TCO
-WORKLOAD_PROFILE=code_assistant make merge
+# Variantes (non comparables au parcours standard)
+make collect                                  # smoke test : sondes basic, 1 passage
+WORKLOAD_PROFILE=code_assistant make merge    # profil de charge différent pour le TCO
 
 # Export gen-e2-eval
 make export-gen-e2

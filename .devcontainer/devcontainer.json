@@ -1,11 +1,11 @@
 {
-  "name": "[PROJECT NAME] — Dev Container",
+  "name": "Model Compass — Dev Container",
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "forwardPorts": [8000, 3000],
-  "postCreateCommand": "pip install -e '.[dev]' && pip install 'git+https://github.com/Palo-IT-GitHub-Demos/lab-registry-mcp@v0.2.0' && npm install && pre-commit install",
+  "forwardPorts": [8501],
+  "postCreateCommand": "pip install -e '.[dev,docs]' && pip install 'git+https://github.com/Palo-IT-GitHub-Demos/lab-registry-mcp@v0.2.0' && python -m pre_commit install && python -m pre_commit install --hook-type commit-msg",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -13,18 +13,13 @@
         "ms-python.vscode-pylance",
         "charliermarsh.ruff",
         "github.copilot",
-        "github.copilot-chat",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
+        "github.copilot-chat"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
         "editor.formatOnSave": true,
         "[python]": {
           "editor.defaultFormatter": "charliermarsh.ruff"
-        },
-        "[typescript]": {
-          "editor.defaultFormatter": "esbenp.prettier-vscode"
         }
       }
     }

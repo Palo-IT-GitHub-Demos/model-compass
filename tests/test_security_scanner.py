@@ -26,6 +26,7 @@ from src.evaluators.security_scanner import (
     compute_rsi,
     has_sequential_probes,
     probe_count,
+    probe_set_id,
     probe_worst_case_count,
 )
 
@@ -113,6 +114,21 @@ class TestProbeCount:
         probes_path.write_text(json.dumps([{"name": "scenario", "turns": ["one", "two", "three"]}]))
 
         assert probe_count(probes_path) == 3
+
+
+class TestProbeSetId:
+    def test_built_in_set_is_labelled_basic(self) -> None:
+        assert probe_set_id([{"name": "a", "message": "x"}], None).startswith("basic-")
+
+    def test_file_label_drops_the_probes_suffix(self) -> None:
+        assert probe_set_id([{"name": "a", "message": "x"}], Path("owasp_probes.json")).startswith("owasp-")
+
+    def test_any_probe_change_changes_the_id(self) -> None:
+        original = [{"name": "a", "message": "x"}]
+        edited = [{"name": "a", "message": "y"}]
+
+        assert probe_set_id(original, None) == probe_set_id([{"message": "x", "name": "a"}], None)
+        assert probe_set_id(original, None) != probe_set_id(edited, None)
 
 
 class TestProbeWorstCaseCount:
@@ -235,6 +251,7 @@ class TestRunFullScan:
         result = scanner.run_full_scan(models=["model-a"])
 
         assert 0.0 <= float(result["rsi"].iloc[0]) <= 100.0
+        assert result["security_probe_set_id"].iloc[0].startswith("basic-")
         details = json.loads(result["probe_details"].iloc[0])
         assert details, "probe_details must round-trip through json.loads"
         assert all({"category_id", "category_name", "leaked"}.issubset(item) for item in details)

@@ -10,8 +10,9 @@ V2 additions
 Two test categories
 -------------------
 1. **Prompt Leakage**: Injection probes attempt to extract the system prompt.
-   A scan is flagged as a leak if any fragment of the system prompt
-   (≥ 10 consecutive characters) appears in the model's response.
+   A probe is flagged as a leak when the random canary token appended to the
+   system prompt appears in the model's response (verbatim or fully
+   base64-encoded).
 
 2. **Zero Data Retention (ZDR)**: Reads the ``per_request_limits`` field in
    OpenRouter's model metadata to determine whether the provider offers a
@@ -21,6 +22,7 @@ Two test categories
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import secrets
@@ -327,6 +329,13 @@ def probe_count(probes_path: Path | None) -> int:
     return sum(_count(probe) for probe in probes)
 
 
+def probe_set_id(probes: list[dict[str, object]], probes_path: Path | None) -> str:
+    """Return a content-addressed ID that ties security results to an exact probe set."""
+    digest = hashlib.sha256(json.dumps(probes, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+    label = probes_path.stem.removesuffix("_probes") if probes_path else "basic"
+    return f"{label}-{digest}"
+
+
 def probe_worst_case_count(probes_path: Path | None, max_retries: int) -> int:
     """Return the theoretical ceiling of network calls if every request retries.
 
@@ -383,7 +392,7 @@ def _group_by_category(
     return scores
 
 
-def _build_scan_rows(scan: ScanResult, probes: list[dict[str, Any]]) -> dict[str, object]:
+def _build_scan_rows(scan: ScanResult, probes: list[dict[str, Any]], security_probe_set_id: str) -> dict[str, object]:
     """Build a summary row, attaching OWASP category attribution and RSI.
 
     ``probes`` is the probe config (with ``category_id``/``category_name``)
@@ -411,6 +420,7 @@ def _build_scan_rows(scan: ScanResult, probes: list[dict[str, Any]]) -> dict[str
         "rsi_scored_probe_count": sum(c.probes_run for c in scored_categories),
         "rsi_scored_categories": ",".join(sorted(c.category_id for c in scored_categories)),
         "rsi_leak_capped": any(c.leaks_detected > 0 for c in scored_categories),
+        "security_probe_set_id": security_probe_set_id,
         # json.dumps (not str()) — downstream parsers (dashboard, gen-e2 export)
         # detect this as JSON via a "[{" prefix check and would silently fail
         # to parse a Python repr (single quotes, True/False).
@@ -464,6 +474,7 @@ class SecurityScanner:
     ) -> None:
         self._client = client
         self._probes = _load_probes(probes_path)
+        self._probe_set_id = probe_set_id(self._probes, probes_path)
 
     def scan_prompt_leakage(
         self,
@@ -540,7 +551,7 @@ class SecurityScanner:
             logger.info("Scanning model '%s' …", model)
             scan = self.scan_prompt_leakage(model)
             scan.zero_data_retention = _check_zdr(model, empty_df)
-            rows.append(_build_scan_rows(scan, self._probes))
+            rows.append(_build_scan_rows(scan, self._probes, self._probe_set_id))
         return pd.DataFrame(rows)
 
 
@@ -557,6 +568,7 @@ class AsyncSecurityScanner:
     ) -> None:
         self._client = client
         self._probes = _load_probes(probes_path)
+        self._probe_set_id = probe_set_id(self._probes, probes_path)
 
     async def scan_prompt_leakage(
         self,
@@ -672,7 +684,7 @@ class AsyncSecurityScanner:
             logger.info("Scanning model '%s' …", model)
             scan = await self.scan_prompt_leakage(model)
             scan.zero_data_retention = _check_zdr(model, empty_df)
-            return _build_scan_rows(scan, self._probes)
+            return _build_scan_rows(scan, self._probes, self._probe_set_id)
 
         rows = await asyncio.gather(*[_scan(m) for m in models])
         return pd.DataFrame(list(rows))

@@ -11,8 +11,8 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 
 ## Architecture & Conventions
 
-- Core pipeline code lives in `src/`; the versioned generic use-case catalog is
-  `data/catalog/model_compass_use_cases.json`; Streamlit and shared presentation helpers
+- Core pipeline code lives in `src/`; the default v2 use-case catalog is
+  `data/catalog/model_compass_use_cases_v2.json` (v1 stays available as a legacy baseline); Streamlit and shared presentation helpers
   live in `dashboard/`; operational scripts live in `scripts/`
 - `src/main.py` remains the CLI and compatibility façade; `src/pipeline_cli.py`
   owns parsing/overrides, `src/pipeline_collect.py` concurrent collection and
@@ -21,6 +21,11 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   The façade passes runtime paths and patchable stages explicitly to these modules
 - The production workflow is split into three phases:
   `make collect` → `@judge-coordinator` → `make merge`
+- The README Quick Start is the single standard evaluation path
+  (`select` → `verify` → `collect SECURITY=owasp QUALITY_REPETITIONS=3` →
+  `@judge-coordinator` → `merge` → `export-html`); keep `docs/workflow.md`
+  and `docs/index.md` aligned with it and put every other option under
+  Advanced
 - `make dry-run` is offline; `make verify` validates the OpenRouter key and
   model catalog without chat-completion cost
 - `make export-html` builds a static dashboard; `make dashboard` launches the
@@ -35,7 +40,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   remain in every recommendation artifact
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
-- Experimental multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; keep them separate from legacy single-turn scoring until the security integration and comparability metadata are complete
+- Multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; only the `extended` security profile and the separate dialogue screen use them, so `basic` and `owasp` stay single-turn
 - The optional two-turn quality screen lives in `src/evaluators/dialogue_quality.py`
   with its versioned catalog under `data/prompts/`; `make dialogue` runs offline
   and `make dialogue-live` is paid. Its sidecars stay separate from benchmark
@@ -43,6 +48,15 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 
 ## Quality Evidence Rules
 
+- `METHODOLOGY_VERSION` (`src/core/methodology.py`) is the release that last
+  changed the scoring rules. Set it to the upcoming release number in the same
+  change as anything that can alter the scores, eligibility or ranks of an
+  identical run, and record it in `CHANGELOG.md`. Merge refuses a pending file
+  from another methodology version
+- Runs are comparable only when `methodology_version`, `quality_suite_id`,
+  `catalog_version`, `security_probe_set_id`, decision weights and workload
+  profile all match; both dashboards show them through
+  `dashboard.data_prep.run_provenance`
 - Preserve raw benchmark results. Post-run verification is sidecar evidence and
   must never rewrite the original response or score
 - A wrong model response remains a quality failure. Only technical failures
@@ -83,6 +97,11 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Recommendation ranking and weight sensitivity use `quality_score_100` (0–100),
   not the 1–5 `quality_score` used for eligibility; historical ranks calculated
   on the mixed scale are not comparable without recomputation
+- Cost and performance recommendation components use the fixed logarithmic
+  anchors in the versioned catalog (`cost_usd_per_1m_tokens` and
+  `actual_latency_p95_ms`), never run-relative min-max normalization. Cost is
+  blended by the workload profile; missing p95 latency is missing evidence, not
+  a reason to substitute throughput
 - Every model remains visible for every catalog use case. Equal recommendation
   scores keep the same dense rank; do not add arbitrary provider/model-name
   tie-breakers
@@ -140,7 +159,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Keep Streamlit-independent transformations in `dashboard/data_prep.py` so
   live and static dashboards use the same logic
 - Use Python 3.11+ typing and vectorized pandas operations
-- Use Conventional Commits as defined in `.commitlintrc.json`
+- Use Conventional Commits; the local `commit-msg` pre-commit hook validates the header
 
 ## Validation
 

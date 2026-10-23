@@ -16,6 +16,7 @@ from dashboard.data_prep import (
     quality_dimension_long_frame,
     quality_dimension_table,
     quality_tier,
+    run_provenance,
     security_category_table,
     security_long_frame,
     security_probe_details_frame,
@@ -254,6 +255,39 @@ class TestLoadRecommendations:
         benchmark_path = tmp_path / "benchmark_20260101_000000.csv"
 
         assert load_recommendations(benchmark_path).empty
+
+
+class TestRunProvenance:
+    def test_reports_recorded_identifiers_and_effective_weights(self) -> None:
+        benchmark = pd.DataFrame(
+            {
+                "model": ["a", "b"],
+                "methodology_version": ["0.3.0"] * 2,
+                "quality_suite_id": ["generic-screen-v2-abc"] * 2,
+                "security_probe_set_id": ["owasp-def"] * 2,
+                "workload_profile": ["enterprise_qa"] * 2,
+            }
+        )
+        weights = json.dumps({"cost": 0.1, "performance": 0.1, "quality": 0.7, "security": 0.1})
+        recommendations = pd.DataFrame(
+            {"catalog_version": ["model-compass-use-cases-v2.1"], "recommendation_weights": [weights]}
+        )
+
+        provenance = run_provenance(benchmark, recommendations)
+
+        assert provenance == {
+            "Methodology": "0.3.0",
+            "Quality suite": "generic-screen-v2-abc",
+            "Use-case catalog": "model-compass-use-cases-v2.1",
+            "Security probe set": "owasp-def",
+            "Decision weights": "quality 70% · security 10% · cost 10% · performance 10%",
+            "Workload profile": "enterprise_qa",
+        }
+
+    def test_legacy_run_is_explicitly_not_recorded(self) -> None:
+        provenance = run_provenance(pd.DataFrame({"model": ["a"]}), pd.DataFrame())
+
+        assert set(provenance.values()) == {"not recorded"}
 
 
 class TestParseJudgeVerdicts:

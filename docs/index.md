@@ -9,12 +9,30 @@ différents appels d'offres.
 Le [scope détaillé](model-compass-scope.md) formalise les décisions prises, les
 limites et les seuils provisoires du catalogue initial.
 
+## Par où commencer
+
+Le parcours standard tient en sept étapes, détaillées dans le Quick Start du
+`README.md` et dans le [workflow](workflow.md) :
+
+```bash
+make select                                                         # choix des modèles, $0
+make verify MODELS=selection SECURITY=owasp                         # clé et modèles, $0
+make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3  # seule étape payante
+# Copilot Chat : @judge-coordinator                                 # jugement aveugle
+make merge && make export-html                                      # résultats et rapport
+```
+
+Chaque rapport affiche sa version de méthodologie (la release qui a fixé les
+règles de calcul, actuellement `0.3.0`), sa suite qualité, son catalogue, son
+jeu de sondes, ses poids et son profil de charge. Deux runs ne se comparent que
+si toutes ces valeurs sont identiques.
+
 ## Quatre dimensions de mesure
 
 | Axe | Ce que ça mesure | Sortie clé |
 | --- | --- | --- |
-| **Qualité** | 16 prompts versionnés, 6 dimensions, score macro-moyen 1-5 + taux de couverture + stabilité optionnelle | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
-| **Sécurité** | 30 sondes [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
+| **Qualité** | 34 prompts versionnés (suite `generic-screen-v2`), 8 dimensions + conformité de format, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 passages | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
+| **Sécurité** | Profils de sondes internes `basic` (5), `owasp` (30, parcours standard) et `extended` (23 + 2 scénarios) alignés sur l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
 | **Coût** | Tarif OpenRouter × profil de charge → TCO mensuel projeté + coût réel par appel (`response.usage.cost`) | `tco_usd`, `actual_cost_credits`, `cer` |
 | **Performance** | Latence P50/P95 et tokens/seconde mesurés après acquisition du semaphore | `actual_latency_p50_ms`, `actual_latency_p95_ms`, `actual_tokens_per_second` |
 | **Recommandation** | Catalogue versionné, seuil qualité par cas d'usage et score pondéré configurable | `results/recommendations/` |
@@ -41,8 +59,7 @@ depuis la vérification gratuite jusqu'au rapport final.
 - **Comprendre le code** : consulter la [référence API Python](reference/api.md),
   générée directement depuis les docstrings du projet.
 - **Comprendre les décisions** : lire les [Architecture Decision Records](adr/0001-architecture-initiale.md).
-- **Contribuer** : suivre le guide de contribution à la racine du dépôt
-  (`CONTRIBUTING.md`).
+- **Contribuer** : suivre le [guide de contribution](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/.github/CONTRIBUTING.md).
 
 ## Positionnement par rapport à gen-e2-eval
 
@@ -97,7 +114,7 @@ dans `gen-e2-eval` sur les tâches métier concernées.
 | Méthodologie qualité | Provenance des prompts, couverture, validation, comparaison `gen-e2-eval` | `docs/quality-methodology.md` |
 | Référence API | Classes, fonctions et signatures publiques | Docstrings dans `src/` et `dashboard/` |
 | ADR | Décisions d'architecture et compromis | `docs/adr/` |
-| Plans | Travaux planifiés ou en cours | `docs/plans/` |
+| Historique du projet | Briefs, audit, plans et recherche ayant mené à la méthodologie actuelle ; ne décrivent pas forcément l'état courant | `docs/plans/`, `docs/implementation-plans/`, `docs/research/` |
 
 ## Documentation vivante
 

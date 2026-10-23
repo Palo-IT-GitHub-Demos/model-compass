@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.quality_metrics import bootstrap_quality_interval
 
 DEFAULT_USE_CASE_CATALOG_PATH: Final[Path] = Path("data/catalog/model_compass_use_cases.json")
@@ -55,6 +56,31 @@ class UseCaseDefinition(BaseModel):
     minimum_quality_score: float = Field(ge=_QUALITY_MINIMUM, le=_QUALITY_MAXIMUM)
 
 
+class LogScaleBounds(BaseModel):
+    """Fixed lower-is-better score anchors for a logarithmic component."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    best: float = Field(gt=0.0)
+    worst: float = Field(gt=0.0)
+
+    @model_validator(mode="after")
+    def validate_order(self) -> LogScaleBounds:
+        """Require a positive, increasing range for the log transform."""
+        if self.best >= self.worst:
+            raise ValueError("Log scale bounds require best < worst.")
+        return self
+
+
+class RecommendationScales(BaseModel):
+    """Fixed normalization anchors stored with the use-case catalog."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cost_usd_per_1m_tokens: LogScaleBounds
+    actual_latency_p95_ms: LogScaleBounds
+
+
 class UseCaseCatalog(BaseModel):
     """Validated Model Compass use-case catalog."""
 
@@ -63,6 +89,7 @@ class UseCaseCatalog(BaseModel):
     catalog_version: str = Field(min_length=1)
     description: str = Field(min_length=1)
     weights: RecommendationWeights
+    score_scales: RecommendationScales
     use_cases: list[UseCaseDefinition] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -111,30 +138,28 @@ def _normalize_quality_score(series: pd.Series) -> pd.Series:
     return ((pd.to_numeric(series, errors="coerce") - _QUALITY_MINIMUM) / 4.0 * 100.0).clip(0.0, 100.0)
 
 
-def _normalize_higher_is_better(series: pd.Series) -> pd.Series:
-    """Normalize a higher-is-better metric to 0-100, preserving missing values."""
+def _normalize_lower_log_score(
+    series: pd.Series,
+    bounds: LogScaleBounds,
+    *,
+    zero_is_best: bool = False,
+) -> pd.Series:
+    """Map a non-negative lower-is-better metric to fixed 0-100 log anchors."""
     values = pd.to_numeric(series, errors="coerce")
     finite = values.where(values.map(math.isfinite))
-    if finite.notna().sum() == 0:
-        return pd.Series(float("nan"), index=series.index, dtype="float64")
-    minimum = float(finite.min())
-    maximum = float(finite.max())
-    if math.isclose(minimum, maximum):
-        return finite.notna().astype(float) * 100.0
-    return ((finite - minimum) / (maximum - minimum) * 100.0).clip(0.0, 100.0)
-
-
-def _normalize_lower_is_better(series: pd.Series) -> pd.Series:
-    """Normalize a lower-is-better metric to 0-100, preserving missing values."""
-    values = pd.to_numeric(series, errors="coerce")
-    finite = values.where(values.map(math.isfinite))
-    if finite.notna().sum() == 0:
-        return pd.Series(float("nan"), index=series.index, dtype="float64")
-    minimum = float(finite.min())
-    maximum = float(finite.max())
-    if math.isclose(minimum, maximum):
-        return finite.notna().astype(float) * 100.0
-    return ((maximum - finite) / (maximum - minimum) * 100.0).clip(0.0, 100.0)
+    valid = finite.ge(0.0) if zero_is_best else finite.gt(0.0)
+    positive = finite.where(valid & finite.gt(0.0))
+    scores = pd.Series(float("nan"), index=series.index, dtype="float64")
+    scores.loc[positive.notna()] = (
+        100.0
+        * (math.log10(bounds.worst) - np.log10(positive.loc[positive.notna()]))
+        / (math.log10(bounds.worst) - math.log10(bounds.best))
+    )
+    scores.loc[valid & finite.le(bounds.best)] = 100.0
+    scores.loc[valid & finite.ge(bounds.worst)] = 0.0
+    if zero_is_best:
+        scores.loc[valid & finite.eq(0.0)] = 100.0
+    return scores.clip(0.0, 100.0)
 
 
 def _quality_by_use_case(
@@ -193,14 +218,11 @@ def _numeric_column(frame: pd.DataFrame, column: str) -> pd.Series:
     return pd.to_numeric(frame[column], errors="coerce")
 
 
-def _performance_component(frame: pd.DataFrame) -> tuple[pd.Series, str]:
-    """Return the normalized performance component and the metric used."""
+def _performance_component(frame: pd.DataFrame, bounds: LogScaleBounds) -> tuple[pd.Series, str]:
+    """Return the fixed-scale p95 latency component and its evidence metric."""
     latency = _numeric_column(frame, "actual_latency_p95_ms")
     if latency.notna().any():
-        return _normalize_lower_is_better(latency), "actual_latency_p95_ms"
-    throughput = _numeric_column(frame, "actual_tokens_per_second")
-    if throughput.notna().any():
-        return _normalize_higher_is_better(throughput), "actual_tokens_per_second"
+        return _normalize_lower_log_score(latency, bounds), "actual_latency_p95_ms"
     return pd.Series(float("nan"), index=frame.index, dtype="float64"), "unavailable"
 
 
@@ -279,11 +301,18 @@ def build_recommendation_report(
 
     model_frame = benchmark_df[["model"]].drop_duplicates().reset_index(drop=True)
     security_score = _numeric_column(benchmark_df, "rsi").groupby(benchmark_df["model"]).first()
-    cost_score = _normalize_lower_is_better(_numeric_column(benchmark_df, "tco_usd"))
-    performance_score, performance_basis = _performance_component(benchmark_df)
+    cost_score = _normalize_lower_log_score(
+        _numeric_column(benchmark_df, "cost_usd_per_1m_tokens"),
+        catalog.score_scales.cost_usd_per_1m_tokens,
+        zero_is_best=True,
+    )
+    performance_score, performance_basis = _performance_component(
+        benchmark_df, catalog.score_scales.actual_latency_p95_ms
+    )
     metric_frame = benchmark_df[["model"]].copy()
     metric_frame["security_score"] = metric_frame["model"].map(security_score)
     metric_frame["cost_score"] = cost_score.to_numpy()
+    metric_frame["cost_usd_per_1m_tokens"] = _numeric_column(benchmark_df, "cost_usd_per_1m_tokens").to_numpy()
     metric_frame["performance_score"] = performance_score.to_numpy()
     metric_frame = metric_frame.drop_duplicates("model")
 
@@ -313,6 +342,7 @@ def build_recommendation_report(
         report["use_case_name"] = use_case.name
         report["use_case_description"] = use_case.description
         report["catalog_version"] = catalog.catalog_version
+        report["methodology_version"] = METHODOLOGY_VERSION
         report["prompt_ids"] = json.dumps(use_case.prompt_ids)
         report["quality_threshold"] = use_case.minimum_quality_score
         report["quality_score_100"] = _normalize_quality_score(report["quality_score"])
@@ -387,6 +417,7 @@ def build_recommendation_report(
         "use_case_name",
         "use_case_description",
         "catalog_version",
+        "methodology_version",
         "prompt_ids",
         "model",
         "quality_score",
@@ -400,6 +431,7 @@ def build_recommendation_report(
         "quality_eligible",
         "security_score",
         "cost_score",
+        "cost_usd_per_1m_tokens",
         "performance_score",
         "performance_basis",
         "recommendation_score",

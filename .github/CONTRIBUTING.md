@@ -8,8 +8,8 @@ cd model-compass
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,docs]"
-npm install
-pre-commit install
+python -m pre_commit install
+python -m pre_commit install --hook-type commit-msg
 ```
 
 Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY` before running any
@@ -37,7 +37,7 @@ docs: update README quick start
 ```
 
 Header ≤ 72 characters. No trailing period. Lower-case type and subject.
-Enforced by `commitlint` — runs on `git commit` via pre-commit.
+The local `commit-msg` pre-commit hook validates each commit.
 
 ## Pull requests
 
@@ -50,7 +50,7 @@ Enforced by `commitlint` — runs on `git commit` via pre-commit.
 ## Running checks locally
 
 ```bash
-make test          # pytest (76 tests, API calls mocked)
+make test          # pytest (API calls mocked)
 make lint          # ruff check
 make fmt           # ruff format
 mypy src/ --strict # type-check
@@ -61,18 +61,18 @@ make docs-build    # build the documentation site strictly
 
 - Put user guides, ADRs, and plans in `docs/` using descriptive headings.
 - Keep docstrings accurate for every public Python class or function; the API
- reference is generated from them during the MkDocs build.
+  reference is generated from them during the MkDocs build.
 - Do not duplicate API signatures in prose. Link to the API reference instead.
 - Run `make docs-build` when changing `docs/`, `src/`, `dashboard/`, or
- `mkdocs.yml`. The documentation workflow runs this same validation on pull
- requests and publishes `main` to GitHub Pages.
+  `mkdocs.yml`. The documentation workflow runs this same validation on pull
+  requests and publishes `main` to GitHub Pages.
 
 ## Adding a new evaluator
 
 1. Create `src/evaluators/<name>.py` with a sync class and an `Async` variant.
 2. Both must accept the matching client (`OpenRouterClient` / `AsyncOpenRouterClient`).
 3. Return a `pd.DataFrame` from `run_full_scan` / `run_dataset`.
-4. Register the async variant in `AsyncPipeline` in `src/main.py`.
+4. Register the async variant in `src/main.py`'s collection stages.
 5. Add tests in `tests/test_<name>.py` using `unittest.mock.AsyncMock`.
 
 ## Adding security probes
@@ -87,12 +87,13 @@ OWASP categories, `extended` — `data/prompts/extended_probes.json`, advanced
 LLM01 red-team probes), prefer the higher-level `SECURITY_MODE`
 env var or the `--security`/`SECURITY=` override instead of spelling out a
 path — see `make models` and `src/core/model_presets.py` for the equivalent
-on the model-selection side (`TARGET_MODELS`/`--models`/`MODELS=`).
+model-selection options (`TARGET_MODELS`/`--models`/`MODELS=`).
 
 ## Pre-commit hooks
 
 Hooks run automatically on `git commit`. To run manually:
 
 ```bash
-pre-commit run --all-files
+python -m pre_commit run --all-files
+python scripts/check_commit_message.py .git/COMMIT_EDITMSG
 ```

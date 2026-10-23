@@ -5,7 +5,7 @@ Model Compass is a decision-support pipeline for evaluating OpenRouter LLMs acro
 quality, security, model-only cost and performance, then recommending models by
 generic enterprise use case. Final client acceptance remains human and domain-specific.
 This repository is built from the **gen-e2 AI-ready project template**.
-Stack: multi-language (Python + TypeScript).
+Stack: Python (pipeline, dashboards, tests, tooling).
 
 ## AI Asset Policy
 - Skills → `.github/skills/<name>/SKILL.md`
@@ -32,7 +32,8 @@ Every commit message **must** follow [Conventional Commits](https://www.conventi
 
 Allowed types: `feat` · `fix` · `chore` · `docs` · `test` · `refactor` · `perf` · `ci` · `build` · `revert`
 
-Rules enforced by `.commitlintrc.json`:
+Rules enforced by the local `commit-msg` hook in `.pre-commit-config.yaml`
+(`scripts/check_commit_message.py`):
 - Type and subject must be lower-case
 - Header ≤ 72 characters
 - No trailing period on subject line

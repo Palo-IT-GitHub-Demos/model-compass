@@ -15,18 +15,21 @@ question :
 
 > « Quels modèles franchissent le seuil de qualité d'un cas d'usage générique ? »
 
-Le catalogue qui relie les prompts aux cas d'usage et fixe les seuils se trouve
-dans `data/catalog/model_compass_use_cases.json`.
+Le catalogue qui relie les prompts aux cas d'usage et fixe les seuils est celui
+de la suite active : `data/catalog/model_compass_use_cases_v2.json` pour la v2
+(défaut), `data/catalog/model_compass_use_cases.json` pour la v1.
 Les seuils de cette version sont provisoires : ils doivent être recalibrés après
 la définition des critères de réussite et de la difficulté de chaque tâche.
 
 ## 2. Origine et mode de correction des prompts
 
-Les 16 prompts sont **rédigés en interne par l'équipe du projet** ; ils ne
+Les prompts des deux suites (34 en v2, 16 en v1 — voir § 3 bis pour la v2) sont
+**rédigés en interne par l'équipe du projet** ; ils ne
 proviennent pas d'un jeu de données de benchmark public. Chacun est rattaché à
 exactement une dimension (`quality_dimension`) et une catégorie (`category`)
 définies dans
-[data/prompts/quality_prompts.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts.json).
+[data/prompts/quality_prompts_v2.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts_v2.json)
+et [data/prompts/quality_prompts.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts.json).
 
 La catégorie détermine le mode de correction :
 
@@ -496,10 +499,17 @@ w_q Q_{100} + w_s S_{100} + w_c C_{100} + w_p P_{100},
 $$
 
 Par défaut, $w_q=0{,}50$, $w_s=0{,}25$, $w_c=0{,}20$ et $w_p=0{,}05$.
-Le coût et la performance sont normalisés sur le **cohort de modèles du run** ;
-la comparaison du score composite suppose donc le même périmètre et les mêmes
-poids. La sensibilité aux variations de poids utilise ces mêmes composantes
-0–100 ; les variations du seuil qualité continuent d'agir sur l'échelle 1–5.
+Le coût utilise le prix moyen pondéré par le profil de charge, exprimé en
+dollars par million de tokens ; la performance utilise la latence p95. Chaque
+catalogue contient leurs bornes logarithmiques fixes (v1.1 et v2.1) : coût
+0,10–100 USD/M et latence 1–30 secondes. Le score est 100 au seuil meilleur,
+0 au seuil moins bon, avec plafonnement hors plage ; un modèle gratuit obtient
+100 pour le coût. L'ajout ou le retrait d'un modèle ne change donc pas le score
+des modèles déjà présents. Sans latence p95, la preuve de performance est
+manquante et aucun débit tokens/s ne la remplace. Les autres dimensions sont
+ensuite combinées selon leurs poids enregistrés. La sensibilité aux poids
+utilise ces mêmes composantes 0–100 ; les variations du seuil qualité continuent
+d'agir sur l'échelle 1–5.
 
 Les artefacts générés avant cette correction utilisaient par erreur la note
 qualité brute sur 1–5 dans la somme pondérée : leurs `recommendation_score`,

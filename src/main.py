@@ -28,6 +28,7 @@ from src.api.openrouter_client import (
     OpenRouterError,
 )
 from src.core.config import Settings, get_settings
+from src.core.methodology import METHODOLOGY_VERSION
 from src.core.model_presets import format_model_presets
 from src.core.model_selector import (
     catalog_entries,
@@ -208,7 +209,8 @@ def _resolve_security_probes_path(settings: Settings) -> Path | None:
     never have to remember/type a file path: "basic" (built-in), "owasp"
     (30 internally authored probes aligned with the OWASP GenAI LLM Top 10 2026
     categories — required for the dashboard's RSI/heatmap), or "extended"
-    (advanced LLM01 red-team probes, including bounded multi-turn scenarios).
+    (23 single-turn probes across LLM01/02/03/07/10 plus 2 bounded LLM01
+    multi-turn scenarios).
     """
     if settings.security_probes_path:
         return Path(settings.security_probes_path)
@@ -260,7 +262,7 @@ class Pipeline:
     def _run_quality_stage(self, models: list[str]) -> pd.DataFrame:
         # V1 sync pipeline — quality scoring via LLM judge removed.
         # Use CollectPipeline + a Copilot judge agent + MergePipeline instead.
-        logger.info("[quality] Skipping — use Copilot judge agents " "(make collect / make judge / make merge).")
+        logger.info("[quality] Skipping — use Copilot judge agents (make collect / make judge / make merge).")
         return pd.DataFrame()
 
     def _run_security_stage(self, models: list[str], pricing_df: pd.DataFrame) -> pd.DataFrame:
@@ -796,7 +798,7 @@ class MergePipeline:
     ) -> pd.DataFrame:
         pending_path = pending_path or _latest_file(_INTERMEDIATE_DIR, "pending_*.json")
         if pending_path is None:
-            raise FileNotFoundError("No pending_*.json found in data/intermediate/. " "Run 'make collect' first.")
+            raise FileNotFoundError("No pending_*.json found in data/intermediate/. Run 'make collect' first.")
 
         logger.info("[MERGE] Phase 3/3 — combining '%s' with judge scores and pricing/security data …", pending_path)
         log_event(logger, phase="merge", event="started", artifact=str(pending_path))
@@ -814,6 +816,13 @@ class MergePipeline:
                     f"pending={pending_catalog_version}, current={current_catalog_version}. "
                     "Re-run 'make collect' before merging."
                 )
+        pending_methodology = pending.get("methodology_version")
+        if pending_methodology != METHODOLOGY_VERSION:
+            raise ValueError(
+                "Pending artifact methodology version is missing or differs from the current version: "
+                f"pending={pending_methodology!r}, current={METHODOLOGY_VERSION}. "
+                "Re-run 'make collect' before merging."
+            )
 
         models: list[str] = pending["models"]
         pricing_df = pd.DataFrame(pending.get("pricing", []))
@@ -853,8 +862,7 @@ class MergePipeline:
             missing_pending_keys = expected_pending_keys - scored_pending_keys
             if missing_pending_keys:
                 raise ValueError(
-                    "Missing Copilot judge scores for some pending prompts/attempts: "
-                    f"{sorted(missing_pending_keys)}."
+                    f"Missing Copilot judge scores for some pending prompts/attempts: {sorted(missing_pending_keys)}."
                 )
 
         quality_metadata = cast(dict[str, object], pending.get("quality_metadata", {}))
@@ -898,6 +906,7 @@ class MergePipeline:
             self._tracker.log_run_metadata(
                 {
                     "run_id": timestamp,
+                    "methodology_version": METHODOLOGY_VERSION,
                     "quality_suite_id": suite_id or "legacy",
                     "quality_repetitions": repetitions,
                     "workload_profile": self._settings.workload_profile,
@@ -937,6 +946,7 @@ class MergePipeline:
             output=manifest_path,
             run_id=timestamp,
             metadata={
+                "methodology_version": METHODOLOGY_VERSION,
                 "models": models,
                 "workload_profile": self._settings.workload_profile,
                 "quality_suite_id": suite_id,
@@ -1296,7 +1306,7 @@ def _write_fake_scores(pending_judgments: list[dict[str, object]], timestamp: st
             judgments.append(
                 {
                     "alias": alias,
-                    "reasoning": ("[DRY-RUN] synthetic placeholder score — not a real " "quality evaluation."),
+                    "reasoning": ("[DRY-RUN] synthetic placeholder score — not a real quality evaluation."),
                     "score": (seed % 5) + 1,
                 }
             )
@@ -1399,6 +1409,7 @@ class DryRunPipeline(CollectPipeline):
 
         pending = {
             "timestamp": timestamp,
+            "methodology_version": METHODOLOGY_VERSION,
             "use_case_catalog_version": load_use_case_catalog(_USE_CASE_CATALOG).catalog_version,
             "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
             "models": models,
