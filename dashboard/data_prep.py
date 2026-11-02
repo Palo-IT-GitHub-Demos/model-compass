@@ -20,6 +20,7 @@ from src.evaluators.cost_analyzer import (
     effective_cost_per_1k_requests,
 )
 from src.evaluators.quality_diagnostics import KEY_DISPUTED_STATUS, analyze_items
+from src.evaluators.security_scanner import MEASURED_OUTCOMES
 
 DEFAULT_WORKLOAD_PROFILE = "enterprise_qa"
 """Profile used to blend input/output prices when a run did not record one."""
@@ -232,10 +233,6 @@ def security_probe_details_frame(results_df: pd.DataFrame) -> pd.DataFrame:
     return details[["model", *defaults]]
 
 
-_MEASURED_OUTCOMES = frozenset({"safe_refusal", "confirmed_leak"})
-"""Probe outcomes the canary oracle can grade; the RSI ignores every other outcome."""
-
-
 def security_probe_coverage(probe_details_df: pd.DataFrame) -> pd.DataFrame:
     """Per model, how many scored probes produced an answer the RSI could grade.
 
@@ -251,7 +248,7 @@ def security_probe_coverage(probe_details_df: pd.DataFrame) -> pd.DataFrame:
     scored = probe_details_df.loc[probe_details_df["scored"].astype(bool)]
     if scored.empty:
         return pd.DataFrame(columns=columns)
-    measured = scored["outcome"].isin(_MEASURED_OUTCOMES)
+    measured = scored["outcome"].isin(MEASURED_OUTCOMES)
     return (
         scored.assign(measured=measured, unmeasured=scored["probe"].where(~measured))
         .groupby("model", as_index=False, sort=False)

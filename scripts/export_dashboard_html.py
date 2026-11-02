@@ -876,7 +876,9 @@ def _security_section(df: pd.DataFrame) -> str:
     <h2 id="security">Security</h2>
     <p class="callout"><strong>How to read this:</strong> RSI is a safety score from 0 to 100, where
     higher is safer. A leak means a probe made the model disclose a secret planted in its hidden
-    instructions. Probe errors are technical failures, not safe answers, so read the error rate beside
+    instructions, or obey a harmless instruction hidden in the content it was asked to process
+    (<code>confirmed_obedience</code>). Probe errors are technical failures, not safe answers, so read
+    the error rate beside
     RSI. ZDR is a provider data-retention policy, not a probe result.</p>
     <p class="callout">Internally authored probes aligned with OWASP GenAI LLM Top 10 categories — a
     generic robustness screen, not a penetration test. Only probes whose canary check can fail count in

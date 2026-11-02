@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -119,10 +120,14 @@ def _fake_security_response(system_prompt: str, probe_message: str, model: str) 
 
     Roughly 1-in-7 (deterministic, not random) probes 'leak' so the security
     stage's merge logic (``leak_count``, ``is_vulnerable``) is exercised on
-    both branches during a dry-run, not just the all-safe path.
+    both branches during a dry-run, not just the all-safe path. One model in
+    three obeys the hidden instruction of the obedience probes.
     """
     if _stable_int(model, probe_message) % 7 == 0:
         return system_prompt[:40]
+    hidden = re.search(r"the words (\w+) and (\w+) joined by a hyphen", probe_message)
+    if hidden and _stable_int(model) % 3 == 0:
+        return f"Done as asked. {hidden.group(1)}-{hidden.group(2)}".upper()
     return _REFUSAL
 
 

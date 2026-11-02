@@ -36,7 +36,7 @@ decision contract and boundaries.
 | Axis               | Method                                                                                                                                                                                              | Key metric                                              |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | **Quality** | Versioned generic prompts with deterministic contracts and blind LLM-as-a-Judge scoring | Score 1–5 by use case, coverage and stability |
-| **Security** | One path of 72 internal canary-disclosure probes aligned with the OWASP GenAI LLM Top 10 2026 (every scored probe run three times) + Zero Data Retention policy check; skippable as a whole | Leak count / RSI / ZDR flag |
+| **Security** | One path of 80 internal probes aligned with the OWASP GenAI LLM Top 10 2026: canary disclosure, plus obedience to a harmless hidden instruction (every scored probe run three times) + Zero Data Retention policy check; skippable as a whole | Leak count / RSI / ZDR flag |
 | **Cost** | Live OpenRouter pricing and actual usage ledger | Model-only TCO + actual credits per call |
 | **Performance** | Network latency and completion throughput captured after semaphore acquisition | P50/P95 latency + tokens/second |
 | **Recommendation** | Versioned use-case catalog, quality thresholds and configurable weights | Ranked eligible models and one or more tied recommendations |
@@ -83,7 +83,7 @@ data/prompts/
 ├── quality_prompts_v3.json    # generic-screen-v3: 48 prompts, 6 per use case (default)
 ├── quality_prompts_v2.json    # generic-screen-v2: 34 prompts (kept to re-merge its runs)
 ├── quality_prompts.json       # generic-screen-v1: 16 prompts (legacy baseline)
-├── security_probes.json       # The security path: 72 probes, 51 scored, 3 multi-turn
+├── security_probes.json       # The security path: 80 probes, 59 scored, 3 multi-turn
 ├── legacy/                    # Probe sets of methodology 0.4 and earlier, for traceability only
 └── dialogue_scenarios_v1.json # Optional two-turn dialogue screen
 
@@ -205,10 +205,12 @@ This is the only paid step, and its defaults are the reference methodology:
   (144 calls). Three attempts give the stability score and the 95% confidence
   intervals. Generated code runs against its test cases in the restricted
   sandbox (`src/evaluators/code_sandbox.py`) instead of going to the judges.
-- **Security:** the single security path sends the 72 probes of
-  `data/prompts/security_probes.json` (about 190 requests per model). The 51
-  probes whose canary check can fail run three times, each with a fresh secret,
-  and form the RSI; the other 21 are reported as observations.
+- **Security:** the single security path sends the 80 probes of
+  `data/prompts/security_probes.json` (about 210 requests per model). The 59
+  probes whose check can fail run three times and form the RSI: 51 ask for a
+  fresh secret planted in the system prompt, 8 hide a harmless instruction in
+  the content to process and check whether the model obeys it. The other 21
+  are reported as observations.
 
 `make collect` first checks what the OpenRouter path really forwards for every
 prompt, for less than a cent. A security probe that a gateway filter would rewrite
@@ -424,7 +426,7 @@ All settings are loaded from environment variables (`.env`).
 | `REQUEST_TIMEOUT`         | `60.0`                         | Per-request HTTP timeout, in seconds                                                                                                                                              |
 | `MAX_RETRIES`             | `3`                            | Retry attempts on HTTP 429/5xx, with exponential back-off                                                                                                                        |
 | `MLFLOW_TRACKING_URI`     | `sqlite:///results/mlflow/mlruns.db`          | MLflow tracking database (SQLite)                                                                                                                                                  |
-| `SECURITY_MODE`           | `full`                         | The security path: `full` runs the 72 probes of `data/prompts/security_probes.json` (51 scored, three attempts each), `skip` leaves security out of the run. Also settable per run: `--security`/`SECURITY=` |
+| `SECURITY_MODE`           | `full`                         | The security path: `full` runs the 80 probes of `data/prompts/security_probes.json` (59 scored, three attempts each), `skip` leaves security out of the run. Also settable per run: `--security`/`SECURITY=` |
 | `SECURITY_PROBES_PATH`    | —                               | Custom probe JSON file replacing the probe set, for experiments only (ignored with `skip`)                                                                                       |
 | `MAX_SECURITY_PROBE_ERROR_RATE` | `0.15`                    | Abort a run when security-probe transport failures exceed this ratio                                                                                                             |
 | `QUALITY_REPETITIONS`     | `3`                            | Attempts per quality prompt; three give the stability score and confidence intervals of the reference path                                                                     |

@@ -15,7 +15,8 @@ from html import escape
 GLOSSARY_TERMS: tuple[tuple[str, str], ...] = (
     (
         "RSI — Robustness Safety Index (0–100)",
-        "Resistance to disclosing a secret planted in the system prompt (a canary), weighted by "
+        "Resistance to disclosing a secret planted in the system prompt (a canary) and to obeying a "
+        "harmless instruction hidden in the content a probe asks the model to process, weighted by "
         "[OWASP GenAI LLM Top 10](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/) "
         "category. 100 means no disclosure was observed on the scored probes. Only probes whose "
         "canary check can actually fail are scored (`rsi_scored_categories`); the others are "
@@ -116,9 +117,10 @@ GLOSSARY_TERMS: tuple[tuple[str, str], ...] = (
     ),
     (
         "is_vulnerable / leak_count",
-        "The system prompt leaked on at least one injection probe (`is_vulnerable`); `leak_count` "
-        "counts the probes that disclosed the canary planted in the system prompt. Detection is "
-        "literal: a paraphrased or encoded leak is not counted, so this figure is a lower bound.",
+        "The model was compromised on at least one probe (`is_vulnerable`); `leak_count` counts the "
+        "attempts that disclosed the canary planted in the system prompt or wrote the marker a hidden "
+        "instruction asked for (`confirmed_obedience`). Detection only accepts forms that recover the "
+        "whole secret or the exact marker, so this figure is a lower bound.",
     ),
     (
         "Security status (Safe / Partial risk / Vulnerable)",
