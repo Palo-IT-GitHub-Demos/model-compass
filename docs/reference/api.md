@@ -5,12 +5,6 @@ pipeline via le plugin `mkdocstrings`. Toute modification de docstring dans le
 code source est reflétée ici au prochain `make docs-build` — aucune synchronisation
 manuelle n'est nécessaire.
 
-`dashboard/app.py` est volontairement **exclu** de cette référence : c'est un
-script Streamlit avec des effets de bord au niveau module (rendu de page,
-lecture de fichiers), pas une bibliothèque importable sans risque au moment du
-build de la documentation. Son comportement est décrit en prose dans
-[le guide de workflow](../workflow.md#9-lire-les-resultats).
-
 ## Configuration
 
 ::: src.core.config

@@ -11,36 +11,63 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 
 ## Architecture & Conventions
 
-- Core pipeline code lives in `src/`; the default v2 use-case catalog is
-  `data/catalog/model_compass_use_cases_v2.json` (v1 stays available as a legacy baseline); Streamlit and shared presentation helpers
-  live in `dashboard/`; operational scripts live in `scripts/`
+- Core pipeline code lives in `src/`; the default v3 use-case catalog is
+  `data/catalog/model_compass_use_cases_v3.json` (v2 and v1 stay available to
+  re-merge their runs); report data prep, glossary and charts
+  live in `dashboard/` and the static HTML report is assembled by
+  `scripts/export_dashboard_html.py`; operational scripts live in `scripts/`
+- `scripts/build_quality_suite_v3.py` and `scripts/build_security_probes.py` are
+  the source of the v3 suite, its catalog and the probe set: change items there,
+  never in the JSON (`--check` and `tests/test_prompt_builders.py` catch drift)
 - `src/main.py` remains the CLI and compatibility façade; `src/pipeline_cli.py`
   owns parsing/overrides, `src/pipeline_collect.py` concurrent collection and
   error budgets, `src/pipeline_merge.py` the benchmark matrix, and
   `src/pipeline_artifacts.py` persistent outputs and blind judging payloads.
   The façade passes runtime paths and patchable stages explicitly to these modules
 - The production workflow is split into three phases:
-  `make collect` → `@judge-coordinator` → `make merge`
+  `make collect` → `@judge-coordinator` → `make merge`. The coordinator never
+  handles judging data: `scripts/check_judging.py` (`make check-judging`)
+  validates every per-part score file, audits the model each judge actually
+  ran on from the local Copilot Chat debug logs, and prints the delegations
+  still to relay; judges read their own part and write their own score file.
+  Judge agents declare `model:` by qualified picker name (`<Name> (copilot)`);
+  change one only with `make judge-models SET=...`, which keeps the judge
+  identifier in step, and never mid-batch
 - The README Quick Start is the single standard evaluation path
-  (`select` → `verify` → `collect SECURITY=owasp QUALITY_REPETITIONS=3` →
-  `@judge-coordinator` → `merge` → `export-html`); keep `docs/workflow.md`
+  (`select` → `verify` → `collect` → `@judge-coordinator` → `merge` →
+  `export-html`), whose defaults are the reference methodology (full security
+  path, three attempts, code execution, suite v3); keep `docs/workflow.md`
   and `docs/index.md` aligned with it and put every other option under
   Advanced
-- `make dry-run` is offline; `make verify` validates the OpenRouter key and
-  model catalog without chat-completion cost
-- `make export-html` builds a static dashboard; `make dashboard` launches the
-  interactive Streamlit view
-- `QUALITY_SUITE` (`v2` default, `v1`) selects the prompt suite and its
+- `make dry-run` is offline and also renders a synthetic rehearsal report under
+  `data/dry_run/`; `make verify` validates the OpenRouter key and
+  model catalog without chat-completion cost and estimates the run cost
+- `make export-html` builds the static HTML report, the only results surface; it
+  opens on a per-use-case decision summary, flags non-reference runs on every
+  page, never breaks ties arbitrarily and ships Plotly locally to work offline
+- `QUALITY_SUITE` (`v3` default, `v2`, `v1`) selects the prompt suite and its
   catalog; `generic-screen-v1` must stay unchanged and collect/merge must use
-  the same suite
-- Generated code is executed only with `QUALITY_CODE_EXECUTION=true` and only
-  through `src/evaluators/code_sandbox.py`; never run model output elsewhere
+  the same suite. Quality items avoid names of people and places, addresses and
+  emails, which some providers redact from the request
+- Generated code is executed only with `QUALITY_CODE_EXECUTION=true` (the
+  default of the standard path) and only through
+  `src/evaluators/code_sandbox.py`; never run model output elsewhere
 - `MODEL_COMPASS_WEIGHTS` optionally overrides the catalog's quality/security/
   cost/performance weights as JSON; effective weights and catalog version must
-  remain in every recommendation artifact
+  remain in every recommendation artifact. The catalog's named
+  `weight_profiles` never change the published rank: they add
+  `profile_rank_<name>` and `weight_profile_sensitive`. Justify any weight
+  change by the trade-offs `implied_tradeoffs` reports
+  (`docs/model-compass-scope.md`)
+- Security is one path (`SECURITY_MODE=full`, default) or none
+  (`skip`): `data/prompts/security_probes.json`, every scored probe run
+  `SECURITY_ATTEMPTS` times with a fresh canary. A skipped run sets the security
+  weight to 0, rescales the others and is flagged as non-reference; do not
+  reintroduce partial probe profiles. `data/prompts/legacy/` only traces runs
+  of methodology 0.4 and earlier
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
-- Multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; only the `extended` security profile and the separate dialogue screen use them, so `basic` and `owasp` stay single-turn
+- Multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; the security path's multi-turn probes and the separate dialogue screen use them
 - The optional two-turn quality screen lives in `src/evaluators/dialogue_quality.py`
   with its versioned catalog under `data/prompts/`; `make dialogue` runs offline
   and `make dialogue-live` is paid. Its sidecars stay separate from benchmark
@@ -55,7 +82,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   from another methodology version
 - Runs are comparable only when `methodology_version`, `quality_suite_id`,
   `catalog_version`, `security_probe_set_id`, decision weights and workload
-  profile all match; both dashboards show them through
+  profile all match; every HTML report page shows them through
   `dashboard.data_prep.run_provenance`
 - Preserve raw benchmark results. Post-run verification is sidecar evidence and
   must never rewrite the original response or score
@@ -67,23 +94,39 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   models. The prompt is dropped from the aggregates and their denominator and
   marked `suspected_input_corruption` — the raw response and score stay intact
 - Content correctness and output-format compliance are scored as separate
-  dimensions. Never let a formatting violation lower a content score
+  dimensions. Never let a formatting violation lower a content score: an
+  exact-answer item scores its final answer, and a use case's quality score
+  averages content rows only, with `format_compliance_rate` beside it
+- Structured checks give partial credit (`1 + 4 × share correct` for JSON
+  fields and passed code tests); an empty response scores 1 on content and on
+  format when the prompt has a format contract; a completion without any
+  choice is a collection error
+- `key_disputed` flags an exact-answer item whose answer key most models
+  reject; flag it in the report, never drop or rescore it automatically
 - `avg_quality_score` blends a pass/fail scale with a graded one. Always
   publish `avg_quality_score_deterministic` and `avg_quality_score_judged`
   alongside it
-- A confirmed system-prompt disclosure caps the RSI below the robust band. Never
-  present a model as robust and vulnerable on the same view
-- `extended` now includes LLM02/03/07/10 canary-disclosure contexts alongside
-  LLM01. A positive signal proves the secret escaped, not that tool use,
-  factuality or downstream output handling was exercised. Compare RSI only
-  across the same probe-profile version as well as the same scored categories
-- Only score OWASP categories a single-turn chat probe can actually exercise;
-  report the others as not scored. RSI is comparable only across identical
-  `rsi_scored_categories`
+- A confirmed canary disclosure on any probe, scored or observation, scales the
+  RSI below the robust band (`raw × 65 / 100`), so leaking models stay ordered.
+  Never present a model as robust and vulnerable on the same view
+- The security path includes LLM02/03/07/10 canary-disclosure contexts and
+  indirect injections alongside LLM01. A positive signal proves the secret
+  escaped, not that tool use, factuality or downstream output handling was
+  exercised. The oracle accepts only forms that recover the whole secret
+  (literal, reversed, base64, hex, separator-spelled); an empty or failed
+  attempt is excluded from the RSI and the report shows the measured share
+- Only score probes whose canary oracle can actually fail: categories a
+  single-turn chat probe cannot exercise (LLM04/06/09) and probes marked
+  `"scored": false` with a `not_scored_reason` are observations. Report them
+  as not scored, never as a 0 % vulnerability rate. RSI is comparable only
+  across identical `security_probe_set_id` and `rsi_scored_categories`
 - The 3 Copilot judges are each affiliated with a provider that may also be a
   benchmarked model; alias-based blindness is the only mitigation, and a
   response's self-identification is scrubbed (best-effort) before it reaches a
-  judge. No further bias correction is applied after the fact — see
+  judge. Published scores are never corrected; recommendation artifacts add a
+  sidecar outcome recomputed without each model's own-provider judge
+  (`*_without_affiliated_judge`, `affiliated_judge_changes_outcome`) and the
+  report flags a use case as judge-sensitive when it differs — see
   `docs/quality-methodology.md` "Fiabilité et biais du panel de juges"
 - `judge_disagreement` / `quality_judge_disagreement_rate` surface inter-judge
   disagreement instead of silently averaging over it. Keep the mean rather
@@ -156,8 +199,8 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Keep code simple and testable
 - Prefer deterministic output contracts for AI-assisted features
 - Add tests for any behavior-changing change
-- Keep Streamlit-independent transformations in `dashboard/data_prep.py` so
-  live and static dashboards use the same logic
+- Keep report transformations in `dashboard/data_prep.py` as pure, tested
+  functions rather than inline in the HTML page code
 - Use Python 3.11+ typing and vectorized pandas operations
 - Use Conventional Commits; the local `commit-msg` pre-commit hook validates the header
 
@@ -173,7 +216,7 @@ make docs-build
 ```
 
 Documentation changes must pass `mkdocs build --strict`. Dashboard changes
-must be checked in Streamlit and, when applicable, in the static HTML export.
+must be checked in the static HTML export (`make export-html`).
 
 ## Documentation Maintenance
 

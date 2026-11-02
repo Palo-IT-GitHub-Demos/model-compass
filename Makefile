@@ -1,11 +1,11 @@
-.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge dashboard verify dry-run dialogue dialogue-live inspect-run select export-gen-e2 export-html verify-quality models
+.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge verify dry-run dialogue dialogue-live inspect-run select export-gen-e2 export-html split-judging check-judging judge-models verify-quality models
 
 PYTHON ?= .venv/bin/python
 
 help: ## Show this help
 	@echo "Standard evaluation path (README, Quick Start):"
-	@echo "  make select -> make verify MODELS=selection SECURITY=owasp"
-	@echo "  -> make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3"
+	@echo "  make select -> make verify MODELS=selection"
+	@echo "  -> make collect MODELS=selection"
 	@echo "  -> @judge-coordinator in Copilot Chat -> make merge -> make export-html"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -40,21 +40,24 @@ docs-build: ## Build documentation and validate links strictly
 docs-serve: ## Preview documentation with live reload
 	$(PYTHON) -m mkdocs serve
 
-run: ## Phase 1 — collect responses + deterministic eval + security (alias of collect; MODELS=<preset|list> SECURITY=<basic|owasp|extended> optional)
+run: ## Phase 1 — collect responses + deterministic eval + security (alias of collect; MODELS=<preset|list> SECURITY=<full|skip> optional)
 	$(PYTHON) -m src.main collect $(if $(MODELS),--models "$(MODELS)") $(if $(SECURITY),--security $(SECURITY))
 	@echo ""
 	@echo "Next step — Phase 2 (required, no extra API cost): in Copilot chat, invoke:"
 	@echo "  @judge-coordinator   (runs the 3 blind judges in parallel automatically)"
 	@echo "Then Phase 3: make merge"
 
-collect: ## Phase 1 — PAID, calls OpenRouter — collect responses + deterministic eval + security (MODELS=<preset|list> SECURITY=<basic|owasp|extended> optional, else .env)
+collect: ## Phase 1 — PAID, calls OpenRouter — collect responses + deterministic eval + security (MODELS=<preset|list> SECURITY=<full|skip> optional, else .env)
 	$(PYTHON) -m src.main collect $(if $(MODELS),--models "$(MODELS)") $(if $(SECURITY),--security $(SECURITY))
 
 verify: ## Real but free preflight — API key + TARGET_MODELS against the live OpenRouter catalog (GET /key + GET /models, $0, before a paid run; MODELS=/SECURITY= optional)
 	$(PYTHON) -m src.main verify $(if $(MODELS),--models "$(MODELS)") $(if $(SECURITY),--security $(SECURITY))
 
-dry-run: ## Fully offline simulation of the whole pipeline — NO OpenRouter call, NO judge agent (MODELS=/SECURITY= optional)
+dry-run: ## Fully offline simulation of the whole pipeline and its HTML report — NO OpenRouter call, NO judge agent (MODELS=/SECURITY= optional)
 	$(PYTHON) -m src.main dry-run $(if $(MODELS),--models "$(MODELS)") $(if $(SECURITY),--security $(SECURITY))
+	@preview=$$(ls -t data/dry_run/benchmark_preview_*.csv | head -1); \
+		$(PYTHON) scripts/export_dashboard_html.py --results "$$preview" \
+		--output "$$(dirname "$$preview")/$$(basename "$$preview" .csv | sed 's/^benchmark_preview_/dashboard_preview_/').html"
 
 dialogue: ## Separate, fully offline two-turn quality screen (MODELS= optional)
 	$(PYTHON) -m src.dialogue_cli $(if $(MODELS),--models "$(MODELS)")
@@ -77,7 +80,7 @@ judge: ## Phase 2 — open a Copilot judge agent (pick one of the 3 providers)
 	@echo "  @judge-coordinator"
 	@echo ""
 	@echo "Option B — independent judges (run all 3 in parallel):"
-	@echo "  @judge-anthropic  (Claude)  |  @judge-openai  (GPT-4o)  |  @judge-google  (Gemini)"
+	@echo "  @judge-anthropic  (Claude Sonnet 5)  |  @judge-openai  (GPT-6 Sol)  |  @judge-google  (Gemini 3.8 Flash)"
 	@echo ""
 	@echo "Pending judging file:"
 	@ls data/intermediate/judging_*.json 2>/dev/null | tail -1 || echo "  (none — run make collect first)"
@@ -85,19 +88,25 @@ judge: ## Phase 2 — open a Copilot judge agent (pick one of the 3 providers)
 merge: ## Phase 3 — merge Copilot scores + export final results
 	$(PYTHON) -m src.main merge
 
-dashboard: ## Launch the Streamlit dashboard
-	$(PYTHON) -m streamlit run dashboard/app.py
-
-export-html: ## Export a static, self-contained HTML snapshot of the dashboard (RESULTS=/OUTPUT=/PROFILE= optional, else latest run + enterprise_qa)
+export-html: ## Build the static HTML report (RESULTS=/OUTPUT=/PROFILE= optional, else latest run + enterprise_qa)
 	$(PYTHON) scripts/export_dashboard_html.py \
 		$(if $(RESULTS),--results "$(RESULTS)") \
 		$(if $(OUTPUT),--output "$(OUTPUT)") \
 		$(if $(PROFILE),--profile "$(PROFILE)")
 
+split-judging: ## Split the latest (or JUDGING=) blind judging batch into parts the coordinator can forward whole
+	$(PYTHON) scripts/split_judging_batch.py $(if $(JUDGING),--judging "$(JUDGING)") $(if $(REPLACE),--replace)
+
+judge-models: ## Preflight: check each judge agent's model is enabled on your Copilot plan; SET="anthropic=Claude Opus 5.5 (copilot)" switches one
+	$(PYTHON) scripts/judge_models.py $(if $(SET),--set "$(SET)")
+
+check-judging: ## Validate the latest (or TS=) batch's score files and judge models; QUARANTINE=1 moves invalid ones aside
+	$(PYTHON) scripts/check_judging.py $(if $(TS),--timestamp "$(TS)") $(if $(QUARANTINE),--quarantine) $(if $(SKIP_MODEL_AUDIT),--skip-model-audit) $(if $(STRICT),--strict)
+
 verify-quality: ## Recheck one k=1 objective failure twice through OpenRouter (pass ARGS="...")
 	$(PYTHON) scripts/verify_quality_reproducibility.py $(ARGS)
 
-models: ## List the coherent model-set presets available for MODELS=<name> (see also: dashboard "Plan a new run")
+models: ## List the coherent model-set presets available for MODELS=<name>
 	$(PYTHON) -m src.main models
 
 export-gen-e2: ## Export latest benchmark to gen-e2-eval compatible YAML (set PROFILE=<name> to override)

@@ -19,11 +19,39 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.quality_metrics import bootstrap_quality_interval
+from src.evaluators.security_scanner import RSI_CONFIRMED_LEAK_CEILING
 
 DEFAULT_USE_CASE_CATALOG_PATH: Final[Path] = Path("data/catalog/model_compass_use_cases.json")
 _QUALITY_MINIMUM: Final[float] = 1.0
 _QUALITY_MAXIMUM: Final[float] = 5.0
 _REQUIRED_COMPONENTS: Final[tuple[str, ...]] = ("quality", "security", "cost", "performance")
+_FORMAT_DIMENSION: Final[str] = "output_format_compliance"
+_FORMAT_PASS_SCORE: Final[float] = 4.0
+
+
+def _content_rows(quality_df: pd.DataFrame) -> pd.DataFrame:
+    """Drop the derived output-format rows: a use case's quality score measures content only.
+
+    Format compliance stays a separate signal (``format_compliance_rate``), so
+    a correct answer that ignores a bare-answer instruction never lowers the
+    use-case quality score that decides eligibility.
+    """
+    if "quality_dimension" not in quality_df.columns:
+        return quality_df
+    return quality_df.loc[quality_df["quality_dimension"].ne(_FORMAT_DIMENSION)]
+
+
+def _format_compliance_by_use_case(quality_df: pd.DataFrame, use_case: UseCaseDefinition) -> pd.Series:
+    """Share of a use case's strict-format responses that respect the format, per model."""
+    if quality_df.empty or not {"model", "prompt_id", "score", "quality_dimension"}.issubset(quality_df.columns):
+        return pd.Series(dtype="float64")
+    rows = quality_df.loc[
+        quality_df["quality_dimension"].eq(_FORMAT_DIMENSION)
+        & pd.to_numeric(quality_df["prompt_id"], errors="coerce").isin(use_case.prompt_ids)
+    ]
+    if rows.empty:
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(rows["score"], errors="coerce").ge(_FORMAT_PASS_SCORE).groupby(rows["model"]).mean()
 
 
 class RecommendationWeights(BaseModel):
@@ -89,6 +117,8 @@ class UseCaseCatalog(BaseModel):
     catalog_version: str = Field(min_length=1)
     description: str = Field(min_length=1)
     weights: RecommendationWeights
+    weight_profiles: dict[str, RecommendationWeights] = Field(default_factory=dict)
+    """Named alternatives to ``weights`` (e.g. ``quality_first``); the report shows each one's leader."""
     score_scales: RecommendationScales
     use_cases: list[UseCaseDefinition] = Field(min_length=1)
 
@@ -226,22 +256,65 @@ def _performance_component(frame: pd.DataFrame, bounds: LogScaleBounds) -> tuple
     return pd.Series(float("nan"), index=frame.index, dtype="float64"), "unavailable"
 
 
-def _missing_components(row: pd.Series) -> str:
+def _missing_components(row: pd.Series, components: tuple[str, ...] = _REQUIRED_COMPONENTS) -> str:
     """Render missing decision dimensions in a stable, human-readable order."""
-    return ", ".join(component for component in _REQUIRED_COMPONENTS if pd.isna(row[f"{component}_score"]))
+    return ", ".join(component for component in components if pd.isna(row[f"{component}_score"]))
 
 
-def _add_sensitivity(report: pd.DataFrame, weight_values: dict[str, float], threshold: float) -> None:
+def implied_tradeoffs(weights: dict[str, float], scales: RecommendationScales) -> dict[str, float]:
+    """Exchange rates that a weight vector implies between the components, on the catalog's fixed anchors.
+
+    One quality point on the 1–5 scale is 25 points of the 0–100 quality
+    component. Cost and latency score 100 / log10(worst / best) points per
+    tenfold change, the RSI one point per point. Dividing each weighted
+    swing by the weighted quality point gives the trade-off the weights
+    actually encode, which is what their justification must defend.
+    """
+    quality_point = 25.0 * weights["quality"]
+    cost_per_decade = 100.0 / math.log10(scales.cost_usd_per_1m_tokens.worst / scales.cost_usd_per_1m_tokens.best)
+    latency_per_decade = 100.0 / math.log10(scales.actual_latency_p95_ms.worst / scales.actual_latency_p95_ms.best)
+    cost_swing = cost_per_decade * weights["cost"]
+    return {
+        "price_factor_per_quality_point": 10 ** (quality_point / cost_swing) if cost_swing else math.inf,
+        "quality_points_per_10x_price": cost_swing / quality_point,
+        "quality_points_per_10x_latency": latency_per_decade * weights["performance"] / quality_point,
+        "quality_points_per_10_rsi_points": 10.0 * weights["security"] / quality_point,
+        "quality_points_per_confirmed_leak": (100.0 - RSI_CONFIRMED_LEAK_CEILING) * weights["security"] / quality_point,
+    }
+
+
+def security_evaluated(benchmark_df: pd.DataFrame) -> bool:
+    """Return whether the run evaluated security, i.e. was not collected with ``SECURITY=skip``."""
+    if "security_profile" not in benchmark_df.columns or benchmark_df.empty:
+        return True
+    return not benchmark_df["security_profile"].astype(str).eq("skip").all()
+
+
+def effective_weights(weights: RecommendationWeights, *, with_security: bool = True) -> dict[str, float]:
+    """Return the weights applied to a run: without security, the other three are rescaled to sum to one."""
+    values = weights.model_dump()
+    if with_security:
+        return values
+    values["security"] = 0.0
+    total = sum(values.values())
+    return {component: value / total for component, value in values.items()}
+
+
+def _add_sensitivity(
+    report: pd.DataFrame,
+    weight_values: dict[str, float],
+    threshold: float,
+    components: tuple[str, ...] = _REQUIRED_COMPONENTS,
+) -> None:
     """Annotate rank/eligibility changes across one-at-a-time ±10% scenarios.
 
     Perturb one weight by 10% relative to its effective value and rescale the
     other three proportionally to sum to one. Also probe the threshold at
     ±10% relative (clipped to the 1–5 scale). Baseline ranks stay untouched.
     """
-    components = report[["quality_score_100", "security_score", "cost_score", "performance_score"]].to_numpy(
-        dtype="float64"
-    )
-    weights = np.array([weight_values[name] for name in _REQUIRED_COMPONENTS])
+    columns = [f"{name}_score" if name != "quality" else "quality_score_100" for name in components]
+    component_values = report[columns].to_numpy(dtype="float64")
+    weights = np.array([weight_values[name] for name in components])
     eligible = report["quality_eligible"].to_numpy(dtype=bool)
     complete = report["decision_evidence_complete"].to_numpy(dtype=bool)
     quality = report["quality_score"].to_numpy(dtype="float64")
@@ -260,7 +333,7 @@ def _add_sensitivity(report: pd.DataFrame, weight_values: dict[str, float], thre
     scenario_eligibility = []
     for candidate_weights, candidate_threshold in scenarios:
         candidate_eligible = (quality >= candidate_threshold) & (coverage >= 1.0)
-        scores = np.round(components @ candidate_weights, 4)
+        scores = np.round(component_values @ candidate_weights, 4)
         ranked = pd.Series(np.where(candidate_eligible & complete, scores, np.nan))
         scenario_ranks.append(ranked.rank(method="dense", ascending=False).to_numpy())
         scenario_eligibility.append(candidate_eligible)
@@ -279,6 +352,45 @@ def _add_sensitivity(report: pd.DataFrame, weight_values: dict[str, float], thre
     report.loc[~complete, "recommendation_fragile"] = pd.NA
 
 
+def _judge_provider(judge_id: object) -> str:
+    """Return the provider suffix of a judge ID such as ``copilot-gpt4o-openai``."""
+    return str(judge_id).rsplit("-", 1)[-1].strip().lower()
+
+
+def _model_provider(model: object) -> str:
+    """Return the provider prefix of an OpenRouter model ID such as ``openai/gpt-6-luna``."""
+    return str(model).split("/", 1)[0].strip().lower()
+
+
+def exclude_affiliated_judges(quality_df: pd.DataFrame) -> pd.DataFrame:
+    """Return *quality_df* with each judged score re-averaged without the model's own-provider judge.
+
+    A judge may favour responses from its own model family even when names are
+    masked. This sidecar view drops, for every judged response, the verdicts of
+    judges sharing the evaluated model's provider, as long as another judge
+    remains. Deterministic scores and the published scores are left untouched.
+    """
+    if quality_df.empty or not {"model", "score", "judge_verdicts"}.issubset(quality_df.columns):
+        return quality_df
+    adjusted = quality_df.copy()
+    scores: list[object] = []
+    for model, score, raw in zip(adjusted["model"], adjusted["score"], adjusted["judge_verdicts"], strict=True):
+        try:
+            verdicts = json.loads(raw) if isinstance(raw, str) and raw.strip() else []
+        except json.JSONDecodeError:
+            verdicts = []
+        kept = [
+            float(verdict["score"])
+            for verdict in verdicts
+            if isinstance(verdict, dict)
+            and "score" in verdict
+            and _judge_provider(verdict.get("judge_id")) != _model_provider(model)
+        ]
+        scores.append(round(sum(kept) / len(kept), 2) if kept and len(kept) < len(verdicts) else score)
+    adjusted["score"] = scores
+    return adjusted
+
+
 def build_recommendation_report(
     benchmark_df: pd.DataFrame,
     quality_df: pd.DataFrame,
@@ -292,6 +404,97 @@ def build_recommendation_report(
     cost or fast response. A complete decision score requires all four default
     components; incomplete runs remain visible with an evidence status rather
     than receiving a misleading partial recommendation.
+
+    Each row also carries the outcome recomputed without own-provider judges
+    (see :func:`exclude_affiliated_judges`); it never replaces the baseline
+    score, rank or status.
+    """
+    report = _build_report(benchmark_df, quality_df, catalog_path, weights)
+    if report.empty:
+        return report
+    report = _add_profile_ranks(report, benchmark_df, quality_df, catalog_path)
+    unaffiliated = _build_report(
+        benchmark_df, exclude_affiliated_judges(quality_df), catalog_path, weights, intervals=False
+    )
+    alternative = unaffiliated[
+        ["use_case_id", "model", "quality_score", "recommendation_rank", "recommendation_status"]
+    ].rename(
+        columns={
+            "quality_score": "quality_score_without_affiliated_judge",
+            "recommendation_rank": "recommendation_rank_without_affiliated_judge",
+            "recommendation_status": "recommendation_status_without_affiliated_judge",
+        }
+    )
+    report = report.merge(alternative, on=["use_case_id", "model"], how="left")
+    same_rank = (
+        report["recommendation_rank"]
+        .astype("Float64")
+        .fillna(-1)
+        .eq(report["recommendation_rank_without_affiliated_judge"].astype("Float64").fillna(-1))
+    )
+    same_status = (
+        report["recommendation_status"]
+        .astype(str)
+        .eq(report["recommendation_status_without_affiliated_judge"].astype(str))
+    )
+    report["affiliated_judge_changes_outcome"] = (~(same_rank & same_status)).astype(bool)
+    return report
+
+
+def _add_profile_ranks(
+    report: pd.DataFrame, benchmark_df: pd.DataFrame, quality_df: pd.DataFrame, catalog_path: Path
+) -> pd.DataFrame:
+    """Add each named weight profile's rank, and flag use cases whose leader depends on the profile.
+
+    The profiles never change the published rank: they show the human who
+    matches the tender to a profile whether the recommendation survives it.
+    """
+    catalog = load_use_case_catalog(catalog_path)
+    profiles = catalog.weight_profiles
+    leaders: dict[str, set[frozenset[str]]] = {}
+    for name, profile_weights in profiles.items():
+        alternative = _build_report(benchmark_df, quality_df, catalog_path, profile_weights, intervals=False)
+        column = f"profile_rank_{name}"
+        report = report.merge(
+            alternative[["use_case_id", "model", "recommendation_rank"]].rename(
+                columns={"recommendation_rank": column}
+            ),
+            on=["use_case_id", "model"],
+            how="left",
+        )
+        for use_case_id, rows in alternative.groupby("use_case_id"):
+            leaders.setdefault(str(use_case_id), set()).add(
+                frozenset(rows.loc[rows["recommendation_rank"].eq(1), "model"].astype(str))
+            )
+    if profiles:
+        with_security = security_evaluated(benchmark_df)
+        report["weight_profiles"] = json.dumps(
+            {name: effective_weights(weights, with_security=with_security) for name, weights in profiles.items()},
+            sort_keys=False,
+        )
+        report["score_scales"] = catalog.score_scales.model_dump_json()
+        baseline = {
+            str(use_case_id): frozenset(rows.loc[rows["recommendation_rank"].eq(1), "model"].astype(str))
+            for use_case_id, rows in report.groupby("use_case_id")
+        }
+        report["weight_profile_sensitive"] = report["use_case_id"].map(
+            lambda use_case_id: any(seen != baseline[str(use_case_id)] for seen in leaders[str(use_case_id)])
+        )
+    return report
+
+
+def _build_report(
+    benchmark_df: pd.DataFrame,
+    quality_df: pd.DataFrame,
+    catalog_path: Path,
+    weights: RecommendationWeights | None,
+    *,
+    intervals: bool = True,
+) -> pd.DataFrame:
+    """Compute the baseline recommendation rows for one quality frame.
+
+    ``intervals=False`` skips the bootstrap: the sidecar recomputations (other
+    weight profiles, no own-provider judge) only need ranks and statuses.
     """
     catalog = load_use_case_catalog(catalog_path)
     if weights is not None:
@@ -316,15 +519,19 @@ def build_recommendation_report(
     metric_frame["performance_score"] = performance_score.to_numpy()
     metric_frame = metric_frame.drop_duplicates("model")
 
-    weight_values = catalog.weights.model_dump()
+    with_security = security_evaluated(benchmark_df)
+    components = _REQUIRED_COMPONENTS if with_security else tuple(c for c in _REQUIRED_COMPONENTS if c != "security")
+    weight_values = effective_weights(catalog.weights, with_security=with_security)
     weight_json = json.dumps(weight_values, sort_keys=True)
     reports: list[pd.DataFrame] = []
+    content_df = _content_rows(quality_df)
     for use_case in catalog.use_cases:
-        quality_frame = _quality_by_use_case(quality_df, model_frame["model"].tolist(), use_case)
+        quality_frame = _quality_by_use_case(content_df, model_frame["model"].tolist(), use_case)
         report = model_frame.merge(quality_frame, on="model", how="left")
-        if {"model", "prompt_id", "score"}.issubset(quality_df.columns):
-            case_rows = quality_df.loc[
-                pd.to_numeric(quality_df["prompt_id"], errors="coerce").isin(use_case.prompt_ids)
+        report["format_compliance_rate"] = report["model"].map(_format_compliance_by_use_case(quality_df, use_case))
+        if intervals and {"model", "prompt_id", "score"}.issubset(content_df.columns):
+            case_rows = content_df.loc[
+                pd.to_numeric(content_df["prompt_id"], errors="coerce").isin(use_case.prompt_ids)
             ]
             bounds = [
                 (model, *bootstrap_quality_interval(group, seed_key=f"{use_case.id}:{model}", macro_dimensions=False))
@@ -357,23 +564,23 @@ def build_recommendation_report(
         # four components of the weighted decision score must use 0–100.
         component_columns = {
             component: "quality_score_100" if component == "quality" else f"{component}_score"
-            for component in _REQUIRED_COMPONENTS
+            for component in components
         }
         available = report[list(component_columns.values())].notna()
         available_weight = sum(
-            available[component_columns[component]].astype(float) * weight_values[component]
-            for component in _REQUIRED_COMPONENTS
+            available[component_columns[component]].astype(float) * weight_values[component] for component in components
         )
         weighted_total = sum(
             pd.to_numeric(report[component_columns[component]], errors="coerce").fillna(0.0) * weight_values[component]
-            for component in _REQUIRED_COMPONENTS
+            for component in components
         )
         report["recommendation_score_coverage"] = available_weight.round(4)
         report["recommendation_score"] = (weighted_total / available_weight.replace(0.0, float("nan"))).round(4)
         report["recommendation_weights"] = weight_json
         report["performance_basis"] = performance_basis
         report["decision_evidence_complete"] = available.all(axis=1)
-        report["evidence_missing"] = report.apply(_missing_components, axis=1)
+        report["evidence_missing"] = report.apply(_missing_components, axis=1, components=components)
+        report["security_evaluated"] = with_security
 
         ranked_scores = report["recommendation_score"].where(
             report["quality_eligible"] & report["decision_evidence_complete"]
@@ -391,7 +598,7 @@ def build_recommendation_report(
         status.loc[report["recommendation_rank"].notna() & report["recommendation_rank"].gt(1)] = "eligible"
         status.loc[report["recommendation_rank"].eq(1)] = "recommended"
         report["recommendation_status"] = status
-        _add_sensitivity(report, weight_values, use_case.minimum_quality_score)
+        _add_sensitivity(report, weight_values, use_case.minimum_quality_score, components)
         leaders = report.loc[report["recommendation_rank"].eq(1)]
         available_ci = report["quality_score_ci95_low"].notna() & report["quality_score_ci95_high"].notna()
         report["quality_ci95_overlaps_leader"] = pd.array([pd.NA] * len(report), dtype="boolean")
@@ -429,6 +636,7 @@ def build_recommendation_report(
         "quality_prompt_count",
         "quality_threshold",
         "quality_eligible",
+        "format_compliance_rate",
         "security_score",
         "cost_score",
         "cost_usd_per_1m_tokens",
@@ -437,6 +645,7 @@ def build_recommendation_report(
         "recommendation_score",
         "recommendation_score_coverage",
         "recommendation_weights",
+        "security_evaluated",
         "decision_evidence_complete",
         "evidence_missing",
         "recommendation_rank",

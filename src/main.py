@@ -34,6 +34,7 @@ from src.core.model_selector import (
     catalog_entries,
     estimate_cost_usd,
     estimate_requests,
+    estimate_run_cost_usd,
     save_selection,
     select_models,
 )
@@ -50,6 +51,8 @@ from src.evaluators.quality_judge import (
     CollectResult,
     load_quality_prompts,
     quality_suite_id,
+    rescore_final_answers,
+    with_empty_response_format_failures,
 )
 from src.evaluators.quality_metrics import build_quality_details
 from src.evaluators.recommendation import (
@@ -60,6 +63,7 @@ from src.evaluators.recommendation import (
     parse_recommendation_weights,
 )
 from src.evaluators.security_scanner import (
+    DEFAULT_PROBES_PATH,
     AsyncSecurityScanner,
     SecurityScanner,
     has_sequential_probes,
@@ -89,6 +93,10 @@ _QUALITY_SUITES: dict[str, tuple[Path, Path]] = {
     "v2": (
         Path("data/prompts/quality_prompts_v2.json"),
         Path("data/catalog/model_compass_use_cases_v2.json"),
+    ),
+    "v3": (
+        Path("data/prompts/quality_prompts_v3.json"),
+        Path("data/catalog/model_compass_use_cases_v3.json"),
     ),
 }
 
@@ -176,12 +184,37 @@ def _warn_on_free_tier_request_volume(estimated_requests: int) -> None:
         )
 
 
+def _price_column(frame: pd.DataFrame, *names: str) -> pd.Series:
+    """Return the first present price column as numbers, or zeros when the catalog lacks it."""
+    for name in names:
+        if name in frame.columns:
+            return pd.to_numeric(frame[name], errors="coerce").fillna(0.0)
+    return pd.Series(0.0, index=frame.index)
+
+
+def _run_cost_estimate(pricing_df: pd.DataFrame, models: list[str], requests_per_model: int) -> float | None:
+    """Upper-bound OpenRouter cost of one run from the live prices, or ``None`` without a catalog."""
+    if pricing_df.empty or "model_id" not in pricing_df.columns:
+        return None
+    rows = pricing_df.loc[pricing_df["model_id"].isin(models)]
+    prices = list(
+        zip(
+            _price_column(rows, "prompt_price_per_token", "input_price_per_token"),
+            _price_column(rows, "completion_price_per_token", "output_price_per_token"),
+            strict=True,
+        )
+    )
+    return estimate_run_cost_usd(prices, requests_per_model)
+
+
 def _security_probe_count_for_estimate(probes_path: Path | None) -> int:
-    """Return the probe count for the preflight estimate, or 0 if unreadable.
+    """Return the probe requests for the preflight estimate: 0 when security is skipped or unreadable.
 
     The security stage itself raises a clear, dedicated error for a bad
     ``SECURITY_PROBES_PATH`` — this estimate must not duplicate or mask that.
     """
+    if probes_path is None:
+        return 0
     try:
         return probe_count(probes_path)
     except (OSError, ValueError):
@@ -193,30 +226,31 @@ def _effective_recommendation_weights(settings: Settings) -> RecommendationWeigh
     return parse_recommendation_weights(settings.model_compass_weights)
 
 
-# Named, pre-wired security probe sets — see Settings.security_mode.
+# The security path: "full" runs the single probe set, "skip" leaves security out.
 _SECURITY_MODE_PROBE_PATHS: dict[str, Path | None] = {
-    "basic": None,
-    "owasp": Path("data/prompts/owasp_probes.json"),
-    "extended": Path("data/prompts/extended_probes.json"),
+    "full": DEFAULT_PROBES_PATH,
+    "skip": None,
 }
 
 
-def _resolve_security_probes_path(settings: Settings) -> Path | None:
-    """Return the probes file for this run's security stage, or None for the 5 built-ins.
+def _security_enabled(settings: Settings) -> bool:
+    """Return whether this run evaluates security (``SECURITY=full``, the standard path)."""
+    return settings.security_mode != "skip"
 
-    ``security_probes_path`` (an explicit custom-file override) always wins;
-    otherwise ``security_mode`` selects a named, pre-wired set so callers
-    never have to remember/type a file path: "basic" (built-in), "owasp"
-    (30 internally authored probes aligned with the OWASP GenAI LLM Top 10 2026
-    categories — required for the dashboard's RSI/heatmap), or "extended"
-    (23 single-turn probes across LLM01/02/03/07/10 plus 2 bounded LLM01
-    multi-turn scenarios).
+
+def _resolve_security_probes_path(settings: Settings) -> Path | None:
+    """Return the probes file of this run's security stage, or ``None`` when security is skipped.
+
+    ``security_probes_path`` (a custom file for experiments) wins over the
+    single probe set; ``SECURITY=skip`` disables the stage whatever the file.
     """
-    if settings.security_probes_path:
-        return Path(settings.security_probes_path)
     if settings.security_mode not in _SECURITY_MODE_PROBE_PATHS:
         valid = ", ".join(sorted(_SECURITY_MODE_PROBE_PATHS))
         raise ValueError(f"Unknown SECURITY_MODE '{settings.security_mode}'. Valid values: {valid}.")
+    if not _security_enabled(settings):
+        return None
+    if settings.security_probes_path:
+        return Path(settings.security_probes_path)
     return _SECURITY_MODE_PROBE_PATHS[settings.security_mode]
 
 
@@ -362,7 +396,11 @@ class AsyncPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file found at '%s'; skipping.", _QUALITY_PROMPTS)
             return pd.DataFrame()
-        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
+        judge = AsyncQualityJudge(
+            client,
+            execute_code=self._settings.quality_code_execution,
+            max_tokens=self._settings.quality_max_tokens,
+        )
         try:
             df = await judge.run_dataset(
                 _QUALITY_PROMPTS,
@@ -379,6 +417,9 @@ class AsyncPipeline:
             return pd.DataFrame()
 
     async def _run_security_stage(self, client: AsyncOpenRouterClient, models: list[str]) -> pd.DataFrame:
+        if not _security_enabled(self._settings):
+            logger.warning("[security] Skipped (SECURITY=skip): the run carries no security evidence.")
+            return pd.DataFrame()
         logger.info("[security] Running security scans …")
         probes_path = _resolve_security_probes_path(self._settings)
         scanner = AsyncSecurityScanner(client, probes_path=probes_path)
@@ -430,6 +471,7 @@ def _merge_results(
     quality_collection_errors: pd.DataFrame | None = None,
     quality_suite_id: str | None = None,
     actual_call_costs: pd.DataFrame | None = None,
+    security_profile: str = "full",
 ) -> pd.DataFrame:
     """Merge quality, security and pricing outputs into a decision matrix.
 
@@ -450,6 +492,7 @@ def _merge_results(
         quality_suite_id,
         actual_call_costs,
         min_quality_coverage_for_cer=_MIN_QUALITY_COVERAGE_FOR_CER,
+        security_profile=security_profile,
     )
 
 
@@ -525,6 +568,7 @@ def _enforce_collect_error_budget(
     model_count: int,
     max_quality_collection_error_rate: float,
     max_security_probe_error_rate: float,
+    security_required: bool = True,
 ) -> None:
     """Stop a run when transport/probe failures exceed configured thresholds."""
     enforce_collect_error_budget(
@@ -533,6 +577,7 @@ def _enforce_collect_error_budget(
         model_count=model_count,
         max_quality_collection_error_rate=max_quality_collection_error_rate,
         max_security_probe_error_rate=max_security_probe_error_rate,
+        security_required=security_required,
     )
 
 
@@ -546,6 +591,7 @@ def _save_pending(
     collect_result: CollectResult,
     actual_call_costs: pd.DataFrame,
     recommendation_weights: RecommendationWeights | None = None,
+    security_profile: str = "full",
 ) -> Path:
     """Persist intermediate data to ``data/intermediate/pending_{ts}.json``.
 
@@ -563,6 +609,7 @@ def _save_pending(
         _TIMESTAMP_FORMAT,
         _MAX_INTERMEDIATE_FILE_BYTES,
         recommendation_weights,
+        security_profile=security_profile,
         log=logger,
     )
 
@@ -670,6 +717,7 @@ class CollectPipeline:
             model_count=len(models),
             max_quality_collection_error_rate=self._settings.max_quality_collection_error_rate,
             max_security_probe_error_rate=self._settings.max_security_probe_error_rate,
+            security_required=_security_enabled(self._settings),
         )
 
         pending_path = _save_pending(
@@ -679,6 +727,7 @@ class CollectPipeline:
             collect_result=collect_result,
             actual_call_costs=actual_call_costs,
             recommendation_weights=_effective_recommendation_weights(self._settings),
+            security_profile=self._settings.security_mode,
         )
 
         n_det = len(collect_result.deterministic_rows)
@@ -740,6 +789,9 @@ class CollectPipeline:
             return pd.DataFrame()
 
     async def _run_security_stage(self, client: AsyncOpenRouterClient, models: list[str]) -> pd.DataFrame:
+        if not _security_enabled(self._settings):
+            logger.warning("[security] Skipped (SECURITY=skip): the run carries no security evidence.")
+            return pd.DataFrame()
         logger.info("[security] Scanning %d models …", len(models))
         probes_path = _resolve_security_probes_path(self._settings)
         try:
@@ -755,7 +807,11 @@ class CollectPipeline:
         if not _QUALITY_PROMPTS.exists():
             logger.warning("[quality] No prompts file at '%s'; skipping.", _QUALITY_PROMPTS)
             return CollectResult()
-        judge = AsyncQualityJudge(client, execute_code=self._settings.quality_code_execution)
+        judge = AsyncQualityJudge(
+            client,
+            execute_code=self._settings.quality_code_execution,
+            max_tokens=self._settings.quality_max_tokens,
+        )
         try:
             result = await judge.run_collect(
                 _QUALITY_PROMPTS,
@@ -888,6 +944,7 @@ class MergePipeline:
             quality_collection_errors=collection_errors,
             quality_suite_id=suite_id,
             actual_call_costs=actual_call_costs,
+            security_profile=str(pending.get("security_profile") or "full"),
         )
         recommendation_weights = _merge_recommendation_weights(
             self._settings,
@@ -966,7 +1023,7 @@ class MergePipeline:
         logger.info("=" * 70)
         logger.info("[MERGE] ✅ Done — %d model(s) merged into '%s.{csv,json}'.", len(models), export_stem)
         logger.info("[MERGE]   Run manifest: '%s'", manifest_path)
-        logger.info("[MERGE] Next: make dashboard   (interactive)   or   make export-html   (static report)")
+        logger.info("[MERGE] Next: make export-html   (static decision report)")
         logger.info("=" * 70)
         log_event(logger, phase="merge", event="completed", run_id=timestamp, model_count=len(models))
         return result
@@ -980,7 +1037,9 @@ class MergePipeline:
         ``(prompt_id, attempt, model)``; recused models (absent from a judge's
         file) are simply excluded from that judge's contribution to the average.
         """
-        rows = list(cast(list[dict[str, object]], pending.get("deterministic_scores", [])))
+        rows = with_empty_response_format_failures(
+            rescore_final_answers(list(cast(list[dict[str, object]], pending.get("deterministic_scores", []))))
+        )
         pending_judgments = cast(
             list[dict[str, object]],
             pending.get("pending_judgments", []),
@@ -1403,6 +1462,7 @@ class DryRunPipeline(CollectPipeline):
             model_count=len(models),
             max_quality_collection_error_rate=settings.max_quality_collection_error_rate,
             max_security_probe_error_rate=settings.max_security_probe_error_rate,
+            security_required=_security_enabled(settings),
         )
 
         timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)
@@ -1412,6 +1472,7 @@ class DryRunPipeline(CollectPipeline):
             "methodology_version": METHODOLOGY_VERSION,
             "use_case_catalog_version": load_use_case_catalog(_USE_CASE_CATALOG).catalog_version,
             "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
+            "security_profile": settings.security_mode,
             "models": models,
             "pricing": pricing_df.to_dict(orient="records") if not pricing_df.empty else [],
             "security": security_df.to_dict(orient="records") if not security_df.empty else [],
@@ -1446,6 +1507,7 @@ class DryRunPipeline(CollectPipeline):
             quality_collection_errors=pd.DataFrame(collect_result.collection_errors),
             quality_suite_id=collect_result.quality_suite_id,
             actual_call_costs=actual_call_costs,
+            security_profile=settings.security_mode,
         )
         recommendations = build_recommendation_report(
             result,
@@ -1559,6 +1621,16 @@ class VerifyPipeline:
             security_probe_count=_security_probe_count_for_estimate(probes_path),
         )
         _warn_on_free_tier_request_volume(estimated_requests)
+        requests_per_model = (prompt_count or 0) * settings.quality_repetitions + _security_probe_count_for_estimate(
+            probes_path
+        )
+        run_cost = _run_cost_estimate(pricing_df, models, requests_per_model)
+        if run_cost is not None:
+            logger.info(
+                "[VERIFY] Estimated run cost (upper bound, OpenRouter only): $%.2f for %d request(s) per model.",
+                run_cost,
+                requests_per_model,
+            )
 
         logger.info("=" * 70)
         logger.info("[VERIFY] \u2705 Ready for a real run — key valid, models known, $0 spent so far.")
@@ -1635,6 +1707,7 @@ async def _select_models_command(args: argparse.Namespace) -> None:
     recommended_entries = matching_entries[:limit]
     other_entries = matching_entries[limit : limit + 20]
     displayed_entries = recommended_entries + other_entries
+    print(f"Matching models: {len(matching_entries)}")
     print("Recommended models (the preselection):")
     for index, entry in enumerate(recommended_entries, start=1):
         kind = "free" if entry.is_free else "paid"
@@ -1654,13 +1727,21 @@ async def _select_models_command(args: argparse.Namespace) -> None:
                 f"${entry.output_price_per_token * 1_000_000:.4f} output per 1M tokens | "
                 f"context {entry.context_length:,}"
             )
+    hidden_count = len(matching_entries) - len(displayed_entries)
+    if hidden_count:
+        print(f"  ... {hidden_count} additional matching models are not shown; Enter/skip will include them.")
+    all_models_requested = False
     if sys.stdin.isatty():
         print(
-            "\nSelection: 0 = use all recommended models, numbers = choose models "
-            "(for example 2,7), Enter/skip = use the recommendation"
+            f"\nSelection: Enter/skip/all = all {len(matching_entries)} matching models, "
+            f"0 = recommended models ({len(recommended_entries)}), "
+            "numbers = choose from the displayed list"
         )
-        selection = input("Your choice [0]: ").strip().lower()
-        if selection in {"", "0", "skip", "s"}:
+        selection = input("Your choice [all]: ").strip().lower()
+        if selection in {"", "all", "a", "skip", "s"}:
+            entries = matching_entries
+            all_models_requested = True
+        elif selection == "0":
             entries = recommended_entries
         else:
             try:
@@ -1673,7 +1754,9 @@ async def _select_models_command(args: argparse.Namespace) -> None:
                     raise ValueError
                 entries = [displayed_entries[index - 1] for index in indexes]
             except ValueError as exc:
-                raise ValueError("Invalid selection. Use 0, skip, or comma-separated model numbers.") from exc
+                raise ValueError(
+                    "Invalid selection. Use Enter/all, 0, or comma-separated displayed model numbers."
+                ) from exc
     else:
         entries = recommended_entries
 
@@ -1684,6 +1767,22 @@ async def _select_models_command(args: argparse.Namespace) -> None:
         len(models), prompt_count or 0, _security_probe_count_for_estimate(probes_path), settings.quality_repetitions
     )
     monthly_cost = estimate_cost_usd(entries)
+    if all_models_requested:
+        print(f"\nAll {len(entries)} matching models will be selected.")
+        print(f"Estimated requests: {request_count}")
+        print(f"Estimated monthly cost for all selected models: ${monthly_cost:.2f}")
+        confirmation = input(f"Confirm selecting all {len(entries)} models? [y/N]: ").strip().lower()
+        if confirmation not in {"y", "yes"}:
+            entries = recommended_entries
+            models = [entry.model_id for entry in entries]
+            request_count = estimate_requests(
+                len(models),
+                prompt_count or 0,
+                _security_probe_count_for_estimate(probes_path),
+                settings.quality_repetitions,
+            )
+            monthly_cost = estimate_cost_usd(entries)
+            print("\nAll-model selection not confirmed; using the recommended models.")
     print("\nSelected models (no benchmark has been started):")
     for entry in entries:
         kind = "free" if entry.is_free else "paid"
@@ -1695,6 +1794,11 @@ async def _select_models_command(args: argparse.Namespace) -> None:
         )
     print(f"Estimated requests: {request_count}")
     print(f"Estimated monthly cost for all selected models: ${monthly_cost:.2f}")
+    run_cost = estimate_run_cost_usd(
+        [(entry.input_price_per_token, entry.output_price_per_token) for entry in entries],
+        request_count // len(entries) if entries else 0,
+    )
+    print(f"Estimated cost of one benchmark run (upper bound, OpenRouter only): ${run_cost:.2f}")
     _warn_on_free_tier_request_volume(request_count)
     selection_path = save_selection(models)
     print(f"Selection saved as 'selection' in {selection_path}.")

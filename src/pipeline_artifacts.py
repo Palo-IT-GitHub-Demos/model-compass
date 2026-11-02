@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -97,6 +99,7 @@ def save_pending(
     max_intermediate_file_bytes: int,
     recommendation_weights: RecommendationWeights | None = None,
     *,
+    security_profile: str = "full",
     log: logging.Logger = logger,
 ) -> Path:
     """Persist the collect payload and the blind copy sent to judges."""
@@ -108,6 +111,7 @@ def save_pending(
         "methodology_version": METHODOLOGY_VERSION,
         "use_case_catalog_version": load_use_case_catalog(catalog_path).catalog_version,
         "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
+        "security_profile": security_profile,
         "models": models,
         "pricing": pricing_df.to_dict(orient="records") if not pricing_df.empty else [],
         "security": security_df.to_dict(orient="records") if not security_df.empty else [],
@@ -157,4 +161,60 @@ def save_pending(
     }
     judging_path.write_text(json.dumps(judging_payload, indent=2, ensure_ascii=False))
     log.info("Blind judging file saved → '%s'", judging_path)
+    parts = write_judging_parts(judging_payload, intermediate_dir)
+    if parts:
+        log.info("Batch too large for one judge pass — split into %d part(s): '%s' …", len(parts), parts[0].name)
     return path
+
+
+JUDGING_PART_MAX_CHARS = 30_000
+"""Largest serialized part the coordinator can read in full and forward verbatim to each judge."""
+
+JUDGING_PART_MAX_RESPONSES = 36
+"""Most responses per part: the largest batch a judge has returned complete and valid in one answer."""
+
+
+def write_judging_parts(
+    judging_payload: Mapping[str, object],
+    intermediate_dir: Path,
+    max_chars: int = JUDGING_PART_MAX_CHARS,
+    max_responses: int = JUDGING_PART_MAX_RESPONSES,
+) -> list[Path]:
+    """Split a blind judging batch into parts small enough to forward and to answer without truncation.
+
+    *max_chars* bounds what the coordinator reads and forwards; *max_responses*
+    bounds how many judgments each judge must return in one answer. Items are
+    packed greedily in their original order and never split; an item over
+    either limit gets its own part. Returns no file when the whole batch
+    already fits. Each part keeps the batch ``timestamp`` so the judges'
+    per-part score files merge as one run.
+    """
+    timestamp = str(judging_payload["timestamp"])
+    items = list(cast(list[dict[str, object]], judging_payload.get("pending_judgments", [])))
+
+    def response_count(item: Mapping[str, object]) -> int:
+        return len(cast(Mapping[str, object], item.get("responses") or {}))
+
+    fits_chars = len(json.dumps(judging_payload, indent=2, ensure_ascii=False)) <= max_chars
+    if fits_chars and sum(response_count(item) for item in items) <= max_responses:
+        return []
+    groups: list[list[dict[str, object]]] = [[]]
+    size = 0
+    responses = 0
+    for item in items:
+        item_size = len(json.dumps(item, indent=2, ensure_ascii=False))
+        item_responses = response_count(item)
+        if groups[-1] and (size + item_size > max_chars or responses + item_responses > max_responses):
+            groups.append([])
+            size = 0
+            responses = 0
+        groups[-1].append(item)
+        size += item_size
+        responses += item_responses
+    paths: list[Path] = []
+    for index, group in enumerate(groups, start=1):
+        part_path = intermediate_dir / f"judging_{timestamp}_part{index:02d}of{len(groups):02d}.json"
+        part_payload = {"timestamp": timestamp, "part": index, "part_count": len(groups), "pending_judgments": group}
+        part_path.write_text(json.dumps(part_payload, indent=2, ensure_ascii=False))
+        paths.append(part_path)
+    return paths

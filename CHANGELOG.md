@@ -7,6 +7,212 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Methodology `0.5.0`: one security path, a new quality suite and named weight
+profiles. Scores, RSI values and ranks are not comparable with `0.4.0` runs, and
+`make merge` refuses a pending file collected under `0.4.0`. The standard
+command is now `make collect MODELS=selection`: its defaults are the reference
+methodology.
+
+### Changed — methodology 0.5.0
+
+- Security is one path, run whole (`SECURITY=full`, default) or not at all
+  (`SECURITY=skip`). The `basic`, `owasp` and `extended` profiles are removed;
+  their files move to `data/prompts/legacy/` to trace earlier runs. The single
+  set, `data/prompts/security_probes.json`, holds 72 probes: the 44 of `owasp`,
+  the 19 `extended` probes that bring a new technique (near-duplicates dropped),
+  8 new indirect injections hidden in an email, a web page, a tool result, a
+  CSV cell, a code comment, a text to translate, a retrieved passage and a
+  calendar invite, and one multi-turn gradual extraction. 51 probes are scored
+- Every scored probe runs three times (`SECURITY_ATTEMPTS`), each attempt with
+  a fresh canary, so the RSI rests on a leak rate; observation probes run once
+- Probe answers may use 4,096 tokens instead of 512: reasoning models no longer
+  return empty, unmeasured answers. LLM06 stays unscored for the same reason
+- The leak oracle also accepts the secret reversed, hex-encoded or spelled with
+  separators between its characters; a fragment or masked secret still does
+  not count
+- A `SECURITY=skip` run ranks models without the security component, its
+  weight set to 0 and the others rescaled, and every report page flags it as
+  non-reference evidence
+- New default quality suite `generic-screen-v3` (`QUALITY_SUITE=v3`) with its
+  catalog `model-compass-use-cases-v3.0`: 48 items, six per use case. The v2
+  items that still separated models are kept; saturated ones are replaced by
+  harder variants of the same construct, mostly deterministic. Code prompts
+  list the imports the sandbox accepts
+- Structured checks give partial credit: `1 + 4 × share correct` for JSON fields
+  (an invented field counts as an error) and for passed code tests
+- The standard path executes generated code against its tests in the sandbox
+  (`QUALITY_CODE_EXECUTION=true` by default) and makes three attempts per
+  prompt (`QUALITY_REPETITIONS=3` by default)
+- Quality answers are capped at `QUALITY_MAX_TOKENS` (16,384 by default,
+  hidden reasoning included)
+
+### Added
+
+- `scripts/build_quality_suite_v3.py` and `scripts/build_security_probes.py`,
+  the sources of the v3 suite, its catalog and the probe set, with a `--check`
+  mode and a test that fails when the committed JSON drifts from them.
+- Named weight profiles in the catalog (`quality_first` 70/20/7/3, `balanced`
+  = the default 50/25/20/5, `cost_sensitive` 35/20/40/5). Recommendation
+  artifacts add `profile_rank_<name>`, `weight_profile_sensitive`,
+  `weight_profiles` and `score_scales`; the published rank is unchanged. Each
+  decision card shows the leader under every profile (*same leader* or
+  *weight-profile-sensitive*)
+- `implied_tradeoffs` turns weights into the trade-offs they encode on the
+  fixed anchors (with the default, one quality point is worth a 75× price gap
+  and a confirmed leak at least 0.7 quality point); the *Use cases in detail*
+  page shows them per profile, and `docs/model-compass-scope.md` justifies the
+  weights and the thresholds with them
+- A probe review table in `docs/security-methodology.md`, checked against the
+  probe set by the tests
+
+## [0.4.0] — 2026-10-30 — Honest security axis and decision report
+
+Methodology `0.4.0`, used by the reference run `20261029_171757`: the security
+scoring rules change, so RSI values, security components and recommendation
+ranks are not comparable with `0.3.0` runs. `make merge` refuses a pending file
+collected under `0.3.0`.
+
+### Changed in 0.4.0 — operations
+
+- MLflow tracking now lives under `results/mlflow/` (default
+  `MLFLOW_TRACKING_URI=sqlite:///results/mlflow/mlruns.db`) instead of the repo
+  root; update your local `.env` if it still points to `sqlite:///mlruns.db`
+
+### Changed — methodology 0.4.0
+
+- The RSI only scores probes whose canary oracle can fail. A probe file can
+  mark a probe `"scored": false` with a mandatory `not_scored_reason` (checked
+  by `make verify`); such observation probes stay in `probe_details` but never
+  produce a vulnerability rate. In `owasp`, LLM03, LLM05, LLM07 and the LLM10
+  HTML/SQL probes become observations, so the RSI now covers LLM01, LLM02,
+  LLM08 and the LLM10 Markdown-exfiltration probe
+- The `owasp` profile grows from 30 to 44 probes: 14 new canary probes
+  (payload splitting, homoglyphs, hex-encoded instructions, few-shot authority,
+  fictional framing, translation, completion, operator impersonation, partial
+  redaction, JSON export, role swap…) bring the scored probes to 24, and the
+  generic `llm02_pii_extraction_01` is replaced by a probe targeting the
+  planted secret. `security_probe_set_id` changes accordingly
+- A confirmed leak now scales the RSI below the robust band
+  (`raw × 65 / 100`) instead of truncating it at 65, so models that leak more
+  stay ranked lower; a leak on an observation probe also triggers it, as the
+  disclosure is proof whatever the probe
+- An empty response to a format-checked prompt now also scores 1 on output
+  format compliance, so the model keeps as many format attempts as the
+  others; its reasoning records the API `finish_reason` (`length` = token
+  budget exhausted without an answer)
+- A completion without any choice is now a collection error instead of an
+  empty answer scored 1, in quality and security alike
+- The quality confidence interval of a three-attempt run is computed when a
+  prompt lost one attempt to a collection error, from the attempts it kept;
+  a prompt left with one attempt still voids it
+- The "Fewer than 3 attempts" report warning now reflects the run's
+  configuration; quality responses lost to collection errors are listed in a
+  separate notice that does not mark the run as non-reference
+- An exact-answer item scores its final answer: a correct answer that also shows
+  its working, or wraps the value in markdown emphasis, keeps its content score
+  and fails output-format compliance only. Merge reapplies the rule to the
+  stored raw responses. Exact-format instruction items stay strict
+- A use case's quality score, which decides eligibility, averages content rows
+  only; output-format compliance is published beside it as
+  `format_compliance_rate` (*Format respected* in the report)
+### Added in 0.4.0
+
+- Item analysis flags `key_disputed` when most models settle on the same
+  answer that the key rejects; decision cards resting on such a prompt show a
+  *disputed key* badge
+- The Security page shows, per model, how many scored probes produced a
+  gradable answer (*Scored probes measured*) and which did not; a notice lists
+  the models whose RSI rests on fewer probes
+
+- The HTML report opens on a **decision summary**: one card per generic use
+  case with the recommended model(s), models whose quality interval overlaps
+  the leader's, other eligible models, models that cannot be ranked or fall
+  below the threshold (flagged *borderline* when their interval straddles it),
+  and a *fragile* badge with the rank range under ±10 % sensitivity
+- A warning banner on every report page when the run is not reference-grade:
+  synthetic dry-run data, missing or outdated methodology version, fewer than
+  three attempts per prompt, non-`owasp` security profile or incomplete quality
+  coverage
+- "Use cases in detail" page: one table per use case sorted by status and rank,
+  with readable column and status labels, threshold, quality 95 % interval,
+  sensitivity rank range and fragility; unranked rows show no decision score
+- Security page lists observation probes with their reason instead of scoring
+  them, plus exact per-category disclosure rates; quality page adds exact
+  per-dimension scores; glossary moves to its own page; the summary links the
+  source CSV artifacts
+- `make select` and `make verify` print a rough upper estimate of the run's
+  OpenRouter cost (judges run in Copilot and are excluded)
+- `make dry-run` simulates per-call latency, reaches `recommended`/`eligible`
+  statuses and renders a rehearsal report under `data/dry_run/`, flagged as
+  synthetic; its sidecars now use the same layout as `results/`
+- Own-provider judge check: recommendation artifacts add the use-case quality,
+  rank and status recomputed without the judge of each model's provider
+  (`*_without_affiliated_judge`, `affiliated_judge_changes_outcome`); the
+  report marks such use cases *judge-sensitive* and names the alternative
+  leader. Published scores, ranks and statuses are unchanged
+- Report reading guide for decision-makers (`docs/guide-lecture-rapport.md`)
+  and the v0.4 → v0.5 delivery plan (`docs/plans/plan-livraison-v0.4.md`)
+
+### Changed in 0.4.0 — report, workflow and judging
+
+- Removed the Streamlit dashboard (`dashboard/app.py`, `make dashboard` and the
+  `streamlit` dependency); the static HTML report from `make export-html` is now
+  the only results surface. Its "Prompts & responses" page shows each judge's
+  score and full reasoning instead of the truncated merged rationale, keeps
+  line breaks and states whether each security probe is scored. Use
+  `make models` and `make select` instead of the former "Plan a new run" panel
+- The report shows one workload-blended cost per model everywhere, including
+  the Pareto chart, instead of the input price alone on the overview
+- Leader cards (highest quality, lowest cost, highest RSI, fastest…) name every
+  tied model instead of picking the first row
+- The report works offline: Plotly is copied next to the pages instead of
+  being loaded from a CDN
+- The report states four axes and a per-use-case technical recommendation
+  instead of a "pre-selection signal" on three axes
+- `make select`: Enter, `skip` or `0` keeps the recommended preselection;
+  `all` selects every matching model after showing the total, request and cost
+  estimates and asking for confirmation
+- Generated reports and per-run evidence under `results/` are git-ignored
+- `make select` tests no longer overwrite the real saved selection
+- Large blind judging batches are split into `judging_<ts>_partNNofMM.json`
+  parts of at most 30 KB that the coordinator can forward verbatim; it judges
+  them one by one into per-part score files that `make merge` combines.
+  `make split-judging` splits a batch collected earlier, and `make merge` now
+  fails when a judge scores the same response twice
+- Judge panel set to the Copilot models the plan actually serves, each declared
+  by its qualified picker name (`Claude Sonnet 5 (copilot)`, `GPT-6 Sol
+  (copilot)`, `Gemini 3.8 Flash (copilot)`; VS Code ignores a bare model ID),
+  with identifiers `copilot-claudesonnet5-anthropic`,
+  `copilot-gpt6sol-openai` and `copilot-gemini38flash-google`. Gemini 3.8 Flash
+  is also benchmarked; the outcome recomputed without the own-provider judge
+  covers that self-preference risk. Claude Sonnet 5 replaces Claude Opus 5.5,
+  which cost about 800 Copilot credits for a 9-model, k=3 batch
+- Phase 2 no longer routes judging data through the coordinator: each judge
+  reads its own part and writes its own score file, and `@judge-coordinator`
+  only relays the delegations printed by the new `make check-judging`,
+  launching every pending (part, judge) pair at once and looping until the
+  check passes. Judging parts are also capped at 36 responses, the largest
+  batch a judge has returned complete in one answer;
+  `make split-judging REPLACE=1` re-splits a batch none of whose parts is
+  scored yet
+
+- `make judge-models` checks, before judging, that each judge agent's model
+  is enabled on the Copilot plan (from Copilot Chat's local `models.json`),
+  flags a judge that is also benchmarked, lists the enabled models of the same
+  vendor when one disappears, and `SET="provider=<name> (copilot)"` switches a
+  judge's model and identifier together; `@judge-coordinator` runs it first
+
+### Fixed in 0.4.0
+
+- Judges could silently run on another model than the one their agent
+  declares: VS Code falls back to the chat's current model when `model:` does
+  not resolve, which includes any bare model ID. Copilot debug logs show the "OpenAI" judge
+  running on GPT-6 Luna, a benchmarked model, and all three judges of the
+  2026-10-23 run on Claude Sonnet 5.5. `make check-judging` now rejects any
+  score file whose Copilot debug log shows another model than the declared
+  one, or a read of any file other than the judge's part, and moves invalid
+  files to `data/intermediate/rejected_scores/` with `QUARANTINE=1`
+
 ## [0.3.0] — 2026-10-23 — First frozen Model Compass methodology
 
 First frozen scoring methodology, labelled `0.3.0` after this release: the

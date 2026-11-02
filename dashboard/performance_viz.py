@@ -1,6 +1,6 @@
-"""Performance visualisation helpers for the Streamlit dashboard.
+"""Performance visualisation helpers for the static HTML report.
 
-Pure functions — no I/O, no Streamlit calls — so they can be unit-tested
+Pure functions — no I/O — so they can be unit-tested
 independently and reused by the static HTML export.
 
 Expected columns

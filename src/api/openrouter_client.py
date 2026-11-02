@@ -86,6 +86,25 @@ class OpenRouterError(Exception):
     """Raised when the OpenRouter API returns an unrecoverable error."""
 
 
+def completion_text(completion: object) -> tuple[str, str | None]:
+    """Return the first choice's text and finish reason.
+
+    A completion without any choice is an invalid API response, not an empty
+    model answer, so it raises :class:`OpenRouterError` with the error payload
+    OpenRouter attached, if any. An empty or ``None`` content is returned as
+    ``""`` with its finish reason (``length`` means the token budget ran out).
+    """
+    choices = getattr(completion, "choices", None)
+    if not choices:
+        extra = getattr(completion, "model_extra", None)
+        error = extra.get("error") if isinstance(extra, dict) else None
+        detail = f": {error}" if error else ""
+        raise OpenRouterError(f"OpenRouter returned no choices for model '{getattr(completion, 'model', '')}'{detail}")
+    choice = choices[0]
+    finish_reason = getattr(choice, "finish_reason", None)
+    return choice.message.content or "", str(finish_reason) if isinstance(finish_reason, str) else None
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """Return True if the exception should trigger a retry."""
     if isinstance(exc, openai.APIStatusError):
@@ -318,7 +337,7 @@ class OpenRouterClient(_CallCostLedger):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
                 raise OpenRouterError(
-                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — " "check OPENROUTER_API_KEY in .env."
+                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — check OPENROUTER_API_KEY in .env."
                 ) from exc
             raise OpenRouterError(f"Failed to fetch key info: HTTP {exc.response.status_code}") from exc
         except httpx.RequestError as exc:
@@ -461,7 +480,7 @@ class AsyncOpenRouterClient(_CallCostLedger):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
                 raise OpenRouterError(
-                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — " "check OPENROUTER_API_KEY in .env."
+                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — check OPENROUTER_API_KEY in .env."
                 ) from exc
             raise OpenRouterError(f"Failed to fetch key info: HTTP {exc.response.status_code}") from exc
         except httpx.RequestError as exc:

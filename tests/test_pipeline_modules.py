@@ -106,3 +106,25 @@ def test_cli_keeps_free_form_subcommand_and_facade_choices() -> None:
     parser = build_arg_parser({"basic": None}, {"v2": None})
     assert parser.parse_args(["unknown"]).subcommand == "unknown"
     assert facade._build_arg_parser().parse_args(["--quality-suite", "v2"]).quality_suite == "v2"
+
+
+def test_a_skipped_security_stage_passes_the_error_budget() -> None:
+    from src.evaluators.quality_judge import CollectResult
+    from src.pipeline_collect import enforce_collect_error_budget
+
+    enforce_collect_error_budget(
+        CollectResult(),
+        pd.DataFrame(),
+        model_count=1,
+        max_quality_collection_error_rate=0.1,
+        max_security_probe_error_rate=0.1,
+        security_required=False,
+    )
+    with pytest.raises(ValueError, match="no rows"):
+        enforce_collect_error_budget(
+            CollectResult(),
+            pd.DataFrame(),
+            model_count=1,
+            max_quality_collection_error_rate=0.1,
+            max_security_probe_error_rate=0.1,
+        )

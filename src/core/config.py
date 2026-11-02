@@ -10,7 +10,7 @@ Usage:
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -74,37 +74,44 @@ class Settings(BaseSettings):
     max_concurrent_requests: int = 3  # Conservative default for free-tier rate limits
 
     # ── Observability ──────────────────────────────────────────────────────────
-    mlflow_tracking_uri: str = "sqlite:///mlruns.db"
+    mlflow_tracking_uri: str = "sqlite:///results/mlflow/mlruns.db"
 
     # ── Security ───────────────────────────────────────────────────────────────
-    # Named probe set for this run: "basic" (5 built-in probes, default),
-    # "owasp" (data/prompts/owasp_probes.json — 30 internally authored probes
-    # aligned with the OWASP GenAI LLM Top 10 2026, required for the dashboard's
-    # RSI/heatmap), or "extended" (data/prompts/extended_probes.json — 23
-    # single-turn probes across LLM01/02/03/07/10 plus 2 bounded LLM01 scenarios).
-    # Resolved by
-    # ``main._resolve_security_probes_path``. Ignored
-    # when security_probes_path below is set (that always wins).
-    security_mode: str = "basic"
+    # The security path has one probe set (data/prompts/security_probes.json,
+    # every scored probe run three times): "full" runs it whole, "skip" leaves
+    # security out of the run entirely. A skipped run drops the security
+    # component from the recommendation and is flagged as non-reference
+    # evidence on every report page. Resolved by
+    # ``main._resolve_security_probes_path``; security_probes_path below
+    # replaces the probe set for experiments only.
+    security_mode: Literal["full", "skip"] = "full"
 
     # Optional path to a JSON file containing custom security probes —
     # overrides security_mode above.
     security_probes_path: str | None = None
 
     # ── Quality screen ─────────────────────────────────────────────────────────
-    # Repeat a generic screen prompt to measure score stability. Keep the broad
-    # OpenRouter pre-screen at one run; use 2–5 only for a shortlisted cohort.
-    quality_repetitions: int = Field(default=1, ge=1, le=5)
+    # Attempts per prompt. Three is the standard path: it gives the confidence
+    # intervals and stability every reference report needs. Lower it only for
+    # an exploratory pre-screen, which the report then flags as non-reference.
+    quality_repetitions: int = Field(default=3, ge=1, le=5)
 
-    # Prompt suite and catalog pair: "v2" (generic-screen-v2, default) or "v1"
-    # (generic-screen-v1, immutable legacy baseline). Resolved by
-    # ``main._activate_quality_suite``.
-    quality_suite: str = "v2"
+    # Prompt suite and catalog pair: "v3" (generic-screen-v3, default), "v2"
+    # (previous suite, kept to re-merge its runs) or "v1" (generic-screen-v1,
+    # immutable legacy baseline). Resolved by ``main._activate_quality_suite``.
+    quality_suite: str = "v3"
 
-    # Run generated code from code_execution prompts in the restricted sandbox
-    # (src/evaluators/code_sandbox.py). Off by default: those responses go to
-    # the judge panel instead.
-    quality_code_execution: bool = False
+    # Run generated code from code_execution prompts against their test cases
+    # in the restricted sandbox (src/evaluators/code_sandbox.py), which scores
+    # the share of tests passed. On in the standard path; set it to false to
+    # send those responses to the judge panel instead.
+    quality_code_execution: bool = True
+
+    # Ceiling on a quality answer, hidden reasoning included. It bounds a model
+    # that loops until its maximum output (a 131,072-token, 20-minute empty
+    # answer in the 0.4.0 reference run) while leaving reasoning models ample
+    # room; an answer that reaches it empty is scored as an empty response.
+    quality_max_tokens: int = Field(default=16_384, ge=256)
 
     # Abort a run when collection transport failures exceed this ratio.
     max_quality_collection_error_rate: float = Field(default=0.15, ge=0.0, le=1.0)

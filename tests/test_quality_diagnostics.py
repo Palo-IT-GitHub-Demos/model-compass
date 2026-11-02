@@ -123,3 +123,35 @@ class TestSummarizeJudgeAgreement:
     def test_malformed_verdict_json_is_skipped(self) -> None:
         df = pd.DataFrame({"model": ["a"], "judge_verdicts": ["not json"]})
         assert summarize_judge_agreement(df).empty
+
+
+def test_an_answer_key_most_models_reject_is_flagged_for_review() -> None:
+    from src.evaluators.quality_diagnostics import KEY_DISPUTED_STATUS, analyze_items
+
+    rows = []
+    for model, answer in [("v/a", "TECHNICAL"), ("v/b", "TECHNICAL"), ("v/c", "TECHNICAL"), ("v/d", "UNCLEAR")]:
+        for attempt in range(3):
+            rows.append(
+                {
+                    "model": model,
+                    "prompt_id": 23,
+                    "attempt": attempt,
+                    "response": answer,
+                    "score": 5 if answer == "UNCLEAR" else 1,
+                    "expected_answers_json": '["UNCLEAR"]',
+                }
+            )
+            rows.append(
+                {
+                    "model": model,
+                    "prompt_id": 1,
+                    "attempt": attempt,
+                    "response": "x",
+                    "score": 5,
+                    "expected_answers_json": "[]",
+                }
+            )
+    items = analyze_items(pd.DataFrame(rows))
+
+    assert items.set_index("prompt_id").loc[23, "item_status"] == KEY_DISPUTED_STATUS
+    assert items.set_index("prompt_id").loc[1, "item_status"] != KEY_DISPUTED_STATUS

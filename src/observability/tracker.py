@@ -39,7 +39,7 @@ class ExperimentTracker:
     def __init__(
         self,
         experiment_name: str = "llm-benchmark",
-        tracking_uri: str = "sqlite:///mlruns.db",
+        tracking_uri: str = "sqlite:///results/mlflow/mlruns.db",
     ) -> None:
         self._active = False
         self._enabled = False
@@ -50,7 +50,7 @@ class ExperimentTracker:
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "MLflow init failed (%s) — tracking disabled. "
-                "Set MLFLOW_TRACKING_URI=sqlite:///mlruns.db in .env to fix.",
+                "Set MLFLOW_TRACKING_URI=sqlite:///results/mlflow/mlruns.db in .env to fix.",
                 exc,
             )
 

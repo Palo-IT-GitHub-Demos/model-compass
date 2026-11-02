@@ -153,12 +153,28 @@ score brut ne sont réécrits** : la ligne reste consultable dans
 ### Biais d'auto-préférence
 
 Le panel compte 3 juges Copilot, chacun adossé à un fournisseur (Claude/Anthropic,
-GPT-4o/OpenAI, Gemini/Google) qui est aussi l'un des fournisseurs potentiellement
+GPT/OpenAI, Gemini/Google) qui est aussi l'un des fournisseurs potentiellement
 présents dans `TARGET_MODELS`. Un juge peut donc, sans le savoir, noter une
 réponse produite par un modèle de son propre fournisseur.
 
-**Ce que l'aveuglement par alias couvre** : le juge ne reçoit jamais `alias_map`
-ni l'identifiant du modèle — seulement une lettre (A/B/C…) et le texte de la
+Dans le panel actuel (Claude Sonnet 5, GPT-6 Sol, Gemini 3.8 Flash, choisis
+parmi les modèles ouverts sur le plan Copilot), le risque va plus loin pour
+Google : Gemini 3.8 Flash, seul modèle Google ouvert sur le plan, fait aussi
+partie du run de référence et note donc, à l'aveugle, ses propres réponses.
+GPT-6 Sol est de la même famille que GPT-6.1 Sol, évalué. Le recalcul sans juge
+du même fournisseur décrit ci-dessous retire exactement ce juge pour ces modèles.
+
+Le panel n'est indépendant que si chaque juge tourne vraiment sur le modèle
+déclaré. VS Code exécute sans prévenir un agent sur le modèle courant du chat
+quand son ID `model:` n'est pas disponible. `make check-judging` lit donc les
+journaux de debug de Copilot Chat et refuse tout fichier de scores produit par
+un autre modèle (voir `docs/workflow.md`, Phase 2).
+
+**Ce que l'aveuglement par alias couvre** : la partie que lit le juge ne contient
+jamais `alias_map` ni l'identifiant du modèle. Le juge a un accès en lecture au
+workspace pour lire sa partie ; `make check-judging` refuse les scores d'un juge
+dont le journal montre la lecture de tout autre fichier, dont `pending_*.json`.
+Le juge ne voit donc qu'une lettre (A/B/C…) et le texte de la
 réponse (voir `.github/agents/judge-*.agent.md`, "Blind evaluation").
 
 **Ce que l'aveuglement par alias ne couvre pas** : une réponse qui se
@@ -172,13 +188,30 @@ l'invariant "ne jamais réécrire une réponse". Cette détection est **best-eff
 pas une garantie** : une divulgation paraphrasée ou indirecte n'est pas
 interceptée.
 
-**Aucune correction de biais n'est appliquée après coup** (pas de pondération
-différente par juge, pas d'exclusion d'un juge sur ses propres modèles) : le
-panel reste 3 juges symétriques. Si un futur audit constate un biais
-systématique mesurable (ex. un juge note significativement plus haut les
-réponses de son propre fournisseur une fois l'alias percé), la mitigation à
-envisager est un pool de juges dédié, distinct des fournisseurs évalués — non
-implémenté à ce jour.
+**Les scores publiés ne sont jamais corrigés** : le panel reste 3 juges
+symétriques et `avg_quality_score`, le score par cas d'usage, le rang et le
+statut sont calculés avec les 3 juges.
+
+**Contrôle de sensibilité au juge du même fournisseur.** Chaque juge est
+rattaché à un fournisseur par le suffixe de son identifiant
+(`copilot-claude-anthropic` → `anthropic`), chaque modèle par le préfixe de son
+slug OpenRouter (`anthropic/claude-sonnet-5.5` → `anthropic`). Pour chaque
+réponse jugée, `exclude_affiliated_judges` (`src/evaluators/recommendation.py`)
+recalcule la moyenne sans le verdict du juge du même fournisseur, s'il reste au
+moins un autre juge ; les scores déterministes ne changent pas. La
+recommandation est recalculée sur ces scores et ajoutée en colonnes annexes :
+`quality_score_without_affiliated_judge`,
+`recommendation_rank_without_affiliated_judge`,
+`recommendation_status_without_affiliated_judge` et
+`affiliated_judge_changes_outcome`. Le rapport marque un cas d'usage
+**judge-sensitive** quand le statut ou le rang d'un modèle change, et nomme le
+recommandé de ce scénario.
+
+Ce contrôle ne prouve pas l'existence d'un biais : retirer un juge réduit aussi
+la taille du panel. Il indique seulement qu'une recommandation dépend du juge
+le plus exposé au conflit d'intérêts et doit alors être confirmée. Si un futur
+audit constate un biais systématique mesurable, la mitigation à envisager reste
+un pool de juges distinct des fournisseurs évalués — non implémenté à ce jour.
 
 ### Désaccord inter-juges
 
@@ -331,6 +364,92 @@ attribution avant toute exécution de code généré. Contrat appliqué par
   réseau n'est bloqué que par la liste blanche d'imports et la mémoire n'est pas
   limitée sous macOS. À réserver aux réponses de modèles évalués.
 
+## 3 ter. Suite `generic-screen-v3` (défaut depuis la méthodologie 0.5.0)
+
+### Pourquoi une v3
+
+Le run de référence 0.4.0 (9 modèles, trois essais) a montré que la v2 ne
+départageait plus les modèles récents. 92 % des notes valaient 5/5, et 21 des
+34 prompts étaient saturés : chaque modèle obtenait au moins 4 à chaque essai.
+Presque tous les modèles éligibles se retrouvaient statistiquement à égalité
+avec le recommandé, et le coût décidait seul. Le peu d'écart restant venait en
+partie d'artefacts : une bonne réponse accompagnée de son calcul notée fausse
+(corrigé depuis, voir ci-dessous), et un corrigé contesté par six modèles sur
+huit (prompt 23).
+
+### Contenu
+
+`QUALITY_SUITE=v3` (défaut) charge `data/prompts/quality_prompts_v3.json` et
+`data/catalog/model_compass_use_cases_v3.json` : 48 items, **six par cas
+d'usage**, pour qu'un échec isolé ne fasse plus basculer l'éligibilité au seuil
+de 4,0.
+
+| Cas d'usage | Items | Repris de la v2 | Évaluateur |
+|---|---:|---:|---|
+| Extraction structurée | 6 | 3 | JSON attendu, crédit partiel |
+| Code court | 6 | 2 | tests dans le sandbox, crédit partiel |
+| Question-réponse avec contexte | 6 | 0 | réponse finale exacte (dont abstention) |
+| Raisonnement borné | 6 | 1 | réponse finale exacte |
+| Classification et routage | 6 | 0 | réponse finale exacte (dont `UNCLEAR` sous règle explicite) |
+| Résumé | 6 | 3 | rubrique, panel de juges |
+| Communication concise | 6 | 1 | rubrique, panel de juges |
+| Suivi d'instruction | 6 | 1 | sortie exacte, 1 rubrique |
+
+Les items repris sont ceux qui départageaient encore les modèles ; les items
+saturés sont remplacés par des variantes plus difficiles du même construit
+(valeur corrigée qui remplace la première, champ absent à laisser à `null`,
+multi-sauts avec un fait périmé, exception à une règle héritée, ironie,
+priorité entre deux demandes, règle de routage explicite, contraintes de
+format cumulées). Les nouveaux items privilégient les contrôles déterministes :
+seuls résumé, communication concise et un item de suivi d'instruction restent
+jugés, soit 13 items. Comme en v2, ils évitent les noms de personnes et de
+lieux, les adresses et les courriels, que certains fournisseurs masquent.
+Les valeurs attendues des nouveaux items sont calculées par
+`scripts/build_quality_suite_v3.py`, et chaque solution de référence des items
+de code doit passer ses propres tests dans le sandbox avant toute écriture. Ce
+script est la source de la suite et de son catalogue : un item se modifie là, pas
+dans le JSON, et un test échoue si les fichiers versionnés s'en écartent.
+
+Les difficultés restent des hypothèses d'auteur (`difficulty_status = draft`)
+jusqu'au premier run de référence de la v3 : l'analyse des items
+(`results/quality_analysis/`) dira lesquels sont saturés, au plancher ou
+contestés.
+
+### Règles de notation introduites en 0.4.0 et 0.5.0
+
+- **Réponse finale.** Pour les items à réponse exacte (`exact_answer`,
+  `factual_sanity`, `logical_reasoning`), le contenu est la réponse finale :
+  la dernière ligne non vide, sans emphase Markdown ni étiquette « Answer: », et
+  le dernier nombre de cette ligne quand la réponse attendue est numérique. Une
+  bonne réponse qui montre son calcul garde son score de contenu ; seule la
+  conformité de format échoue. La fusion réapplique cette règle aux réponses
+  brutes stockées, sans les modifier. Les items `instruction_following`, dont
+  la sortie exacte est le construit mesuré, restent stricts.
+- **Contenu seul par cas d'usage.** Le score de qualité d'un cas d'usage, qui
+  décide de l'éligibilité, ne moyenne que les lignes de contenu ; la conformité
+  de format est publiée à part (`format_compliance_rate`, colonne *Format
+  respected* du rapport).
+- **Crédit partiel.** Une réponse JSON vaut `1 + 4 × part des champs
+  corrects` (un champ inventé compte comme une erreur) ; un code vaut
+  `1 + 4 × part des tests réussis`. Une réponse partiellement juste reste un
+  échec, mais n'est plus notée comme une réponse vide.
+- **Réponse vide.** Elle vaut 1 en contenu et, si le prompt contrôle le format,
+  1 aussi en conformité de format ; sa justification indique le `finish_reason`
+  de l'API (`length` = budget épuisé sans réponse). Une réponse d'API sans
+  aucun `choice` est une erreur de collecte, exclue du score.
+- **Plafond de tokens.** `QUALITY_MAX_TOKENS` (16 384 par défaut, raisonnement
+  caché compris) borne un modèle qui boucle jusqu'à sa sortie maximale, comme
+  la réponse vide de 131 072 tokens et 20 minutes du run 0.4.0.
+- **Exécution du code par défaut.** `QUALITY_CODE_EXECUTION=true` dans le
+  parcours standard : les items de code sont notés par leurs tests dans le
+  sandbox, plus objectifs et gratuits, au lieu du panel de juges. Les imports
+  autorisés sont listés dans chaque prompt.
+- **Corrigé contesté.** L'analyse des items marque `key_disputed` un item à
+  réponse exacte dont la réponse la plus fréquente de plus de la moitié des
+  modèles est la même réponse rejetée par le corrigé. L'item n'est pas retiré :
+  la carte du cas d'usage affiche le badge *disputed key* pour que la
+  recommandation ne repose pas sans le savoir sur un corrigé discutable.
+
 ## 4. Couverture du périmètre
 
 Le module de correction déterministe résume lui-même sa limite :
@@ -431,8 +550,20 @@ la moyenne pondérée par dimension, puis la macro-moyenne ; pour un cas d'usage
 il recalcule la moyenne plate de ses prompts. Les bornes sont les quantiles
 2,5 % et 97,5 % des tirages. Les scores et les rangs publiés restent inchangés.
 
-Il faut au moins **3 tentatives distinctes sur chaque prompt scoré** et la
-couverture complète des prompts attendus ; sinon les bornes sont `null`.
+Les intervalles d'un cas d'usage portent sur le contenu seul, comme son score.
+Il faut un run d'au moins **3 tentatives par prompt**, au moins 2 tentatives
+sur chaque prompt scoré et la couverture complète des prompts attendus ; sinon
+les bornes sont `null`. Un prompt qui a perdu une tentative sur une erreur
+technique de collecte est rééchantillonné sur les tentatives restantes, au lieu
+d'annuler l'intervalle du modèle entier.
+
+Une réponse vide est un échec du modèle, pas une erreur de collecte : elle vaut
+1 en contenu et, si le prompt a un contrôle de format, 1 aussi en conformité de
+format. Sans cette seconde ligne, le modèle aurait une tentative de format de
+moins que les autres sur ce prompt. `finish_reason=length` dans la
+justification signale que le modèle a épuisé son budget de tokens sans
+répondre. Une réponse d'API sans aucun `choice` est en revanche une erreur de
+collecte : la cause est l'API, pas le modèle.
 Dans le benchmark global, les exclusions pour corruption d'entrée suspectée
 sont aussi retirées du dénominateur, conformément au score existant. Ces IC
 reflètent le rééchantillonnage de cette suite et de ces tentatives, **pas** une garantie

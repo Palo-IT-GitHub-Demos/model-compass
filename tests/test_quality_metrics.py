@@ -368,3 +368,33 @@ class TestJudgeDisagreementRate:
         ]
         summary = summarize_quality_scores(pd.DataFrame(rows))
         assert summary["quality_judge_disagreement_rate"].isna().all()
+
+
+def _repeated_rows(attempts_by_prompt: dict[int, int]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"model": "v/a", "prompt_id": prompt_id, "attempt": attempt, "score": 5 if attempt else 3}
+            for prompt_id, attempts in attempts_by_prompt.items()
+            for attempt in range(attempts)
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("attempts_by_prompt", "has_interval"),
+    [
+        ({0: 3, 1: 3}, True),
+        ({0: 3, 1: 2}, True),  # one attempt lost to a collection error
+        ({0: 3, 1: 1}, False),  # a prompt left with a single attempt
+        ({0: 2, 1: 2}, False),  # a two-attempt run cannot give an interval
+        ({0: 1, 1: 1}, False),
+    ],
+)
+def test_interval_tolerates_one_lost_attempt_in_a_three_attempt_run(
+    attempts_by_prompt: dict[int, int], has_interval: bool
+) -> None:
+    from src.evaluators.quality_metrics import bootstrap_quality_interval
+
+    low, high = bootstrap_quality_interval(_repeated_rows(attempts_by_prompt), seed_key="v/a")
+
+    assert (not math.isnan(low) and not math.isnan(high)) is has_interval

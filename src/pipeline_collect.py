@@ -38,8 +38,13 @@ def enforce_collect_error_budget(
     model_count: int,
     max_quality_collection_error_rate: float,
     max_security_probe_error_rate: float,
+    security_required: bool = True,
 ) -> None:
-    """Stop a run when transport/probe failures exceed configured thresholds."""
+    """Stop a run when transport/probe failures exceed configured thresholds.
+
+    *security_required* is false for a ``SECURITY=skip`` run, whose empty
+    security stage is the intended outcome rather than a failure.
+    """
     if collect_result.prompt_count > 0 and model_count > 0 and collect_result.repetitions > 0:
         expected_quality_attempts = collect_result.prompt_count * model_count * collect_result.repetitions
     else:
@@ -54,6 +59,8 @@ def enforce_collect_error_budget(
                 "Fix upstream transport/provider instability before continuing."
             )
 
+    if security_df.empty and not security_required:
+        return
     if security_df.empty:
         raise ValueError("[security] Stage produced no rows; refusing to continue with an unvalidated security axis.")
 

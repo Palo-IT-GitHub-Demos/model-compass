@@ -39,7 +39,9 @@ plugins:
 nav:
   - Accueil: index.md
   - Workflow: workflow.md
+  - "Lire le rapport": guide-lecture-rapport.md
   - "Scope Model Compass": model-compass-scope.md
+  - "Plan de livraison v0.4 → v0.5": plans/plan-livraison-v0.4.md
   - Méthodologie:
       - "Qualité": quality-methodology.md
       - "Sécurité": security-methodology.md

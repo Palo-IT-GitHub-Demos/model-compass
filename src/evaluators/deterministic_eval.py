@@ -28,8 +28,13 @@ class CheckResult:
     passed: bool | None
     """True = definitive pass, False = definitive fail, None = undecidable (forward to LLM judge)."""
 
-    score: int | None
-    """Score on a 1–5 scale, or None when undecidable."""
+    score: float | None
+    """Score on a 1–5 scale, or None when undecidable.
+
+    Structured checks give partial credit (``1 + 4 × share correct``): a JSON
+    answer with three of four fields right, or code passing four of five
+    tests, scores between 1 and 5 instead of failing like an empty answer.
+    """
 
     reason: str
     """Human-readable explanation of the result."""
@@ -89,10 +94,14 @@ class JsonValidityCheck:
                     "format_reason": "Response has the wrong JSON root type for the required object or array.",
                 }
             if expected_json is not None and parsed != expected_json:
+                share = json_agreement(parsed, expected_json)
                 return CheckResult(
                     passed=False,
-                    score=1,
-                    reason="Response is valid JSON but does not match the required JSON value.",
+                    score=partial_credit(share),
+                    reason=(
+                        "Response is valid JSON but does not match the required JSON value "
+                        f"({share:.0%} of the expected fields or items are correct)."
+                    ),
                     **fmt,
                 )
             return CheckResult(
@@ -254,12 +263,14 @@ class PythonExecutionCheck:
             return CheckResult(passed=None, score=None, reason=f"Sandbox unavailable: {result.detail}", **fmt)
         if result.status == "ok" and result.passed == result.total:
             return CheckResult(passed=True, score=5, reason=f"Passed {result.passed}/{result.total} test cases.", **fmt)
-        detail = (
-            f"Passed {result.passed}/{result.total} test cases."
-            if result.status == "ok"
-            else f"Execution {result.status}: {result.detail}"
-        )
-        return CheckResult(passed=False, score=1, reason=detail, **fmt)
+        if result.status == "ok":
+            return CheckResult(
+                passed=False,
+                score=partial_credit(result.passed / result.total if result.total else 0.0),
+                reason=f"Passed {result.passed}/{result.total} test cases.",
+                **fmt,
+            )
+        return CheckResult(passed=False, score=1, reason=f"Execution {result.status}: {result.detail}", **fmt)
 
 
 class ExactFormatCheck:
@@ -321,9 +332,96 @@ class ExactFormatCheck:
 
 
 class ExactAnswerCheck(ExactFormatCheck):
-    """Exact-answer check for factual-sanity and elementary-reasoning probes."""
+    """Exact-answer check for factual-sanity, classification and elementary-reasoning probes.
+
+    Content is the final answer: a correct answer that also shows its working,
+    or wraps the value in markdown emphasis, keeps its content score and fails
+    only output-format compliance. Exact-format instruction prompts
+    (:class:`ExactFormatCheck`) stay strict, since there the exact output is
+    the construct being measured.
+    """
 
     category = "exact_answer"
+
+    def run(
+        self,
+        prompt: str,
+        response: str,
+        evaluation: Mapping[str, Any] | None = None,
+    ) -> CheckResult:
+        """Score the final answer, keeping the strict format verdict separate."""
+        result = super().run(prompt, response, evaluation)
+        accepted_answers = _get_context_strings(evaluation, "accepted_answers")
+        if result.passed is not False or not final_answer_matches(response, accepted_answers):
+            return result
+        return CheckResult(
+            passed=True,
+            score=5,
+            reason="Final answer matches an accepted answer; the extra text is scored under output format only.",
+            format_score=result.format_score,
+            format_reason=result.format_reason,
+        )
+
+
+EXACT_ANSWER_CATEGORIES = frozenset({"exact_answer", "factual_sanity", "logical_reasoning"})
+"""Categories whose content is the final answer, scored by :class:`ExactAnswerCheck`."""
+
+_ANSWER_LABEL = re.compile(r"^(?:final answer|answer|result|label|the answer is)\s*[:=-]?\s*", re.IGNORECASE)
+_NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+
+def final_answer(response: str, accepted_answers: list[str]) -> str:
+    """Return the final answer a response commits to, or ``""``.
+
+    The final answer is the last non-empty line, without markdown emphasis,
+    quotes, an ``Answer:``-style label or trailing punctuation. When every
+    accepted answer is a number, it is the last number on that line, so
+    ``3 * 24 + 5 = 77`` answers ``77``.
+    """
+    lines = [line for line in _strip_code_fences(response).splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last = re.sub(r"[*_`]+", "", lines[-1]).strip()
+    last = _ANSWER_LABEL.sub("", last).strip().strip("\"'“”‘’").rstrip(".!").strip()
+    if accepted_answers and all(_NUMBER.fullmatch(answer.strip()) for answer in accepted_answers):
+        numbers = _NUMBER.findall(last)
+        return numbers[-1] if numbers else ""
+    return last
+
+
+def final_answer_matches(response: str, accepted_answers: list[str]) -> bool:
+    """Return whether the response's final answer is one of *accepted_answers*."""
+    answer = final_answer(response, accepted_answers)
+    if not answer:
+        return False
+    return _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}
+
+
+def partial_credit(share: float) -> float:
+    """Map the share of a structured answer that is correct to the 1–5 scale (1 + 4 × share)."""
+    return round(1.0 + 4.0 * min(max(share, 0.0), 1.0), 2)
+
+
+def json_agreement(actual: object, expected: object) -> float:
+    """Share of an expected JSON value the answer gets right, from 0 to 1.
+
+    Objects compare their top-level fields: an extra field counts against the
+    answer like a missing or wrong one, since inventing fields is an error.
+    Arrays compare position by position over the longer of the two. Any other
+    value is all or nothing.
+    """
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return 0.0
+        fields = set(expected) | set(actual)
+        correct = sum(1 for key in expected if key in actual and actual[key] == expected[key])
+        return correct / len(fields) if fields else 1.0
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            return 0.0
+        size = max(len(expected), len(actual))
+        return sum(1 for got, want in zip(actual, expected, strict=False) if got == want) / size if size else 1.0
+    return 1.0 if actual == expected else 0.0
 
 
 # ── Registry ───────────────────────────────────────────────────────────────────

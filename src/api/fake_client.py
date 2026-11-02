@@ -153,6 +153,9 @@ def _make_completion(content: str, model: str | None = None) -> _FakeChatComplet
     )
 
 
+_SIMULATED_LATENCY_FLOOR_MS = 400
+
+
 class FakeAsyncOpenRouterClient:
     """Offline stand-in for :class:`~src.api.openrouter_client.AsyncOpenRouterClient`.
 
@@ -187,6 +190,9 @@ class FakeAsyncOpenRouterClient:
             if system_msg is not None
             else _fake_prompt_response(user_msg, model)
         )
+        # Deterministic, non-zero latency (no real wait) so the dry run exercises the
+        # performance component and reaches recommended/eligible statuses.
+        simulated_latency_ms = float(_SIMULATED_LATENCY_FLOOR_MS + _stable_int(model, user_msg) % 6_000)
         self._call_costs.append(
             CallCostRecord(
                 usage_context=usage_context,
@@ -198,8 +204,8 @@ class FakeAsyncOpenRouterClient:
                 total_tokens=None,
                 actual_cost_credits=None,
                 cost_source="dry_run",
-                latency_ms=0.0,
-                network_latency_ms=0.0,
+                latency_ms=simulated_latency_ms,
+                network_latency_ms=simulated_latency_ms,
             )
         )
         return _make_completion(content, model)

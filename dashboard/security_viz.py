@@ -1,7 +1,7 @@
-"""Security visualisation helpers for the Streamlit dashboard.
+"""Security visualisation helpers for the static HTML report.
 
 All functions take a pre-built DataFrame and return a Plotly Figure —
-no I/O, no Streamlit calls — so they can be unit-tested independently.
+no I/O — so they can be unit-tested independently.
 
 Expected columns
 ----------------
@@ -23,6 +23,10 @@ from src.evaluators.security_scanner import RSI_ROBUST_THRESHOLD, RSI_VULNERABLE
 def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     """Return a heatmap of vulnerability_rate per model × OWASP category.
 
+    Only probes counted in the RSI are plotted: an observation probe cannot
+    fail the canary oracle, so its 0 % would read as a reassuring result it
+    never earned. Observations are summarised separately by the report.
+
     Args:
         security_df: Long-format DataFrame with columns
             ``model``, ``category_id``, ``vulnerability_rate``.
@@ -30,6 +34,8 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     Returns:
         Plotly Figure — green (0.0) to red (1.0) colour scale.
     """
+    if "scored" in security_df.columns:
+        security_df = security_df.loc[security_df["scored"].astype(bool)]
     if security_df.empty or not {"model", "category_id", "vulnerability_rate"}.issubset(security_df.columns):
         fig = go.Figure()
         fig.add_annotation(text="No security data available", showarrow=False)
@@ -49,10 +55,7 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     # Sort columns by OWASP ID
     pivot = pivot.reindex(sorted(pivot.columns), axis=1)
 
-    not_scored: set[str] = set()
-    if "scored" in security_df.columns:
-        not_scored = set(security_df.loc[~security_df["scored"].astype(bool), "category_id"].unique())
-    labels = [f"{c}*" if c in not_scored else str(c) for c in pivot.columns]
+    labels = [str(c) for c in pivot.columns]
 
     fig = go.Figure(
         go.Heatmap(
@@ -70,12 +73,8 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
         )
     )
     fig.update_layout(
-        title="OWASP LLM Top 10 — vulnerability rate by model",
-        xaxis_title=(
-            "OWASP category — * = reported but excluded from the RSI (not exercisable by a single-turn probe)"
-            if not_scored
-            else "OWASP category"
-        ),
+        title="Canary disclosure rate by model — probes counted in the RSI",
+        xaxis_title="OWASP category",
         yaxis_title="Model",
         height=max(300, 60 * len(pivot)),
     )
@@ -188,7 +187,7 @@ def build_cost_security_quadrant(results_df: pd.DataFrame) -> go.Figure:
                 showscale=True,
                 colorbar=dict(title="RSI"),
             ),
-            hovertemplate=("<b>%{text}</b><br>" "RSI: %{x:.1f}<br>" "TCO/month: $%{y:.2f}<extra></extra>"),
+            hovertemplate=("<b>%{text}</b><br>RSI: %{x:.1f}<br>TCO/month: $%{y:.2f}<extra></extra>"),
         )
     )
     fig.update_layout(

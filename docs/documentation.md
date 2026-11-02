@@ -25,7 +25,6 @@ make docs-serve   # aperçu local avec rechargement à chaud
 ## Ajouter un module à la référence API
 
 1. Ajouter le module dans `docs/reference/api.md` avec une directive `::: chemin.du.module`.
-2. Le module doit être importable sans effet de bord au niveau module — voir
-   `dashboard/app.py`, volontairement exclu de la référence API pour cette raison
-   (script Streamlit, pas une bibliothèque).
+2. Le module doit être importable sans effet de bord au niveau module (pas de
+   lecture de fichiers ni d'appel réseau à l'import).
 3. Lancer `make docs-build` pour valider avant de committer.

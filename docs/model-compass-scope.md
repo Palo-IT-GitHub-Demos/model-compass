@@ -80,9 +80,13 @@ La décision comporte deux niveaux indépendants.
 
 ### 1. Éligibilité qualité
 
-Pour chaque couple `cas d'usage / modèle`, les scores des prompts du catalogue
-sont moyennés par prompt. La couverture indique la proportion de prompts du cas
-d'usage réellement scorés.
+Pour chaque couple `cas d'usage / modèle`, les scores de **contenu** des prompts
+du catalogue sont moyennés par prompt. Les lignes de conformité de format
+(`output_format_compliance`) n'y entrent pas : elles sont publiées à part, dans
+la colonne `format_compliance_rate`, pour qu'une bonne réponse qui ne respecte
+pas le format « réponse seule » ne fasse jamais baisser la qualité du cas
+d'usage. La couverture indique la proportion de prompts du cas d'usage
+réellement scorés.
 
 ```text
 qualité éligible =
@@ -122,9 +126,93 @@ MODEL_COMPASS_WEIGHTS='{"quality":0.60,"security":0.20,"cost":0.15,"performance"
 
 Les poids doivent être positifs et leur somme doit être égale à `1.0`. Le
 rapport et le manifeste enregistrent toujours les poids effectivement utilisés.
+Un run collecté avec `SECURITY=skip` met le poids sécurité à 0 et remet les
+trois autres à l'échelle (par défaut 0,67 / 0,27 / 0,07) ; le rapport le
+signale sur chaque page.
 
-Les catalogues `model-compass-use-cases-v1.1` et `model-compass-use-cases-v2.1`
-fixent les bornes du calcul : 0,10–100 USD par million de tokens et 1–30
+### Pourquoi ces poids
+
+Un poids ne se justifie pas seul : ce qui compte est l'arbitrage qu'il impose
+entre deux composantes, sur les ancres fixes du catalogue. Un point de qualité
+sur l'échelle 1-5 vaut 25 points de la composante qualité. Le coût perd
+33,3 points par décade de prix (ancres 0,10–100 USD/M, trois décades), la
+performance 67,7 points par décade de latence p95 (ancres 1–30 s), et la
+sécurité un point par point de RSI. `implied_tradeoffs`
+(`src/evaluators/recommendation.py`) calcule ces arbitrages ; le rapport les
+affiche dans la page *Use cases in detail*.
+
+| Profil | Qualité | Sécurité | Coût | Perf. | 1 point de qualité vaut | Un prix 10 fois plus bas vaut | Une fuite confirmée coûte |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| `quality_first` | 70 % | 20 % | 7 % | 3 % | plus que tout écart de prix | 0,13 point | ≥ 0,4 point |
+| `balanced` (défaut) | 50 % | 25 % | 20 % | 5 % | un écart de prix de 75 fois | 0,53 point | ≥ 0,7 point |
+| `cost_sensitive` | 35 % | 20 % | 40 % | 5 % | un écart de prix de 4,5 fois | 1,52 point | ≥ 0,8 point |
+
+« Une fuite confirmée coûte » est un minimum : le RSI d'un modèle qui fuit est
+ramené sous 65, soit au moins 35 points de RSI perdus.
+
+**Le défaut `balanced` (50/25/20/5).**
+
+- **Qualité 50 %.** Un modèle d'un point meilleur l'emporte sur un modèle
+  75 fois moins cher ; pour un demi-point, l'écart de prix doit rester sous
+  9 fois. C'est l'ordre de grandeur qui sépare un modèle de pointe d'un modèle
+  économique : un demi-point d'écart justifie de payer le modèle de pointe, un
+  dixième de point non. Quand la qualité des modèles éligibles est à égalité
+  statistique, comme dans le run de référence 0.4.0, le coût décide, et c'est
+  voulu : à qualité indiscernable, payer plus n'a pas de justification
+  générique.
+- **Sécurité 25 %.** Une fuite confirmée coûte au moins 0,7 point de qualité,
+  soit l'équivalent d'un prix 20 fois plus élevé : un modèle qui divulgue son
+  contexte caché doit être nettement meilleur pour rester premier. La sécurité
+  reste compensatoire, car le RSI ne mesure qu'un périmètre étroit (la
+  divulgation d'un secret) ; un dossier où la sécurité est éliminatoire doit
+  l'appliquer comme critère d'exclusion, hors de l'outil.
+- **Coût 20 %.** Il départage les modèles de qualité proche sans pouvoir
+  racheter un écart de qualité réel : sur toute la plage des ancres (un facteur
+  1 000), il ne vaut que 1,6 point de qualité.
+- **Performance 5 %.** Une latence p95 dix fois plus élevée ne vaut que
+  0,27 point de qualité : le profil de charge par défaut (`enterprise_qa`)
+  traite des questions où quelques secondes n'invalident pas une réponse. Une
+  application interactive doit passer par un autre profil ou par
+  `MODEL_COMPASS_WEIGHTS`.
+
+**Les deux autres profils.**
+
+- `quality_first` : sur toute la plage des ancres, le coût ne vaut que
+  0,4 point de qualité ; il ne départage que des modèles déjà proches. Pour des
+  réponses critiques (juridique, médical, décision engageante).
+- `cost_sensitive` : un point de qualité vaut un prix 4,5 fois plus bas. Pour
+  un fort volume ou un budget contraint, quand un modèle légèrement moins bon
+  mais beaucoup moins cher reste acceptable.
+
+Les profils ne changent jamais le rang publié, qui suit les poids du run. Ils
+montrent si la recommandation résiste au profil qui correspond à l'appel
+d'offres : une carte marquée *weight-profile-sensitive* nomme le leader de
+chaque profil, et l'humain retient celui du profil qui correspond au dossier.
+La plage de rang sous ±10 % (*fragile*) complète cette lecture pour de petites
+variations autour du profil retenu.
+
+### Pourquoi ces seuils
+
+Le seuil d'un cas d'usage est **non compensatoire** : un modèle sous le seuil
+est exclu, quel que soit son prix. Avec six items par cas d'usage :
+
+- **4,0 / 5 pour les cas d'usage à contrôle déterministe.** Un item réussi vaut
+  5, un échec 1, et le crédit partiel donne une valeur intermédiaire. Un échec
+  complet sur six donne (5 × 5 + 1) / 6 = 4,33 et reste éligible ; deux échecs
+  donnent 3,67 et excluent. Le seuil tolère donc une erreur sur six, pas deux.
+- **3,5 / 5 pour la synthèse et la communication concise**, notées par les
+  juges sur une échelle graduée : 3 veut dire qu'un critère n'est que
+  partiellement rempli, 4 qu'il reste un défaut mineur hors critère. 3,5 exige
+  qu'en moyenne la réponse soit plus proche de « défaut mineur » que de
+  « critère partiel », ce qui laisse de la place à la sévérité variable des juges
+  sur des critères en partie subjectifs.
+
+Ces seuils restent `draft`. Ils passent à `calibrated` après un run de
+référence de la suite v3 et une relecture humaine d'environ 50 réponses jugées
+(voir le [plan de livraison](plans/plan-livraison-v0.4.md)).
+
+Les catalogues `model-compass-use-cases-v1.1`, `v2.1` et `v3.0` fixent les
+bornes du calcul : 0,10–100 USD par million de tokens et 1–30
 secondes pour la latence p95. En dessous de la borne meilleure le score est 100 ;
 au-dessus de la borne moins bonne il est 0 ; entre les deux l'échelle est
 logarithmique. Un coût nul (modèle gratuit) vaut 100. Ces scores ne sont pas
@@ -186,8 +274,8 @@ results/recommendations/benchmark_<timestamp>_recommendations.{csv,json}
 
 Chaque ligne de cet artefact correspond à un couple `use_case_id / model` et
 contient le seuil, la couverture, les quatre composantes, le score pondéré, le
-rang, le statut et les preuves manquantes. Le dashboard Streamlit et l'export
-HTML utilisent ce même artefact.
+rang, le statut et les preuves manquantes. Le rapport HTML (`make export-html`)
+affiche ce même artefact.
 
 ## Hors périmètre
 

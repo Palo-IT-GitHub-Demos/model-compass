@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from src.evaluators.deterministic_eval import (
     CHECKS,
     ExactAnswerCheck,
@@ -178,11 +180,26 @@ class TestExactFormatCheck:
         assert result.passed is True
         assert result.score == 5
 
-    def test_exact_answer_rejects_extra_text(self) -> None:
+    def test_exact_answer_scores_the_final_answer_and_leaves_extra_text_to_format(self) -> None:
         check = ExactAnswerCheck()
         result = check.run("", "The answer is Canberra.", {"accepted_answers": ["Canberra"]})
-        assert result.passed is False
-        assert result.score == 1
+        assert (result.passed, result.score) == (True, 5)
+
+        strict = check.run(
+            "", "5 x 8 = 40 and 3 + 7 + 9 + 11 = 30.\n\n**10**", {"accepted_answers": ["10"], "strict_output": True}
+        )
+        assert (strict.score, strict.format_score) == (5, 1)
+
+    @pytest.mark.parametrize(
+        ("response", "accepted"),
+        [("I think 10, not 12", ["10"]), ("TECHNICAL", ["UNCLEAR"]), ("Canberra or Sydney", ["Canberra"])],
+    )
+    def test_exact_answer_still_fails_a_wrong_or_hedged_final_answer(self, response: str, accepted: list[str]) -> None:
+        assert ExactAnswerCheck().run("", response, {"accepted_answers": accepted}).score == 1
+
+    def test_exact_format_instruction_still_rejects_extra_text(self) -> None:
+        result = ExactFormatCheck().run("", "Sure: READY:5", {"accepted_answers": ["READY:5"]})
+        assert (result.passed, result.score) == (False, 1)
 
     def test_wrong_numeric_value_does_not_imply_format_failure(self) -> None:
         result = ExactFormatCheck().run("", "READY:4", {"accepted_answers": ["READY:5"], "strict_output": True})
@@ -226,3 +243,39 @@ class TestStripCodeFences:
     def test_no_fences_unchanged(self) -> None:
         raw = '{"key": 1}'
         assert _strip_code_fences(raw) == raw
+
+
+class TestPartialCredit:
+    def test_json_object_with_one_wrong_field_gets_partial_credit(self) -> None:
+        from src.evaluators.deterministic_eval import JsonValidityCheck
+
+        result = JsonValidityCheck().run(
+            "", '{"a": 1, "b": 2, "c": 9, "d": 4}', {"expected_json": {"a": 1, "b": 2, "c": 3, "d": 4}}
+        )
+
+        assert (result.passed, result.score) == (False, 4.0)
+        assert "75%" in result.reason
+
+    def test_an_invented_field_counts_against_the_answer(self) -> None:
+        from src.evaluators.deterministic_eval import json_agreement
+
+        assert json_agreement({"a": 1, "b": 2, "extra": 0}, {"a": 1, "b": 2}) == pytest.approx(2 / 3)
+        assert json_agreement([1, 2], [1, 2, 3]) == pytest.approx(2 / 3)
+        assert json_agreement("x", {"a": 1}) == 0.0
+
+    def test_code_passing_some_tests_gets_partial_credit(self) -> None:
+        from src.evaluators.deterministic_eval import PythonExecutionCheck
+
+        code = "def double(n):\n    return n * 2 if n < 3 else 0"
+        result = PythonExecutionCheck().run(
+            "",
+            code,
+            {
+                "execute_code": True,
+                "required_function": "double",
+                "required_parameters": ["n"],
+                "test_cases": [{"args": [n], "expected": n * 2} for n in range(5)],
+            },
+        )
+
+        assert (result.passed, result.score) == (False, 1 + 4 * 3 / 5)

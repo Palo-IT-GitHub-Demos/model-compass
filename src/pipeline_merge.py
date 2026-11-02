@@ -23,8 +23,14 @@ def merge_results(
     actual_call_costs: pd.DataFrame | None = None,
     *,
     min_quality_coverage_for_cer: float = 0.8,
+    security_profile: str = "full",
 ) -> pd.DataFrame:
-    """Merge quality, security and pricing outputs without changing their metrics."""
+    """Merge quality, security and pricing outputs without changing their metrics.
+
+    ``security_profile`` travels with every row: ``skip`` tells the
+    recommendation that missing security evidence is a declared choice of
+    the run, not a model's failure to provide it.
+    """
     base = pd.DataFrame({"model": models})
 
     if not quality_df.empty and "score" in quality_df.columns:
@@ -67,6 +73,7 @@ def merge_results(
     if quality_suite_id:
         base["quality_suite_id"] = quality_suite_id
     base["methodology_version"] = METHODOLOGY_VERSION
+    base["security_profile"] = security_profile
 
     if actual_call_costs is not None and not actual_call_costs.empty:
         base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")

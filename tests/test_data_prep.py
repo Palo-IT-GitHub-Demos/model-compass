@@ -6,23 +6,36 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from dashboard.data_prep import (
+    best_models,
+    blended_cost_per_1m_tokens,
     compute_cost_columns,
     enrich_benchmark,
+    format_judge_verdicts,
+    leaders_label,
     load_quality_details,
     load_recommendations,
+    ordered_use_case_recommendations,
     parse_judge_verdicts,
     quality_dimension_long_frame,
     quality_dimension_table,
+    quality_threshold_borderline,
     quality_tier,
+    run_notices,
     run_provenance,
+    run_warnings,
+    safest_summary,
     security_category_table,
     security_long_frame,
+    security_observations_frame,
+    security_probe_coverage,
     security_probe_details_frame,
     short_name,
     tint_status,
 )
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.cost_analyzer import BUILTIN_WORKLOAD_PROFILES
 
 
@@ -303,6 +316,19 @@ class TestParseJudgeVerdicts:
         assert parse_judge_verdicts("not-json") == []
 
 
+class TestFormatJudgeVerdicts:
+    def test_renders_one_line_per_judge(self) -> None:
+        raw = (
+            '[{"judge_id":"anthropic","score":4,"reasoning":"Correct."},'
+            '{"judge_id":"openai","score":2,"reasoning":"Misses a fact."}]'
+        )
+
+        assert format_judge_verdicts(raw) == "anthropic · 4 / 5 — Correct.\nopenai · 2 / 5 — Misses a fact."
+
+    def test_missing_verdicts_render_empty(self) -> None:
+        assert format_judge_verdicts(float("nan")) == ""
+
+
 class TestSecurityProbeDetailsFrame:
     def test_extracts_prompt_and_response_per_probe(self) -> None:
         df = pd.DataFrame(
@@ -409,3 +435,200 @@ class TestSecurityCategoryTable:
 
     def test_empty_input_returns_empty(self) -> None:
         assert security_category_table(pd.DataFrame()).empty
+
+
+class TestBlendedCost:
+    def test_recorded_blended_cost_wins(self) -> None:
+        df = pd.DataFrame({"cost_usd_per_1m_tokens": [3.0], "prompt_price_per_token": [0.000001]})
+        assert blended_cost_per_1m_tokens(df).iloc[0] == 3.0
+
+    def test_legacy_rows_are_blended_with_the_recorded_profile(self) -> None:
+        df = pd.DataFrame(
+            {
+                "prompt_price_per_token": [0.000002],
+                "completion_price_per_token": [0.000010],
+                "workload_profile": ["document_analysis"],
+            }
+        )
+        # 4096 input + 512 output tokens per request.
+        assert blended_cost_per_1m_tokens(df).iloc[0] == pytest.approx((2 * 4096 + 10 * 512) / 4608)
+
+
+class TestBestModels:
+    def test_returns_every_tied_model(self) -> None:
+        df = pd.DataFrame({"model": ["b/x", "a/y", "c/z"], "rsi": [100.0, 100.0, 65.0]})
+        assert best_models(df, "rsi") == (["a/y", "b/x"], 100.0)
+        assert leaders_label(["a/y", "b/x"]) == "2 models tied"
+
+    def test_ignores_infinite_values(self) -> None:
+        df = pd.DataFrame({"model": ["a", "b"], "tco_usd": [float("inf"), 4.0]})
+        assert best_models(df, "tco_usd") == (["b"], 4.0)
+
+    def test_safest_summary_does_not_pick_one_of_equals(self) -> None:
+        df = pd.DataFrame({"model": ["v/a", "v/b"], "rsi": [100.0, 100.0], "security_status": ["Safe", "Safe"]})
+        assert safest_summary(df) == ("2 models tied", "RSI 100 / 100: a, b")
+
+
+class TestRunWarnings:
+    def _reference_row(self) -> dict[str, object]:
+        return {
+            "model": "v/a",
+            "methodology_version": METHODOLOGY_VERSION,
+            "quality_repetitions_observed": 3,
+            "security_probe_set_id": "full-123",
+            "quality_coverage_rate": 1.0,
+        }
+
+    def test_reference_run_has_no_warning(self) -> None:
+        assert run_warnings(pd.DataFrame([self._reference_row()]), "benchmark_x.csv") == []
+
+    @pytest.mark.parametrize(
+        ("change", "expected"),
+        [
+            ({"methodology_version": "0.2.0"}, "Scored with methodology 0.2.0"),
+            ({"quality_repetitions_observed": 1}, "Fewer than 3 attempts"),
+            ({"security_probe_set_id": "owasp-123"}, "standard security path"),
+            ({"security_profile": "skip", "security_probe_set_id": None}, "Security was skipped"),
+            ({"quality_coverage_rate": 0.8}, "Incomplete quality coverage for a"),
+        ],
+    )
+    def test_each_departure_from_the_standard_path_is_named(self, change: dict[str, object], expected: str) -> None:
+        warnings = run_warnings(pd.DataFrame([{**self._reference_row(), **change}]), "benchmark_x.csv")
+        assert len(warnings) == 1
+        assert expected in warnings[0]
+
+    def test_one_model_short_of_attempts_is_a_notice_not_a_warning(self) -> None:
+        rows = [
+            self._reference_row(),
+            {
+                **self._reference_row(),
+                "model": "v/b",
+                "quality_repetitions_observed": 2.97,
+                "quality_collection_error_count": 1,
+            },
+        ]
+        df = pd.DataFrame(rows)
+
+        assert run_warnings(df, "benchmark_x.csv") == []
+        assert run_notices(df) == [
+            "Quality responses lost to technical collection errors: b (1). Those attempts are excluded; "
+            "the scores and intervals use the attempts collected."
+        ]
+
+    def test_dry_run_data_is_flagged_as_synthetic(self) -> None:
+        warnings = run_warnings(pd.DataFrame([self._reference_row()]), "benchmark_preview_x.csv")
+        assert warnings and "Synthetic dry-run data" in warnings[0]
+
+
+class TestOrderedUseCaseRecommendations:
+    def test_recommended_first_then_rank_then_unranked(self) -> None:
+        df = pd.DataFrame(
+            {
+                "use_case_id": ["u", "u", "u", "v"],
+                "model": ["below", "eligible", "leader", "other"],
+                "recommendation_status": ["below_quality_threshold", "eligible", "recommended", "recommended"],
+                "recommendation_rank": [None, 2, 1, 1],
+                "quality_score": [3.0, 4.2, 4.5, 4.0],
+            }
+        )
+        groups = ordered_use_case_recommendations(df)
+        assert [name for name, _ in groups] == ["u", "v"]
+        assert groups[0][1]["model"].tolist() == ["leader", "eligible", "below"]
+
+    def test_borderline_when_interval_straddles_threshold(self) -> None:
+        rows = pd.DataFrame(
+            {
+                "quality_score_ci95_low": [3.4, 3.6, float("nan")],
+                "quality_score_ci95_high": [3.8, 3.9, float("nan")],
+                "quality_threshold": [3.5, 3.5, 3.5],
+            }
+        )
+        assert quality_threshold_borderline(rows).tolist() == [True, False, False]
+
+
+class TestSecurityObservations:
+    def test_summarises_unscored_probes_by_category(self) -> None:
+        details = pd.DataFrame(
+            {
+                "model": ["a", "b", "a"],
+                "probe": ["p1", "p1", "p2"],
+                "category_id": ["LLM07", "LLM07", "LLM01"],
+                "category_name": ["Misinformation", "Misinformation", "Prompt Injection"],
+                "leaked": [True, False, False],
+                "scored": [False, False, True],
+                "not_scored_reason": ["cannot fail", "cannot fail", ""],
+            }
+        )
+        observations = security_observations_frame(details)
+        assert observations.to_dict("records") == [
+            {
+                "category_id": "LLM07",
+                "category_name": "Misinformation",
+                "reason": "cannot fail",
+                "probes": 1,
+                "confirmed_leaks": 1,
+            }
+        ]
+
+    def test_category_table_only_keeps_scored_probes(self) -> None:
+        long_df = pd.DataFrame(
+            {
+                "model": ["a", "a"],
+                "category_id": ["LLM01", "LLM07"],
+                "vulnerability_rate": [0.0, 0.0],
+                "scored": [True, False],
+            }
+        )
+        assert set(security_category_table(long_df).columns) == {"model", "LLM01"}
+
+
+def test_security_coverage_counts_only_gradable_scored_probes() -> None:
+    probes = [
+        {"probe": "a", "scored": True, "outcome": "safe_refusal", "leaked": False},
+        {"probe": "b", "scored": True, "outcome": "inconclusive", "leaked": False},
+        {"probe": "c", "scored": True, "outcome": "confirmed_leak", "leaked": True},
+        {"probe": "d", "scored": False, "outcome": "inconclusive", "leaked": False},
+    ]
+    df = pd.DataFrame([{"model": "v/a", "probe_details": json.dumps(probes)}])
+
+    coverage = security_probe_coverage(security_probe_details_frame(df))
+
+    assert coverage.to_dict(orient="records") == [
+        {"model": "v/a", "scored_probes": 3, "measured_scored_probes": 2, "unmeasured_probes": "b"}
+    ]
+    assert run_notices(df) == [
+        "Some scored security probes returned no gradable answer, so these RSIs rest on fewer probes: a (2/3). "
+        "The missing probes are listed on the Security page."
+    ]
+
+
+def test_weight_profile_table_and_leaders_read_the_recommendation_artifact() -> None:
+    from dashboard.data_prep import weight_profile_leaders, weight_profile_table
+
+    rows = pd.DataFrame(
+        [
+            {
+                "model": "v/a",
+                "profile_rank_quality_first": 1,
+                "profile_rank_cost_sensitive": 2,
+                "weight_profiles": json.dumps(
+                    {
+                        "quality_first": {"quality": 0.7, "security": 0.2, "cost": 0.07, "performance": 0.03},
+                        "cost_sensitive": {"quality": 0.35, "security": 0.2, "cost": 0.4, "performance": 0.05},
+                    }
+                ),
+                "score_scales": json.dumps(
+                    {
+                        "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+                        "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
+                    }
+                ),
+            },
+            {"model": "v/b", "profile_rank_quality_first": 2, "profile_rank_cost_sensitive": 1},
+        ]
+    )
+
+    assert weight_profile_leaders(rows) == {"quality_first": ["a"], "cost_sensitive": ["b"]}
+    table = weight_profile_table(rows)
+    assert list(table["Profile"]) == ["quality-first", "cost-sensitive"]
+    assert list(table["1 quality point is worth"]) == ["more than any price gap", "a 5× price gap"]

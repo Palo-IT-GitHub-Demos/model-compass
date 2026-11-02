@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -11,6 +13,7 @@ from src.evaluators.recommendation import (
     LogScaleBounds,
     _normalize_lower_log_score,
     build_recommendation_report,
+    exclude_affiliated_judges,
     load_use_case_catalog,
     parse_recommendation_weights,
 )
@@ -287,3 +290,209 @@ class TestModelCompassRecommendations:
 
         assert report["recommendation_weights"].nunique() == 1
         assert '"quality": 0.6' in report["recommendation_weights"].iloc[0]
+
+
+def _verdicts(anthropic: int, openai: int, google: int) -> str:
+    return json.dumps(
+        [
+            {"judge_id": "copilot-claude-anthropic", "score": anthropic},
+            {"judge_id": "copilot-gpt4o-openai", "score": openai},
+            {"judge_id": "copilot-gemini25pro-google", "score": google},
+        ]
+    )
+
+
+class TestAffiliatedJudges:
+    def test_drops_only_the_judge_of_the_models_provider(self) -> None:
+        quality = pd.DataFrame(
+            {
+                "model": ["anthropic/claude", "meta/llama", "openai/gpt"],
+                "score": [4.0, 3.0, 5.0],
+                "judge_verdicts": [_verdicts(5, 4, 3), _verdicts(3, 3, 3), float("nan")],
+            }
+        )
+
+        adjusted = exclude_affiliated_judges(quality)
+
+        assert adjusted["score"].tolist() == [3.5, 3.0, 5.0]
+        assert quality["score"].tolist() == [4.0, 3.0, 5.0]
+
+    def test_keeps_the_score_when_no_other_judge_remains(self) -> None:
+        quality = pd.DataFrame(
+            {
+                "model": ["openai/gpt"],
+                "score": [4.0],
+                "judge_verdicts": [json.dumps([{"judge_id": "copilot-gpt4o-openai", "score": 4}])],
+            }
+        )
+        assert exclude_affiliated_judges(quality)["score"].tolist() == [4.0]
+
+    def test_flags_a_recommendation_that_depends_on_the_own_provider_judge(self) -> None:
+        benchmark = pd.DataFrame(
+            [
+                {"model": model, "cost_usd_per_1m_tokens": 1.0, "rsi": 90.0, "actual_latency_p95_ms": 2000.0}
+                for model in ("anthropic/claude", "openai/gpt")
+            ]
+        )
+        # Only the Anthropic judge lifts the Anthropic model above the OpenAI one.
+        quality = pd.DataFrame(
+            [
+                {
+                    "model": "anthropic/claude",
+                    "prompt_id": prompt_id,
+                    "score": 4.67,
+                    "judge_verdicts": _verdicts(5, 5, 4),
+                }
+                for prompt_id in (0, 1, 2)
+            ]
+            + [
+                {"model": "openai/gpt", "prompt_id": prompt_id, "score": 4.6, "judge_verdicts": float("nan")}
+                for prompt_id in (0, 1, 2)
+            ]
+        )
+
+        report = build_recommendation_report(benchmark, quality)
+        case = report.loc[report["use_case_id"] == "structured_extraction"].set_index("model")
+
+        assert case.loc["anthropic/claude", "recommendation_status"] == "recommended"
+        assert case.loc["anthropic/claude", "quality_score_without_affiliated_judge"] == pytest.approx(4.5)
+        assert case.loc["openai/gpt", "recommendation_status_without_affiliated_judge"] == "recommended"
+        assert case["affiliated_judge_changes_outcome"].all()
+
+
+def test_use_case_quality_scores_content_and_reports_format_apart(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    import pandas as pd
+
+    from src.evaluators.recommendation import build_recommendation_report
+
+    catalog = {
+        "catalog_version": "t",
+        "description": "t",
+        "weights": {"quality": 0.5, "security": 0.25, "cost": 0.2, "performance": 0.05},
+        "score_scales": {
+            "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+            "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
+        },
+        "use_cases": [
+            {"id": "reasoning", "name": "R", "description": "d", "prompt_ids": [0, 1], "minimum_quality_score": 4.0}
+        ],
+    }
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(catalog))
+    quality = pd.DataFrame(
+        [
+            {"model": "v/a", "prompt_id": pid, "attempt": 0, "quality_dimension": dim, "score": score}
+            for pid in (0, 1)
+            for dim, score in (("elementary_reasoning", 5), ("output_format_compliance", 1 if pid == 0 else 5))
+        ]
+    )
+    benchmark = pd.DataFrame(
+        [{"model": "v/a", "rsi": 100.0, "cost_usd_per_1m_tokens": 1.0, "actual_latency_p95_ms": 2000.0}]
+    )
+
+    row = build_recommendation_report(benchmark, quality, catalog_path=path).iloc[0]
+
+    assert row["quality_score"] == 5.0
+    assert row["quality_eligible"]
+    assert row["format_compliance_rate"] == 0.5
+
+
+def _two_model_inputs(tmp_path, *, security_profile: str = "full"):  # type: ignore[no-untyped-def]
+    import json
+
+    import pandas as pd
+
+    catalog = {
+        "catalog_version": "t",
+        "description": "t",
+        "weights": {"quality": 0.5, "security": 0.25, "cost": 0.2, "performance": 0.05},
+        "weight_profiles": {
+            "quality_first": {"quality": 0.7, "security": 0.2, "cost": 0.07, "performance": 0.03},
+            "cost_sensitive": {"quality": 0.35, "security": 0.2, "cost": 0.4, "performance": 0.05},
+        },
+        "score_scales": {
+            "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+            "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
+        },
+        "use_cases": [{"id": "u", "name": "U", "description": "d", "prompt_ids": [0], "minimum_quality_score": 3.0}],
+    }
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps(catalog))
+    quality = pd.DataFrame(
+        [
+            {"model": "v/strong", "prompt_id": 0, "attempt": 0, "score": 5.0},
+            {"model": "v/cheap", "prompt_id": 0, "attempt": 0, "score": 4.0},
+        ]
+    )
+    benchmark = pd.DataFrame(
+        [
+            {"model": "v/strong", "rsi": 100.0, "cost_usd_per_1m_tokens": 20.0, "actual_latency_p95_ms": 3000.0},
+            {"model": "v/cheap", "rsi": 100.0, "cost_usd_per_1m_tokens": 0.2, "actual_latency_p95_ms": 3000.0},
+        ]
+    )
+    if security_profile == "skip":
+        benchmark = benchmark.drop(columns="rsi")
+    benchmark["security_profile"] = security_profile
+    return benchmark, quality, path
+
+
+def test_each_weight_profile_ranks_models_and_flags_a_profile_sensitive_use_case(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from src.evaluators.recommendation import build_recommendation_report
+
+    benchmark, quality, path = _two_model_inputs(tmp_path)
+
+    report = build_recommendation_report(benchmark, quality, catalog_path=path).set_index("model")
+
+    assert report.loc["v/cheap", "recommendation_status"] == "recommended"
+    assert report.loc["v/strong", "profile_rank_quality_first"] == 1
+    assert report.loc["v/cheap", "profile_rank_cost_sensitive"] == 1
+    assert report["weight_profile_sensitive"].all()
+
+
+def test_a_skipped_security_run_ranks_without_security_and_says_so(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import json
+
+    from src.evaluators.recommendation import build_recommendation_report
+
+    benchmark, quality, path = _two_model_inputs(tmp_path, security_profile="skip")
+
+    report = build_recommendation_report(benchmark, quality, catalog_path=path)
+
+    assert set(report["recommendation_status"]) == {"recommended", "eligible"}
+    assert not report["security_evaluated"].any()
+    weights = json.loads(report["recommendation_weights"].iloc[0])
+    assert weights["security"] == 0.0
+    assert abs(sum(weights.values()) - 1.0) < 1e-9
+    assert set(report["evidence_missing"]) == {""}
+
+
+def test_missing_security_in_a_full_run_is_still_missing_evidence(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from src.evaluators.recommendation import build_recommendation_report
+
+    benchmark, quality, path = _two_model_inputs(tmp_path)
+    benchmark["rsi"] = float("nan")
+
+    report = build_recommendation_report(benchmark, quality, catalog_path=path)
+
+    assert set(report["recommendation_status"]) == {"insufficient_decision_evidence"}
+
+
+def test_implied_tradeoffs_of_the_default_weights() -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from src.evaluators.recommendation import implied_tradeoffs, load_use_case_catalog
+
+    catalog = load_use_case_catalog(Path("data/catalog/model_compass_use_cases_v3.json"))
+    balanced = implied_tradeoffs(catalog.weight_profiles["balanced"].model_dump(), catalog.score_scales)
+    quality_first = implied_tradeoffs(catalog.weight_profiles["quality_first"].model_dump(), catalog.score_scales)
+    cost_sensitive = implied_tradeoffs(catalog.weight_profiles["cost_sensitive"].model_dump(), catalog.score_scales)
+
+    assert catalog.weight_profiles["balanced"] == catalog.weights
+    assert balanced["price_factor_per_quality_point"] == pytest.approx(75, rel=0.01)
+    assert balanced["quality_points_per_confirmed_leak"] == pytest.approx(0.7)
+    assert quality_first["quality_points_per_10x_price"] * 3 == pytest.approx(0.4)
+    assert cost_sensitive["price_factor_per_quality_point"] == pytest.approx(4.53, rel=0.01)

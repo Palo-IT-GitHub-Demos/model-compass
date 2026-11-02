@@ -11,6 +11,7 @@ import json
 
 import pandas as pd
 
+from src.evaluators.deterministic_eval import final_answer, final_answer_matches
 from src.evaluators.quality_metrics import INPUT_CORRUPTION_STATUS, flag_suspected_input_corruption
 
 ITEM_ANALYSIS_COLUMNS = [
@@ -45,6 +46,8 @@ LOW_VARIANCE_STDDEV = 0.25
 NEGATIVE_DISCRIMINATION = -0.1
 LOW_AGREEMENT_ALPHA = 0.667
 """Krippendorff's lowest conventionally tolerable alpha for tentative conclusions."""
+KEY_DISPUTED_STATUS = "key_disputed"
+"""Most models agree on one answer the reference key rejects: review the item before trusting it."""
 _MIN_JUDGES_PER_RESPONSE = 2
 _MIN_RESPONSES_FOR_ALPHA = 2
 
@@ -116,8 +119,46 @@ def analyze_items(quality_df: pd.DataFrame) -> pd.DataFrame:
     dimension_df = work_df.groupby("prompt_id")["quality_dimension"].first()
     stats_df.insert(0, "quality_dimension", dimension_df.reindex(stats_df.index))
     stats_df["item_status"] = _item_status(stats_df)
+    stats_df.loc[stats_df.index.isin(_disputed_keys(work_df)), "item_status"] = KEY_DISPUTED_STATUS
     stats_df.loc[stats_df.index.isin(corrupted_prompts), "item_status"] = INPUT_CORRUPTION_STATUS
     return stats_df.reset_index()[ITEM_ANALYSIS_COLUMNS].sort_values("prompt_id").reset_index(drop=True)
+
+
+def _disputed_keys(work_df: pd.DataFrame) -> set[object]:
+    """Exact-answer prompts where more than half of the models settle on the same rejected answer.
+
+    Each model contributes its most frequent final answer across attempts. When
+    a majority of models independently agree on one answer the key rejects, the
+    key or the prompt is more likely at fault than the models.
+    """
+    if not {"response", "expected_answers_json"}.issubset(work_df.columns):
+        return set()
+    disputed: set[object] = set()
+    for prompt_id, rows in work_df.groupby("prompt_id"):
+        try:
+            accepted = json.loads(str(rows["expected_answers_json"].iloc[0] or "[]"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(accepted, list) or not accepted:
+            continue
+        answers = [str(item) for item in accepted]
+        responses = rows.drop_duplicates(["model", "attempt"]) if "attempt" in rows.columns else rows
+        modal_by_model = (
+            responses.assign(answer=[final_answer(str(text), answers).casefold() for text in responses["response"]])
+            .groupby("model")["answer"]
+            .agg(lambda values: values.mode().iloc[0])
+        )
+        rejected = modal_by_model[
+            modal_by_model.ne("")
+            & ~pd.Series(
+                [final_answer_matches(answer, answers) for answer in modal_by_model], index=modal_by_model.index
+            )
+        ]
+        model_count = responses["model"].nunique()
+        if model_count >= MIN_MODELS_FOR_ITEM_ANALYSIS and not rejected.empty:
+            if rejected.value_counts().iloc[0] > model_count / 2:
+                disputed.add(prompt_id)
+    return disputed
 
 
 def _expand_judge_verdicts(quality_df: pd.DataFrame) -> pd.DataFrame:

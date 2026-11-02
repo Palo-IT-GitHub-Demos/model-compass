@@ -4,7 +4,6 @@
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  "forwardPorts": [8501],
   "postCreateCommand": "pip install -e '.[dev,docs]' && pip install 'git+https://github.com/Palo-IT-GitHub-Demos/lab-registry-mcp@v0.2.0' && python -m pre_commit install && python -m pre_commit install --hook-type commit-msg",
   "customizations": {
     "vscode": {

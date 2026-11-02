@@ -16,8 +16,8 @@ Le parcours standard tient en sept étapes, détaillées dans le Quick Start du
 
 ```bash
 make select                                                         # choix des modèles, $0
-make verify MODELS=selection SECURITY=owasp                         # clé et modèles, $0
-make collect MODELS=selection SECURITY=owasp QUALITY_REPETITIONS=3  # seule étape payante
+make verify MODELS=selection    # clé et modèles, $0
+make collect MODELS=selection   # seule étape payante
 # Copilot Chat : @judge-coordinator                                 # jugement aveugle
 make merge && make export-html                                      # résultats et rapport
 ```
@@ -31,8 +31,8 @@ si toutes ces valeurs sont identiques.
 
 | Axe | Ce que ça mesure | Sortie clé |
 | --- | --- | --- |
-| **Qualité** | 34 prompts versionnés (suite `generic-screen-v2`), 8 dimensions + conformité de format, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 passages | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
-| **Sécurité** | Profils de sondes internes `basic` (5), `owasp` (30, parcours standard) et `extended` (23 + 2 scénarios) alignés sur l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
+| **Qualité** | 48 prompts versionnés (suite `generic-screen-v3`, 6 par cas d'usage), 8 dimensions + conformité de format notée à part, crédit partiel pour le JSON et le code testé dans le sandbox, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 essais | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
+| **Sécurité** | Un seul parcours de 72 sondes internes (51 notées, rejouées trois fois, dont 8 injections indirectes et 3 scénarios multi-tours), exécuté en entier ou sauté, aligné sur l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
 | **Coût** | Tarif OpenRouter × profil de charge → TCO mensuel projeté + coût réel par appel (`response.usage.cost`) | `tco_usd`, `actual_cost_credits`, `cer` |
 | **Performance** | Latence P50/P95 et tokens/seconde mesurés après acquisition du semaphore | `actual_latency_p50_ms`, `actual_latency_p95_ms`, `actual_tokens_per_second` |
 | **Recommandation** | Catalogue versionné, seuil qualité par cas d'usage et score pondéré configurable | `results/recommendations/` |
@@ -42,8 +42,8 @@ si toutes ces valeurs sont identiques.
 | Besoin | Action |
 | --- | --- |
 | Consulter le dernier rapport partageable | Ouvrir `results/dashboard_<timestamp>.html` ; sa navigation mène aux pages Qualité, Preuves, Sécurité et Coûts. |
-| Explorer un résultat avec filtres | Lancer `make dashboard`, puis ouvrir `http://localhost:8501`. |
 | Générer le rapport HTML du dernier benchmark fusionné | Lancer `make export-html`. |
+| Comprendre le rapport avant de décider | Lire le [guide de lecture du rapport](guide-lecture-rapport.md). |
 | Choisir les modèles avant un run | Lancer `make select`, répondre aux filtres, puis utiliser `MODELS=selection`. |
 
 Le [workflow du pipeline](workflow.md) indique les commandes dans l'ordre,

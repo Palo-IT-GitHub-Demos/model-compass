@@ -70,3 +70,13 @@ def test_selection_can_be_saved_and_loaded(tmp_path: Path) -> None:
     save_selection(["vendor/cheap"], path)
 
     assert load_selection(path) == ["vendor/cheap"]
+
+
+def test_run_cost_estimate_sums_every_model_on_the_same_request_count() -> None:
+    from src.core.model_selector import estimate_run_cost_usd
+
+    cost = estimate_run_cost_usd(
+        [(0.000001, 0.000002), (0.0, 0.0)], requests_per_model=10, avg_prompt_tokens=100, avg_completion_tokens=50
+    )
+
+    assert cost == pytest.approx(10 * (100 * 0.000001 + 50 * 0.000002))

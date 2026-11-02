@@ -109,7 +109,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
         )
 
     figure.update_layout(
-        xaxis_title="Cost per 1M input tokens (USD)",
+        xaxis_title="Blended cost per 1M tokens (USD)",
         yaxis_title="Generic quality screen score (1–5)",
         legend_title="Security",
         height=560,

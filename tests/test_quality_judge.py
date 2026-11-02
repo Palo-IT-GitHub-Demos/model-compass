@@ -666,3 +666,86 @@ class TestAlias:
         for model_id in model_ids:
             expected_alias = reverse_map[model_id]
             assert scores_by_model[model_id] == fake_scores_by_alias[expected_alias]
+
+
+def test_empty_response_to_a_format_checked_prompt_also_fails_format() -> None:
+    from src.evaluators.quality_judge import with_empty_response_format_failures
+
+    rows: list[dict[str, object]] = [
+        {"prompt_id": 6, "attempt": 0, "model": "v/a", "quality_dimension": FORMAT_COMPLIANCE_DIMENSION, "score": 5},
+        {"prompt_id": 6, "attempt": 0, "model": "v/a", "quality_dimension": "code_correctness", "score": 5},
+        {
+            "prompt_id": 6,
+            "attempt": 1,
+            "model": "v/a",
+            "quality_dimension": "code_correctness",
+            "score": 1,
+            "source": "deterministic-empty-response",
+            "response": "",
+        },
+        {
+            "prompt_id": 9,
+            "attempt": 0,
+            "model": "v/a",
+            "quality_dimension": "summarization",
+            "score": 1,
+            "source": "deterministic-empty-response",
+        },
+    ]
+
+    result = with_empty_response_format_failures(rows)
+
+    assert result[: len(rows)] == rows
+    (added,) = result[len(rows) :]
+    assert (added["prompt_id"], added["attempt"], added["quality_dimension"], added["score"]) == (
+        6,
+        1,
+        FORMAT_COMPLIANCE_DIMENSION,
+        1,
+    )
+    assert added["response"] == ""
+    assert with_empty_response_format_failures(result) == result
+
+
+def test_merge_rescores_a_correct_final_answer_that_showed_its_working() -> None:
+    from src.evaluators.quality_judge import rescore_final_answers
+
+    base = {"prompt_id": 18, "attempt": 0, "model": "v/a", "category": "logical_reasoning", "source": "deterministic"}
+    rows: list[dict[str, object]] = [
+        {
+            **base,
+            "quality_dimension": "elementary_reasoning",
+            "score": 1,
+            "response": "40 - 30 = 10.\n\n**10**",
+            "expected_answers_json": '["10"]',
+        },
+        {
+            **base,
+            "quality_dimension": FORMAT_COMPLIANCE_DIMENSION,
+            "score": 1,
+            "response": "40 - 30 = 10.\n\n**10**",
+            "expected_answers_json": '["10"]',
+        },
+        {
+            **base,
+            "attempt": 1,
+            "quality_dimension": "elementary_reasoning",
+            "score": 1,
+            "response": "12",
+            "expected_answers_json": '["10"]',
+        },
+        {
+            **base,
+            "category": "instruction_following",
+            "quality_dimension": "instruction_reliability",
+            "score": 1,
+            "response": "Sure: READY:5",
+            "expected_answers_json": '["READY:5"]',
+        },
+    ]
+
+    rescored = rescore_final_answers(rows)
+
+    assert [row["score"] for row in rescored] == [5, 1, 1, 1]
+    assert "rescored at merge" in str(rescored[0]["reasoning"])
+    assert rows[0]["score"] == 1
