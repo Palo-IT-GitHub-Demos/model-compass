@@ -126,25 +126,29 @@ def _unit_price(model: Mapping[str, Any]) -> float:
         return float("inf")
 
 
-async def _select_audit_model(client: _EchoClient, models: list[str]) -> str:
-    """Return the cheapest target model whose upstream body can be read."""
+async def _audit_models(client: _EchoClient, models: list[str]) -> list[str]:
+    """Return the target models by price, starting with the cheapest whose upstream body can be read."""
     prices = {str(entry.get("id")): _unit_price(entry) for entry in await client.get_models()}
-    for model in sorted(models, key=lambda name: prices.get(name, float("inf"))):
+    by_price = sorted(models, key=lambda name: prices.get(name, float("inf")))
+    for index, model in enumerate(by_price):
         try:
             upstream = await client.upstream_request(model, _PROBE_TEXT)
         except OpenRouterError as exc:
             logger.warning("[delivery] Cannot audit through '%s': %s", model, exc)
             continue
         if upstream is not None and delivered_user_text(upstream) is not None:
-            return model
+            return [model, *by_price[index + 1 :], *by_price[:index]]
     raise PromptDeliveryError(
         "Could not read what the gateway forwards through any target model, so prompt delivery cannot be checked. "
         "Set PROMPT_DELIVERY_AUDIT=false to run anyway; the report will flag the run as not reference-grade."
     )
 
 
-async def _delivered(client: _EchoClient, model: str, prompt: AuditedPrompt) -> str | None:
-    for attempt in range(_AUDIT_ATTEMPTS):
+async def _delivered(client: _EchoClient, models: list[str], prompt: AuditedPrompt) -> str | None:
+    # The guardrail applies to the whole workspace, so any target model can echo it. A provider that
+    # renders the chat into one prompt string is unreadable, so a retry also moves on to the next model.
+    for attempt in range(max(_AUDIT_ATTEMPTS, len(models))):
+        model = models[attempt % len(models)]
         try:
             upstream = await client.upstream_request(model, prompt.text)
         except OpenRouterError as exc:
@@ -153,8 +157,9 @@ async def _delivered(client: _EchoClient, model: str, prompt: AuditedPrompt) -> 
             text = delivered_user_text(upstream) if upstream is not None else None
             if text is not None:
                 return text
-            # The gateway routes each call to a provider; another one may echo a readable body.
-            logger.warning("[delivery] No readable echo for '%s' (attempt %d)", prompt.name, attempt + 1)
+            logger.warning(
+                "[delivery] No readable echo for '%s' via '%s' (attempt %d)", prompt.name, model, attempt + 1
+            )
         await asyncio.sleep(_RETRY_DELAY_SECONDS)
     return None
 
@@ -178,9 +183,9 @@ async def audit_prompt_delivery(
     Raises:
         PromptDeliveryError: If the forwarded text cannot be read at all.
     """
-    audit_model = await _select_audit_model(client, models)
-    delivered = await asyncio.gather(*(_delivered(client, audit_model, prompt) for prompt in prompts))
-    audit = PromptDeliveryAudit(audit_model=audit_model, checked_count=len(prompts))
+    audit_models = await _audit_models(client, models)
+    delivered = await asyncio.gather(*(_delivered(client, audit_models, prompt) for prompt in prompts))
+    audit = PromptDeliveryAudit(audit_model=audit_models[0], checked_count=len(prompts))
     for prompt, text in zip(prompts, delivered, strict=True):
         if text is None:
             raise PromptDeliveryError(f"Could not read what the gateway forwards for '{prompt.name}'.")

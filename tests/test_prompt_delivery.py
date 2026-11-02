@@ -128,6 +128,24 @@ async def test_audit_retries_an_unreadable_echo(monkeypatch: pytest.MonkeyPatch)
     assert audit.altered_items == {}
 
 
+async def test_an_unreadable_echo_moves_on_to_another_target_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.evaluators.prompt_delivery._RETRY_DELAY_SECONDS", 0)
+    gateway = _Gateway({"in EUR": "in [ADDRESS]"})
+    original = gateway.upstream_request
+
+    async def renders_prompts(model: str, text: str) -> dict[str, Any] | None:
+        if model == "cheap/model" and text != "Say hello.":
+            return {"prompt": f"<|user|>{text}"}
+        return await original(model, text)
+
+    gateway.upstream_request = renders_prompts  # type: ignore[method-assign]
+    audit = await audit_prompt_delivery(
+        gateway, ["cheap/model", "dear/model"], [AuditedPrompt("quality", "item-1", "in EUR")]
+    )
+
+    assert audit.altered_items == {"item-1": "in [ADDRESS]"}
+
+
 async def test_audit_stops_when_no_model_can_echo() -> None:
     with pytest.raises(PromptDeliveryError, match="PROMPT_DELIVERY_AUDIT=false"):
         await audit_prompt_delivery(_Gateway(no_echo=("cheap/model",)), ["cheap/model"], [])

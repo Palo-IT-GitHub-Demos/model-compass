@@ -146,17 +146,18 @@ items += [keep("structured_extraction-01"), keep("structured_extraction-04")]
 items[1]["prompt"] = items[1]["prompt"].replace("exactly one JSON array", "exactly one array in JSON format")
 # The v3.0 items -05, -06 and -07 were answered perfectly by every model of the 2 November run: they are
 # replaced by longer tasks that track state, derive values or aggregate, with partial credit per field.
+# Product words, not codes: the gateway masked the code "P-412" as an address.
 ORDER_LOG = [
-    ("add", "P-101", 3),
-    ("add", "P-205", 2),
-    ("add", "P-330", 1),
-    ("set", "P-101", 5),
-    ("remove", "P-205", 0),
-    ("add", "P-205", 4),
-    ("add", "P-101", 2),
+    ("add", "lamp", 3),
+    ("add", "cable", 2),
+    ("add", "stand", 1),
+    ("set", "lamp", 5),
+    ("remove", "cable", 0),
+    ("add", "cable", 4),
+    ("add", "lamp", 2),
     ("undo", 6, 0),
-    ("add", "P-412", 2),
-    ("set", "P-412", 0),
+    ("add", "mouse", 2),
+    ("set", "mouse", 0),
 ]
 STEP_TEXT = {
     "add": "Add {qty} x {target}.",
@@ -187,9 +188,9 @@ items.append(
         "structured_extraction-09",
         "state_tracking_over_edits",
         "hard",
-        "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each SKU "
-        "still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never "
-        "been written. Leave out SKUs whose final quantity is zero or that were removed.\nOrder log:\n"
+        "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each "
+        "product still in the order to its final quantity (integer). An undone step has no effect at all, as if it "
+        "had never been written. Leave out products whose final quantity is zero or that were removed.\nOrder log:\n"
         + "\n".join(
             f"{step}. " + STEP_TEXT[op].format(target=target, qty=qty)
             for step, (op, target, qty) in enumerate(ORDER_LOG, start=1)

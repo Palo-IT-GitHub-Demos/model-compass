@@ -119,8 +119,10 @@ methodology.
   and its stop reason (13 empty Claude Sonnet 5.5 answers on 2 November had no
   usage and returned in about 1.3 s; their cause could not be read)
 - The prompt-delivery audit retries a prompt whose echo comes back unreadable,
-  as it does for network errors, instead of stopping the run at once: the
-  gateway may route the next attempt to a provider that echoes a readable body
+  as it does for network errors, and moves on to the next target model: some
+  providers render the chat into one prompt string that cannot be compared
+- `structured_extraction-09` names products instead of codes: the gateway
+  masked the code `P-412` as an address
 
 ## [0.4.0] — 2026-10-30 — Honest security axis and decision report
 

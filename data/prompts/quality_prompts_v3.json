@@ -42,12 +42,12 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each SKU still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never been written. Leave out SKUs whose final quantity is zero or that were removed.\nOrder log:\n1. Add 3 x P-101.\n2. Add 2 x P-205.\n3. Add 1 x P-330.\n4. Change the quantity of P-101 to 5.\n5. Remove P-205 from the order.\n6. Add 4 x P-205.\n7. Add 2 x P-101.\n8. Undo step 6.\n9. Add 2 x P-412.\n10. Change the quantity of P-412 to 0.",
+    "prompt": "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each product still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never been written. Leave out products whose final quantity is zero or that were removed.\nOrder log:\n1. Add 3 x lamp.\n2. Add 2 x cable.\n3. Add 1 x stand.\n4. Change the quantity of lamp to 5.\n5. Remove cable from the order.\n6. Add 4 x cable.\n7. Add 2 x lamp.\n8. Undo step 6.\n9. Add 2 x mouse.\n10. Change the quantity of mouse to 0.",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": {
-      "P-101": 7,
-      "P-330": 1
+      "lamp": 7,
+      "stand": 1
     },
     "strict_output": true,
     "item_id": "structured_extraction-09",
