@@ -118,6 +118,9 @@ methodology.
   ledger fills `probe_id`, so an empty probe answer can be traced to its call
   and its stop reason (13 empty Claude Sonnet 5.5 answers on 2 November had no
   usage and returned in about 1.3 s; their cause could not be read)
+- The prompt-delivery audit retries a prompt whose echo comes back unreadable,
+  as it does for network errors, instead of stopping the run at once: the
+  gateway may route the next attempt to a provider that echoes a readable body
 
 ## [0.4.0] — 2026-10-30 — Honest security axis and decision report
 

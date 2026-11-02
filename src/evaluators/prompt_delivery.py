@@ -147,10 +147,15 @@ async def _delivered(client: _EchoClient, model: str, prompt: AuditedPrompt) -> 
     for attempt in range(_AUDIT_ATTEMPTS):
         try:
             upstream = await client.upstream_request(model, prompt.text)
-            return delivered_user_text(upstream) if upstream is not None else None
         except OpenRouterError as exc:
             logger.warning("[delivery] Audit of '%s' failed (attempt %d): %s", prompt.name, attempt + 1, exc)
-            await asyncio.sleep(_RETRY_DELAY_SECONDS)
+        else:
+            text = delivered_user_text(upstream) if upstream is not None else None
+            if text is not None:
+                return text
+            # The gateway routes each call to a provider; another one may echo a readable body.
+            logger.warning("[delivery] No readable echo for '%s' (attempt %d)", prompt.name, attempt + 1)
+        await asyncio.sleep(_RETRY_DELAY_SECONDS)
     return None
 
 

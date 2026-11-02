@@ -111,6 +111,23 @@ async def test_audit_retries_a_transient_failure(monkeypatch: pytest.MonkeyPatch
     assert gateway.failures == 0
 
 
+async def test_audit_retries_an_unreadable_echo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.evaluators.prompt_delivery._RETRY_DELAY_SECONDS", 0)
+    gateway = _Gateway()
+    unreadable = iter([{"prompt": "<|user|>hello"}])
+    original = gateway.upstream_request
+
+    async def flaky(model: str, text: str) -> dict[str, Any] | None:
+        if text == "hello":
+            return next(unreadable, None) or await original(model, text)
+        return await original(model, text)
+
+    gateway.upstream_request = flaky  # type: ignore[method-assign]
+    audit = await audit_prompt_delivery(gateway, ["cheap/model"], [AuditedPrompt("quality", "item-1", "hello")])
+
+    assert audit.altered_items == {}
+
+
 async def test_audit_stops_when_no_model_can_echo() -> None:
     with pytest.raises(PromptDeliveryError, match="PROMPT_DELIVERY_AUDIT=false"):
         await audit_prompt_delivery(_Gateway(no_echo=("cheap/model",)), ["cheap/model"], [])
