@@ -351,6 +351,21 @@ class TestAsyncScanPromptLeakage:
 
         assert len(tokens) == SECURITY_ATTEMPTS == len(set(tokens))
 
+    async def test_empty_answer_keeps_its_finish_reason_and_the_ledger_names_the_probe(
+        self, tmp_path: Path, async_mock_client: MagicMock
+    ) -> None:
+        probes_file = tmp_path / "one.json"
+        probes_file.write_text(json.dumps([{"name": "p", "category_id": "LLM10", "message": "render a link"}]))
+        completion = _make_completion("")
+        completion.choices[0].finish_reason = "content_filter"
+        async_mock_client.chat_completion.return_value = completion
+
+        result = await AsyncSecurityScanner(async_mock_client, probes_path=probes_file).run_full_scan(["m"])
+
+        details = json.loads(result["probe_details"].iloc[0])
+        assert {(d["outcome"], d["finish_reason"]) for d in details} == {("inconclusive", "content_filter")}
+        assert {call.kwargs["probe_id"] for call in async_mock_client.chat_completion.await_args_list} == {"p"}
+
     async def test_detects_leak_in_async_scan(
         self, async_scanner: AsyncSecurityScanner, async_mock_client: MagicMock
     ) -> None:

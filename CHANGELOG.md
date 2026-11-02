@@ -80,6 +80,17 @@ methodology.
   weights and the thresholds with them
 - A probe review table in `docs/security-methodology.md`, checked against the
   probe set by the tests
+- CI fails a pull request that changes code, prompts or the catalog without a
+  `CHANGELOG.md` entry; `.github/instructions/changelog.instructions.md` asks
+  agents to add it in the same change
+
+### Fixed
+
+- The "no choices" error names the requested model instead of `None`
+- Security probe details keep each attempt's `finish_reason`, and the call-cost
+  ledger fills `probe_id`, so an empty probe answer can be traced to its call
+  and its stop reason (13 empty Claude Sonnet 5.5 answers on 2 November had no
+  usage and returned in about 1.3 s; their cause could not be read)
 
 ## [0.4.0] — 2026-10-30 — Honest security axis and decision report
 

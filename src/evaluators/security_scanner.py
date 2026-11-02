@@ -89,6 +89,7 @@ class ProbeResult:
     first_leak_turn: int | None = None
     turn_count: int = 1
     attempt: int = 0
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -469,6 +470,7 @@ def _build_scan_rows(scan: ScanResult, probes: list[dict[str, Any]], security_pr
                     "first_leak_turn": p.first_leak_turn,
                     "turn_count": p.turn_count,
                     "attempt": p.attempt,
+                    "finish_reason": p.finish_reason,
                     "technique": probe_meta.get(p.probe_name, {}).get("technique", ""),
                 }
                 for p in scan.probes
@@ -536,13 +538,14 @@ class SecurityScanner:
                         {"role": "user", "content": str(probe["message"])},
                     ],
                     usage_context="security_scan",
+                    probe_id=str(probe["name"]),
                     max_tokens=_PROBE_MAX_TOKENS,
                     temperature=0,
                 )
-                response_text, _ = completion_text(completion)
+                response_text, finish_reason = completion_text(completion, model)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Probe '%s' on '%s' failed: %s", probe["name"], model, exc)
-                response_text = ""
+                response_text, finish_reason = "", None
                 probe_error = True
             else:
                 probe_error = False
@@ -556,6 +559,7 @@ class SecurityScanner:
                     probe_error=probe_error,
                     outcome=outcome,
                     response=response_text,
+                    finish_reason=finish_reason,
                 )
             )
         return result
@@ -639,10 +643,11 @@ class AsyncSecurityScanner:
                         model=model,
                         messages=messages,
                         usage_context="security_scan",
+                        probe_id=str(probe["name"]),
                         max_tokens=_PROBE_MAX_TOKENS,
                         temperature=0,
                     )
-                    return completion_text(completion)[0]
+                    return completion_text(completion, model)[0]
 
                 execution = await execute_scenario(
                     _scenario_for_probe(probe, max_total_tokens=_PROBE_MAX_TOKENS * len(sequential_turns)),
@@ -676,13 +681,14 @@ class AsyncSecurityScanner:
                         {"role": "user", "content": str(probe["message"])},
                     ],
                     usage_context="security_scan",
+                    probe_id=str(probe["name"]),
                     max_tokens=_PROBE_MAX_TOKENS,
                     temperature=0,
                 )
-                response_text, _ = completion_text(completion)
+                response_text, finish_reason = completion_text(completion, model)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Probe '%s' on '%s' failed: %s", probe["name"], model, exc)
-                response_text = ""
+                response_text, finish_reason = "", None
                 probe_error = True
             else:
                 probe_error = False
@@ -696,6 +702,7 @@ class AsyncSecurityScanner:
                 outcome=outcome,
                 response=response_text,
                 attempt=attempt,
+                finish_reason=finish_reason,
             )
 
         probe_results = await asyncio.gather(

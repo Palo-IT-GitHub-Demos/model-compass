@@ -799,7 +799,7 @@ class AsyncQualityJudge:
                 completion = await self._client.chat_completion(
                     model=model, messages=messages, usage_context="quality_screen", **options
                 )
-                content, finish_reason = completion_text(completion)
+                content, finish_reason = completion_text(completion, model)
                 return CollectedResponse(
                     model=model,
                     attempt=attempt,

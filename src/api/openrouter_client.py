@@ -89,7 +89,7 @@ class OpenRouterError(Exception):
     """Raised when the OpenRouter API returns an unrecoverable error."""
 
 
-def completion_text(completion: object) -> tuple[str, str | None]:
+def completion_text(completion: object, model: str) -> tuple[str, str | None]:
     """Return the first choice's text and finish reason.
 
     A completion without any choice is an invalid API response, not an empty
@@ -102,7 +102,8 @@ def completion_text(completion: object) -> tuple[str, str | None]:
         extra = getattr(completion, "model_extra", None)
         error = extra.get("error") if isinstance(extra, dict) else None
         detail = f": {error}" if error else ""
-        raise OpenRouterError(f"OpenRouter returned no choices for model '{getattr(completion, 'model', '')}'{detail}")
+        # An error payload carries no ``model`` field, so name the requested one.
+        raise OpenRouterError(f"OpenRouter returned no choices for model '{model}'{detail}")
     choice = choices[0]
     finish_reason = getattr(choice, "finish_reason", None)
     return choice.message.content or "", str(finish_reason) if isinstance(finish_reason, str) else None

@@ -290,14 +290,14 @@ class TestCompletionText:
             choices=[SimpleNamespace(message=SimpleNamespace(content=None), finish_reason="length")]
         )
 
-        assert completion_text(completion) == ("", "length")
+        assert completion_text(completion, "openai/x") == ("", "length")
 
     def test_a_completion_without_choices_is_an_api_error(self) -> None:
         from types import SimpleNamespace
 
         from src.api.openrouter_client import completion_text
 
-        completion = SimpleNamespace(choices=None, model="openai/x", model_extra={"error": {"code": 403}})
+        completion = SimpleNamespace(choices=None, model=None, model_extra={"error": {"code": 403}})
 
         with pytest.raises(OpenRouterError, match="no choices for model 'openai/x': {'code': 403}"):
-            completion_text(completion)
+            completion_text(completion, "openai/x")
