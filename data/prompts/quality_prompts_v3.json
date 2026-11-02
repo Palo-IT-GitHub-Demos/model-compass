@@ -42,33 +42,17 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one JSON object, with no markdown or extra text, with the keys `items` (array of objects with `name`, `quantity` and `line_total`) and `total` (sum of all line totals), built from the order text.\nOrder: '3 pens at 1.20 each; 2 notebooks at 4.50 each; 1 stapler at 7.00.'",
+    "prompt": "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each SKU still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never been written. Leave out SKUs whose final quantity is zero or that were removed.\nOrder log:\n1. Add 3 x P-101.\n2. Add 2 x P-205.\n3. Add 1 x P-330.\n4. Change the quantity of P-101 to 5.\n5. Remove P-205 from the order.\n6. Add 4 x P-205.\n7. Add 2 x P-101.\n8. Undo step 6.\n9. Add 2 x P-412.\n10. Change the quantity of P-412 to 0.",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": {
-      "items": [
-        {
-          "name": "pens",
-          "quantity": 3,
-          "line_total": 3.6
-        },
-        {
-          "name": "notebooks",
-          "quantity": 2,
-          "line_total": 9
-        },
-        {
-          "name": "stapler",
-          "quantity": 1,
-          "line_total": 7
-        }
-      ],
-      "total": 19.6
+      "P-101": 7,
+      "P-330": 1
     },
     "strict_output": true,
-    "item_id": "structured_extraction-05",
+    "item_id": "structured_extraction-09",
     "use_case_id": "structured_extraction",
-    "construct": "nested_extraction_with_arithmetic",
+    "construct": "state_tracking_over_edits",
     "task_type": "json",
     "difficulty": "hard",
     "evaluator": "json_exact",
@@ -78,19 +62,20 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Extract the keys `product`, `version`, `release_date` and `license` from the note. Use null for any field the note does not state explicitly; do not infer it. Return exactly one JSON object, with no markdown or extra text.\nNote: 'Product: Atlas toolkit. Version 4.2 adds a faster importer. Pricing is unchanged; the release schedule is on the vendor portal.'",
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, whose keys are the product names and whose values are each line's total in cents after its discount (integer), plus a key `total` with the sum of the lines in cents.\nInvoice lines (product | quantity | unit price in dollars | discount on the line):\nWidget | 3 | 4.50 | none\nCable | 2 | 12.00 | 10% off\nAdapter | 5 | 0.99 | none\nStand | 1 | 25.00 | 20% off",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": {
-      "product": "Atlas toolkit",
-      "version": "4.2",
-      "release_date": null,
-      "license": null
+      "Widget": 1350,
+      "Cable": 2160,
+      "Adapter": 495,
+      "Stand": 2000,
+      "total": 6005
     },
     "strict_output": true,
-    "item_id": "structured_extraction-06",
+    "item_id": "structured_extraction-10",
     "use_case_id": "structured_extraction",
-    "construct": "null_for_missing_fields",
+    "construct": "derived_values_from_table",
     "task_type": "json",
     "difficulty": "hard",
     "evaluator": "json_exact",
@@ -100,17 +85,27 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one JSON object, with no markdown or extra text, with the keys `meeting_date` (ISO 8601, YYYY-MM-DD) and `room` (string). When the text corrects a value, use the corrected one.\nText: 'The kickoff is on 4 March 2027 in room 2.14. Correction from the facilities team: it moves to 11 March 2027, same time, room 3.02.'",
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, with one key per team and, for each team, an object with the integer keys `open` and `closed`. A reopened ticket counts as open; a cancelled ticket is ignored.\nTickets (id | team | status):\nT1 | web | open\nT2 | api | closed\nT3 | web | closed\nT4 | data | open\nT5 | api | reopened\nT6 | web | open\nT7 | data | closed\nT8 | api | closed\nT9 | web | cancelled\nT10 | data | reopened",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": {
-      "meeting_date": "2027-03-11",
-      "room": "3.02"
+      "web": {
+        "open": 2,
+        "closed": 1
+      },
+      "api": {
+        "open": 1,
+        "closed": 2
+      },
+      "data": {
+        "open": 2,
+        "closed": 1
+      }
     },
     "strict_output": true,
-    "item_id": "structured_extraction-07",
+    "item_id": "structured_extraction-11",
     "use_case_id": "structured_extraction",
-    "construct": "correction_supersedes_value",
+    "construct": "grouped_counts_with_rules",
     "task_type": "json",
     "difficulty": "hard",
     "evaluator": "json_exact",
@@ -260,160 +255,85 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Write only a Python function `merge_intervals(intervals: list[list[int]]) -> list[list[int]]` that merges overlapping intervals and intervals that touch (such as [1, 3] and [3, 5]), accepts the intervals in any order, and returns the merged intervals sorted by start; an empty list returns an empty list. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "prompt": "Write only a Python function `compare_versions(a: str, b: str) -> int` that returns -1, 0 or 1 as version `a` is lower than, equal to or higher than version `b`. A version is one to three dot-separated integers, missing parts count as 0 (so '1.2' equals '1.2.0'), optionally followed by a hyphen and a pre-release made of dot-separated identifiers, such as '2.0.0-rc.1'. Numbers compare numerically. When the numbers are equal, a version with a pre-release is lower than the same version without one; two pre-releases compare identifier by identifier, numerically when both are digits, alphabetically when both are not, a numeric identifier is lower than a non-numeric one, and when all shared identifiers are equal the pre-release with fewer identifiers is lower. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
     "category": "code_execution",
     "quality_dimension": "code_correctness",
-    "required_function": "merge_intervals",
+    "required_function": "compare_versions",
     "required_parameters": [
-      "intervals"
+      "a",
+      "b"
     ],
     "strict_output": true,
     "test_cases": [
       {
         "args": [
-          [
-            [
-              1,
-              3
-            ],
-            [
-              2,
-              6
-            ],
-            [
-              8,
-              10
-            ],
-            [
-              15,
-              18
-            ]
-          ]
+          "1.2.0",
+          "1.10.0"
         ],
-        "expected": [
-          [
-            1,
-            6
-          ],
-          [
-            8,
-            10
-          ],
-          [
-            15,
-            18
-          ]
-        ]
+        "expected": -1
       },
       {
         "args": [
-          [
-            [
-              1,
-              4
-            ],
-            [
-              4,
-              5
-            ]
-          ]
+          "1.2",
+          "1.2.0"
         ],
-        "expected": [
-          [
-            1,
-            5
-          ]
-        ]
+        "expected": 0
       },
       {
         "args": [
-          []
+          "2.0.0-rc.1",
+          "2.0.0"
         ],
-        "expected": []
+        "expected": -1
       },
       {
         "args": [
-          [
-            [
-              5,
-              7
-            ],
-            [
-              1,
-              2
-            ]
-          ]
+          "2.0.0-rc.2",
+          "2.0.0-rc.10"
         ],
-        "expected": [
-          [
-            1,
-            2
-          ],
-          [
-            5,
-            7
-          ]
-        ]
+        "expected": -1
       },
       {
         "args": [
-          [
-            [
-              1,
-              10
-            ],
-            [
-              2,
-              3
-            ],
-            [
-              4,
-              8
-            ]
-          ]
+          "1.0.0-alpha",
+          "1.0.0-1"
         ],
-        "expected": [
-          [
-            1,
-            10
-          ]
-        ]
+        "expected": 1
       },
       {
         "args": [
-          [
-            [
-              6,
-              8
-            ],
-            [
-              1,
-              3
-            ],
-            [
-              3,
-              4
-            ],
-            [
-              9,
-              9
-            ]
-          ]
+          "1.0.0-alpha",
+          "1.0.0-alpha.1"
         ],
-        "expected": [
-          [
-            1,
-            4
-          ],
-          [
-            6,
-            8
-          ],
-          [
-            9,
-            9
-          ]
-        ]
+        "expected": -1
+      },
+      {
+        "args": [
+          "1.0.0-beta",
+          "1.0.0-alpha.9"
+        ],
+        "expected": 1
+      },
+      {
+        "args": [
+          "3.1.4",
+          "3.1.4"
+        ],
+        "expected": 0
+      },
+      {
+        "args": [
+          "0.10.1",
+          "0.9"
+        ],
+        "expected": 1
+      },
+      {
+        "args": [
+          "2",
+          "1.99.99"
+        ],
+        "expected": 1
       }
     ],
     "judge_criteria": [
@@ -421,12 +341,12 @@
       "The function returns the specified result for every example in the description and for the stated edge cases.",
       "The response contains source code only and imports only the allowed modules."
     ],
-    "reference_answer": "def merge_intervals(intervals):\n    merged = []\n    for start, end in sorted(intervals):\n        if merged and start <= merged[-1][1]:\n            merged[-1][1] = max(merged[-1][1], end)\n        else:\n            merged.append([start, end])\n    return merged",
-    "item_id": "code_generation-06",
+    "reference_answer": "def compare_versions(a, b):\n    def parse(version):\n        core, _, pre = version.partition(\"-\")\n        numbers = [int(part) for part in core.split(\".\")]\n        numbers += [0] * (3 - len(numbers))\n        return numbers, pre.split(\".\") if pre else []\n\n    numbers_a, pre_a = parse(a)\n    numbers_b, pre_b = parse(b)\n    if numbers_a != numbers_b:\n        return -1 if numbers_a < numbers_b else 1\n    if not pre_a or not pre_b:\n        return (len(pre_b) > 0) - (len(pre_a) > 0)\n    for left, right in zip(pre_a, pre_b):\n        if left == right:\n            continue\n        if left.isdigit() and right.isdigit():\n            return -1 if int(left) < int(right) else 1\n        if left.isdigit() != right.isdigit():\n            return -1 if left.isdigit() else 1\n        return -1 if left < right else 1\n    return (len(pre_a) > len(pre_b)) - (len(pre_a) < len(pre_b))",
+    "item_id": "code_generation-10",
     "use_case_id": "code_generation",
-    "construct": "interval_merging_edge_cases",
+    "construct": "precedence_rules_with_prerelease",
     "task_type": "programmatic",
-    "difficulty": "medium",
+    "difficulty": "hard",
     "evaluator": "sandbox_tests",
     "language": "en",
     "difficulty_status": "draft",
@@ -516,69 +436,138 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Write only a Python function `business_days_between(start: str, end: str, holidays: list[str]) -> int` that counts the weekdays (Monday to Friday) from `start` included to `end` excluded, both ISO dates such as '2026-11-02', skipping every date listed in `holidays`; it returns 0 when `end` is not after `start`. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "prompt": "Write only a Python function `max_overlap(sessions: list[list[int]]) -> int` that returns the largest number of sessions active at the same moment. Each session is [start, end] with the end excluded, so a session ending at 5 and one starting at 5 never overlap; a session whose end is not after its start is ignored; an empty list returns 0. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
     "category": "code_execution",
     "quality_dimension": "code_correctness",
-    "required_function": "business_days_between",
+    "required_function": "max_overlap",
     "required_parameters": [
-      "start",
-      "end",
-      "holidays"
+      "sessions"
     ],
     "strict_output": true,
     "test_cases": [
       {
         "args": [
-          "2026-11-02",
-          "2026-11-09",
-          []
-        ],
-        "expected": 5
-      },
-      {
-        "args": [
-          "2026-11-02",
-          "2026-11-16",
           [
-            "2026-11-11"
+            [
+              1,
+              5
+            ],
+            [
+              2,
+              6
+            ],
+            [
+              5,
+              7
+            ]
           ]
         ],
-        "expected": 9
+        "expected": 2
       },
       {
         "args": [
-          "2026-11-07",
-          "2026-11-09",
-          []
-        ],
-        "expected": 0
-      },
-      {
-        "args": [
-          "2026-12-24",
-          "2027-01-04",
           [
-            "2026-12-25",
-            "2027-01-01"
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              3
+            ],
+            [
+              3,
+              4
+            ]
           ]
         ],
-        "expected": 5
+        "expected": 1
       },
       {
         "args": [
-          "2026-11-09",
-          "2026-11-02",
           []
         ],
         "expected": 0
       },
       {
         "args": [
-          "2026-11-06",
-          "2026-11-06",
-          []
+          [
+            [
+              3,
+              3
+            ],
+            [
+              1,
+              4
+            ]
+          ]
         ],
-        "expected": 0
+        "expected": 1
+      },
+      {
+        "args": [
+          [
+            [
+              0,
+              10
+            ],
+            [
+              1,
+              9
+            ],
+            [
+              2,
+              8
+            ],
+            [
+              8,
+              9
+            ]
+          ]
+        ],
+        "expected": 3
+      },
+      {
+        "args": [
+          [
+            [
+              5,
+              1
+            ],
+            [
+              1,
+              2
+            ]
+          ]
+        ],
+        "expected": 1
+      },
+      {
+        "args": [
+          [
+            [
+              4,
+              6
+            ],
+            [
+              1,
+              5
+            ],
+            [
+              5,
+              9
+            ],
+            [
+              6,
+              7
+            ],
+            [
+              5,
+              6
+            ]
+          ]
+        ],
+        "expected": 3
       }
     ],
     "judge_criteria": [
@@ -586,10 +575,10 @@
       "The function returns the specified result for every example in the description and for the stated edge cases.",
       "The response contains source code only and imports only the allowed modules."
     ],
-    "reference_answer": "import datetime\n\ndef business_days_between(start, end, holidays):\n    first = datetime.date.fromisoformat(start)\n    last = datetime.date.fromisoformat(end)\n    skipped = {datetime.date.fromisoformat(day) for day in holidays}\n    count = 0\n    day = first\n    while day < last:\n        if day.weekday() < 5 and day not in skipped:\n            count += 1\n        day += datetime.timedelta(days=1)\n    return count",
-    "item_id": "code_generation-08",
+    "reference_answer": "def max_overlap(sessions):\n    events = []\n    for start, end in sessions:\n        if end > start:\n            events.append((start, 1))\n            events.append((end, -1))\n    best = current = 0\n    for _, delta in sorted(events):\n        current += delta\n        best = max(best, current)\n    return best",
+    "item_id": "code_generation-11",
     "use_case_id": "code_generation",
-    "construct": "calendar_arithmetic",
+    "construct": "sweep_line_with_boundaries",
     "task_type": "programmatic",
     "difficulty": "hard",
     "evaluator": "sandbox_tests",
@@ -677,17 +666,16 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: Team A leads the north branch, which reports to the central hub. Until March, the central hub was led by Team K; since April it has been led by Team R. Team K now leads the south branch.\nQuestion: Which team currently leads the hub that the north branch reports to? Reply with the team name only.",
+    "prompt": "Context: Booking log, in order. 1) The design review is booked in room 2.10. 2) The budget meeting is booked in room 3.01. 3) The design review moves to room 3.01. 4) Because of the clash, the budget meeting moves to room 2.10. 5) Room 2.10 closes for repairs; every meeting booked there moves to room 1.05. 6) Room 2.10 reopens, but meetings stay where they are. 7) The design review and the budget meeting swap rooms.\nQuestion: In which room is the budget meeting now? Reply with the room number only.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
-      "Team R",
-      "R"
+      "3.01"
     ],
     "strict_output": true,
-    "item_id": "contextual_qa-06",
+    "item_id": "contextual_qa-12",
     "use_case_id": "contextual_qa",
-    "construct": "multi_hop_with_stale_fact",
+    "construct": "state_tracking_over_updates",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -697,16 +685,16 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: Notice of 2 May: the deadline is 15 June. Notice of 14 May: the deadline is moved to 30 June. Notice of 21 May: the change announced on 14 May is cancelled and the deadline of 2 May applies again.\nQuestion: What is the current deadline? Reply with the date only, exactly as written in the context.",
+    "prompt": "Context: Refunds are allowed within 30 days of delivery. Exception A: downloaded digital products are not refundable. Exception B, which takes precedence over exception A: a defective product is refundable within 90 days of delivery.\nCase: a digital product, already downloaded, found defective, delivered 45 days ago.\nQuestion: Is the customer entitled to a refund? Reply with YES or NO only.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
-      "15 June"
+      "YES"
     ],
     "strict_output": true,
-    "item_id": "contextual_qa-07",
+    "item_id": "contextual_qa-13",
     "use_case_id": "contextual_qa",
-    "construct": "reinstated_earlier_value",
+    "construct": "overriding_exception",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -716,35 +704,35 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: The audit covered the north and south sites. The north site had 3 findings, all closed. The south site report is still being written.\nQuestion: How many findings did the south site have? If the context does not say, reply exactly NOT STATED.",
+    "prompt": "Context: A licence expires exactly 18 months after its activation, on the same day of the month. This licence was activated on 15 August 2025. It was later suspended for 2 months, and a suspension extends the expiry by the same number of months.\nQuestion: On what date does the licence expire? Reply with the date only, as YYYY-MM-DD.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "2027-04-15"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-14",
+    "use_case_id": "contextual_qa",
+    "construct": "date_arithmetic_with_extension",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: The annual report gives revenue for the first three quarters of 2025: 4.1, 3.8 and 4.4 million. The fourth-quarter figure will be published in March. Analysts expect a fourth quarter similar to the third.\nQuestion: What was the total revenue for 2025, in millions? If the context does not give it, reply exactly NOT STATED.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
       "NOT STATED"
     ],
     "strict_output": true,
-    "item_id": "contextual_qa-08",
+    "item_id": "contextual_qa-15",
     "use_case_id": "contextual_qa",
-    "construct": "abstention_with_near_miss",
-    "task_type": "free_response",
-    "difficulty": "medium",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Context: Shipping costs 6 EUR per parcel. For orders above 50 EUR, one parcel ships free. An order of 64 EUR is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in euros? Reply with the number only.",
-    "category": "exact_answer",
-    "quality_dimension": "contextual_accuracy",
-    "accepted_answers": [
-      "12"
-    ],
-    "strict_output": true,
-    "item_id": "contextual_qa-09",
-    "use_case_id": "contextual_qa",
-    "construct": "conditional_arithmetic",
+    "construct": "abstention_against_estimate",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -754,18 +742,18 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: All plans include email support. Only the Pro and Enterprise plans include phone support. The Enterprise plan also includes a dedicated manager. The Team plan includes everything in Pro except phone support.\nQuestion: Does the Team plan include phone support? Reply with YES or NO only.",
+    "prompt": "Context: A grant requires all of the following: the company was founded in 2024 or earlier, it has fewer than 50 employees, and it has not received a grant in 2024 or later.\nApplicants:\nApplicant 1: founded in 2023, 12 employees, no previous grant.\nApplicant 2: founded in 2025, 8 employees, no previous grant.\nApplicant 3: founded in 2019, 50 employees, previous grant in 2018.\nApplicant 4: founded in 2020, 49 employees, previous grant in 2023.\nApplicant 5: founded in 2022, 30 employees, previous grant in 2022.\nApplicant 6: founded in 2010, 5 employees, previous grant in 2024.\nQuestion: How many applicants are eligible? Reply with the number only.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
-      "NO"
+      "3"
     ],
     "strict_output": true,
-    "item_id": "contextual_qa-10",
+    "item_id": "contextual_qa-16",
     "use_case_id": "contextual_qa",
-    "construct": "exception_to_inherited_rule",
+    "construct": "multi_condition_count",
     "task_type": "free_response",
-    "difficulty": "medium",
+    "difficulty": "hard",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",
@@ -811,18 +799,18 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in euros, to buy exactly 15 pens? Reply with the number only.",
+    "prompt": "A room is booked from 09:40 to 11:15 and from 13:05 to 14:50. A team needs a 70-minute slot between 09:00 and 15:00 that starts on a multiple of 5 minutes and keeps at least 10 minutes free before every booking starts and after every booking ends. What is the earliest possible start time? Reply with the time only, as HH:MM.",
     "category": "logical_reasoning",
     "quality_dimension": "elementary_reasoning",
     "accepted_answers": [
-      "11"
+      "11:25"
     ],
     "strict_output": true,
-    "item_id": "reasoning_analysis-06",
+    "item_id": "reasoning_analysis-11",
     "use_case_id": "reasoning_analysis",
-    "construct": "optimisation_under_constraint",
+    "construct": "scheduling_with_buffers",
     "task_type": "free_response",
-    "difficulty": "medium",
+    "difficulty": "hard",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",
@@ -849,16 +837,16 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Machine A fills 120 bottles per hour. Machine B fills 80 bottles per hour and starts 30 minutes after A. Both stop as soon as 500 bottles have been filled in total. How many minutes after A starts do they stop? Reply with the number only.",
+    "prompt": "A course grade out of 20 is 40% exam and 60% projects. The project mark is the average of the project marks, but the lowest project mark is dropped when the exam mark is at least 12. A student has an exam mark of 12 and project marks of 8, 14 and 17. What is the course grade? Reply with the number only, with one decimal.",
     "category": "logical_reasoning",
     "quality_dimension": "elementary_reasoning",
     "accepted_answers": [
-      "162"
+      "14.1"
     ],
     "strict_output": true,
-    "item_id": "reasoning_analysis-08",
+    "item_id": "reasoning_analysis-12",
     "use_case_id": "reasoning_analysis",
-    "construct": "rate_with_staggered_start",
+    "construct": "conditional_weighted_average",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -906,16 +894,17 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. When a message raises several issues, pick the label of the issue the customer asks to resolve first. Reply with the label only.\nMessage: 'The app crashes on login, but first please refund the duplicate charge from yesterday.'",
+    "prompt": "Route each message to one queue from BILLING, TECHNICAL, ACCOUNT, OTHER with these rules, in order: a message about a charge, an invoice or a refund is BILLING even if it also reports an error; a message about login, password or profile is ACCOUNT, unless it reports an error code, then it is TECHNICAL; any other error is TECHNICAL; anything else is OTHER. Reply with the five labels in order, separated by a comma and a space, and nothing else.\n1. 'I see error 500 when I open my invoice.'\n2. 'How do I change the phone number on my profile?'\n3. 'The password reset page shows error 403.'\n4. 'Do you have offices abroad?'\n5. 'Please refund the charge from the failed payment; the app froze during checkout.'",
     "category": "exact_answer",
     "quality_dimension": "classification_accuracy",
     "accepted_answers": [
-      "BILLING"
+      "BILLING, ACCOUNT, TECHNICAL, OTHER, BILLING",
+      "BILLING,ACCOUNT,TECHNICAL,OTHER,BILLING"
     ],
     "strict_output": true,
-    "item_id": "classification_routing-07",
+    "item_id": "classification_routing-13",
     "use_case_id": "classification_routing",
-    "construct": "priority_rule_for_mixed_intents",
+    "construct": "batch_routing_with_precedence",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -925,16 +914,54 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Classify the sentiment of the review as POSITIVE, NEGATIVE or MIXED. Reply with the label only.\nReview: 'Great, another update that deletes my saved filters. Really helpful.'",
+    "prompt": "Classify the review as POSITIVE, NEGATIVE or MIXED. MIXED means the review both clearly praises and clearly criticises the product itself; complaints about delivery or the courier do not count. Reply with the label only.\nReview: 'Shipping took two weeks, which is the courier's fault, but the blender itself is excellent and surprisingly quiet.'",
     "category": "exact_answer",
     "quality_dimension": "classification_accuracy",
     "accepted_answers": [
-      "NEGATIVE"
+      "POSITIVE"
     ],
     "strict_output": true,
-    "item_id": "classification_routing-08",
+    "item_id": "classification_routing-14",
     "use_case_id": "classification_routing",
-    "construct": "sarcasm_detection",
+    "construct": "scope_of_sentiment",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Assign a priority with these rules: P1 if more than 100 users are affected or if any payment fails; P2 if 10 to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'About 40 users cannot export reports since this morning. One of them adds that a card payment failed twice today.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "P1"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-15",
+    "use_case_id": "classification_routing",
+    "construct": "rule_overrides_count",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'A colleague says your billing page takes a full minute to load. Our bills are correct; we only want to know whether this slowness is a known bug.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "TECHNICAL"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-16",
+    "use_case_id": "classification_routing",
+    "construct": "intent_over_keyword",
     "task_type": "free_response",
     "difficulty": "medium",
     "evaluator": "exact_match",
@@ -944,37 +971,18 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Route the message to exactly one queue: BILLING, TECHNICAL, ACCOUNT or UNCLEAR. Use UNCLEAR only when the message gives no clue at all about its topic. Reply with the label only.\nMessage: 'Can someone call me back about this?'",
+    "prompt": "Route the message to exactly one queue: BILLING, TECHNICAL, ACCOUNT or UNCLEAR. Use UNCLEAR when the message raises issues for two or more queues and does not say which one matters more. Reply with the label only.\nMessage: 'I was charged twice this month and I can no longer log in to my account.'",
     "category": "exact_answer",
     "quality_dimension": "classification_accuracy",
     "accepted_answers": [
       "UNCLEAR"
     ],
     "strict_output": true,
-    "item_id": "classification_routing-09",
+    "item_id": "classification_routing-17",
     "use_case_id": "classification_routing",
-    "construct": "abstention_under_explicit_rule",
+    "construct": "abstention_on_tie",
     "task_type": "free_response",
     "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende. Die Rechnung bezahle ich noch.'",
-    "category": "exact_answer",
-    "quality_dimension": "classification_accuracy",
-    "accepted_answers": [
-      "ACCOUNT"
-    ],
-    "strict_output": true,
-    "item_id": "classification_routing-10",
-    "use_case_id": "classification_routing",
-    "construct": "non_english_with_distractor",
-    "task_type": "free_response",
-    "difficulty": "medium",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",
@@ -994,25 +1002,6 @@
     "construct": "rule_based_priority",
     "task_type": "free_response",
     "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'This is not about my invoice: I only want to know your opening hours on public holidays.'",
-    "category": "exact_answer",
-    "quality_dimension": "classification_accuracy",
-    "accepted_answers": [
-      "OTHER"
-    ],
-    "strict_output": true,
-    "item_id": "classification_routing-12",
-    "use_case_id": "classification_routing",
-    "construct": "negated_keyword",
-    "task_type": "free_response",
-    "difficulty": "medium",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",
@@ -1357,18 +1346,18 @@
     }
   },
   {
-    "prompt": "Write the names of the months that have exactly 30 days, in calendar order, in uppercase, separated by commas with no spaces, and nothing else.",
+    "prompt": "Take the English names of the days of the week from Monday to Sunday, keep only the names that have exactly six letters, then write them in reverse order, in lowercase, separated by single spaces, and nothing else.",
     "category": "instruction_following",
     "quality_dimension": "instruction_reliability",
     "accepted_answers": [
-      "APRIL,JUNE,SEPTEMBER,NOVEMBER"
+      "sunday friday monday"
     ],
     "strict_output": true,
-    "item_id": "instruction_following-05",
+    "item_id": "instruction_following-10",
     "use_case_id": "instruction_following",
-    "construct": "multi_constraint_listing",
+    "construct": "filter_then_reverse",
     "task_type": "free_response",
-    "difficulty": "medium",
+    "difficulty": "hard",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",

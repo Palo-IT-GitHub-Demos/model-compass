@@ -386,7 +386,7 @@ de 4,0.
 
 | Cas d'usage | Items | Repris de la v2 | Évaluateur |
 |---|---:|---:|---|
-| Extraction structurée | 6 | 3 | JSON attendu, crédit partiel |
+| Extraction structurée | 6 | 2 | JSON attendu, crédit partiel |
 | Code court | 6 | 2 | tests dans le sandbox, crédit partiel |
 | Question-réponse avec contexte | 6 | 0 | réponse finale exacte (dont abstention) |
 | Raisonnement borné | 6 | 1 | réponse finale exacte |
@@ -414,6 +414,30 @@ Les difficultés restent des hypothèses d'auteur (`difficulty_status = draft`)
 jusqu'au premier run de référence de la v3 : l'analyse des items
 (`results/quality_analysis/`) dira lesquels sont saturés, au plancher ou
 contestés.
+
+### Items durcis (méthodologie 0.6.0)
+
+Sur le run du 2 novembre 2026, 30 items sur 48 étaient saturés pour les cinq
+modèles de tête (au moins 4,67 de moyenne chacun), et 18 étaient réussis par
+les six modèles, Llama 3.3 70B compris : ils ne départageaient rien. Ces 18 items
+sont remplacés par de nouveaux items du même cas d'usage, sous de nouveaux
+identifiants, pour qu'un run 0.5 ne se compare jamais à tort à un run 0.6 :
+
+| Cas d'usage | Retirés | Ajoutés | Ce qui les rend plus durs |
+|---|---|---|---|
+| Extraction structurée | -05, -06, -07 | -09, -10, -11 | rejouer un journal de commandes avec annulation, valeurs dérivées d'un tableau avec remises, comptage groupé sous règles ; crédit partiel par champ |
+| Code court | -06, -08 | -10, -11 | ordre de versions avec pré-versions, chevauchement maximal avec bornes exclues ; 7 à 10 tests chacun |
+| Question-réponse avec contexte | -06 à -10 | -12 à -16 | suivi d'état sur sept mises à jour, exception qui l'emporte sur une autre, date avec prolongation, abstention face à une estimation tentante, comptage sous trois conditions |
+| Raisonnement borné | -06, -08 | -11, -12 | créneau avec marges autour de réservations, moyenne pondérée conditionnelle |
+| Classification et routage | -07 à -10, -12 | -13 à -17 | lot de cinq messages avec ordre de priorité des règles, portée d'un avis, règle qui l'emporte sur un nombre, intention contre mot-clé, abstention en cas d'égalité |
+| Suivi d'instruction | -05 | -10 | filtrer puis inverser une liste |
+
+Chaque réponse attendue est calculée par le script, et un contrôle vérifie que
+la bonne réponse obtient 5 et qu'une erreur plausible échoue. Les items qui
+séparaient déjà Llama des autres modèles sont conservés ; seuls les items
+jugés de communication concise restent à durcir. La difficulté réelle ne sera
+connue qu'après le prochain run : un item trop dur pour tous passera en
+`floor` dans l'analyse des items.
 
 ### Livraison des prompts (méthodologie 0.6.0)
 

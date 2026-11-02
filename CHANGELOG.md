@@ -47,6 +47,14 @@ methodology.
   scales the RSI below the robust band. A model that only quotes or reports the
   instruction is not counted. The set grows to 80 probes, 59 scored, which
   changes `security_probe_set_id`.
+- Replaced the 18 suite v3 items that every model of the 2 November run
+  answered perfectly, Llama 3.3 70B included, with harder items of the same
+  use cases under new identifiers: order-log replay, derived invoice values,
+  grouped counts, version ordering with pre-releases, maximum overlap, state
+  tracking over seven updates, overriding exceptions, date arithmetic,
+  abstention against an estimate, scheduling with buffers, a batch of five
+  routed messages and rule-over-keyword classification. This changes
+  `quality_suite_id`; thresholds stay draft until the next run.
 
 ### Changed — methodology 0.5.0
 

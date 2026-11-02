@@ -141,31 +141,109 @@ CODE_CRITERIA = [
 items: list[dict] = []
 
 # ── Structured extraction ────────────────────────────────────────────────────
-items += [keep("structured_extraction-01"), keep("structured_extraction-04"), keep("structured_extraction-05")]
+items += [keep("structured_extraction-01"), keep("structured_extraction-04")]
 # OpenRouter guardrails mask "JSON array" as an address; the item must reach the models as written.
 items[1]["prompt"] = items[1]["prompt"].replace("exactly one JSON array", "exactly one array in JSON format")
+# The v3.0 items -05, -06 and -07 were answered perfectly by every model of the 2 November run: they are
+# replaced by longer tasks that track state, derive values or aggregate, with partial credit per field.
+ORDER_LOG = [
+    ("add", "P-101", 3),
+    ("add", "P-205", 2),
+    ("add", "P-330", 1),
+    ("set", "P-101", 5),
+    ("remove", "P-205", 0),
+    ("add", "P-205", 4),
+    ("add", "P-101", 2),
+    ("undo", 6, 0),
+    ("add", "P-412", 2),
+    ("set", "P-412", 0),
+]
+STEP_TEXT = {
+    "add": "Add {qty} x {target}.",
+    "set": "Change the quantity of {target} to {qty}.",
+    "remove": "Remove {target} from the order.",
+    "undo": "Undo step {target}.",
+}
+
+
+def replay(log: list[tuple[str, object, int]]) -> dict[str, int]:
+    undone = {target for op, target, _ in log if op == "undo"}
+    basket: dict[str, int] = {}
+    for step, (op, target, qty) in enumerate(log, start=1):
+        if step in undone or op == "undo":
+            continue
+        sku = str(target)
+        if op == "add":
+            basket[sku] = basket.get(sku, 0) + qty
+        elif op == "set":
+            basket[sku] = qty
+        else:
+            basket.pop(sku, None)
+    return {sku: qty for sku, qty in sorted(basket.items()) if qty > 0}
+
+
 items.append(
     json_item(
-        "structured_extraction-06",
-        "null_for_missing_fields",
+        "structured_extraction-09",
+        "state_tracking_over_edits",
         "hard",
-        "Extract the keys `product`, `version`, `release_date` and `license` from the note. Use null for any field the "
-        "note does not state explicitly; do not infer it. Return exactly one JSON object, with no markdown or extra "
-        "text.\nNote: 'Product: Atlas toolkit. Version 4.2 adds a faster importer. Pricing is unchanged; the release "
-        "schedule is on the vendor portal.'",
-        {"product": "Atlas toolkit", "version": "4.2", "release_date": None, "license": None},
+        "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each SKU "
+        "still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never "
+        "been written. Leave out SKUs whose final quantity is zero or that were removed.\nOrder log:\n"
+        + "\n".join(
+            f"{step}. " + STEP_TEXT[op].format(target=target, qty=qty)
+            for step, (op, target, qty) in enumerate(ORDER_LOG, start=1)
+        ),
+        replay(ORDER_LOG),
     )
 )
+INVOICE = [("Widget", 3, "4.50", 0), ("Cable", 2, "12.00", 10), ("Adapter", 5, "0.99", 0), ("Stand", 1, "25.00", 20)]
+line_cents = {name: qty * Fraction(price) * 100 * (100 - off) / 100 for name, qty, price, off in INVOICE}
+assert all(value.denominator == 1 for value in line_cents.values())
+invoice_total = {name: int(value) for name, value in line_cents.items()}
+invoice_total["total"] = sum(invoice_total.values())
 items.append(
     json_item(
-        "structured_extraction-07",
-        "correction_supersedes_value",
+        "structured_extraction-10",
+        "derived_values_from_table",
         "hard",
-        "Return exactly one JSON object, with no markdown or extra text, with the keys `meeting_date` (ISO 8601, "
-        "YYYY-MM-DD) and `room` (string). When the text corrects a value, use the corrected one.\nText: 'The kickoff "
-        "is on 4 March 2027 in room 2.14. Correction from the facilities team: it moves to 11 March 2027, same time, "
-        "room 3.02.'",
-        {"meeting_date": "2027-03-11", "room": "3.02"},
+        "Return exactly one JSON object, with no markdown or extra text, whose keys are the product names and whose "
+        "values are each line's total in cents after its discount (integer), plus a key `total` with the sum of the "
+        "lines in cents.\nInvoice lines (product | quantity | unit price in dollars | discount on the line):\n"
+        + "\n".join(
+            f"{name} | {qty} | {price} | " + (f"{off}% off" if off else "none") for name, qty, price, off in INVOICE
+        ),
+        invoice_total,
+    )
+)
+TICKETS = [
+    ("T1", "web", "open"),
+    ("T2", "api", "closed"),
+    ("T3", "web", "closed"),
+    ("T4", "data", "open"),
+    ("T5", "api", "reopened"),
+    ("T6", "web", "open"),
+    ("T7", "data", "closed"),
+    ("T8", "api", "closed"),
+    ("T9", "web", "cancelled"),
+    ("T10", "data", "reopened"),
+]
+team_counts: dict[str, dict[str, int]] = {}
+for _, team, status in TICKETS:
+    if status == "cancelled":
+        continue
+    counts = team_counts.setdefault(team, {"open": 0, "closed": 0})
+    counts["closed" if status == "closed" else "open"] += 1
+items.append(
+    json_item(
+        "structured_extraction-11",
+        "grouped_counts_with_rules",
+        "hard",
+        "Return exactly one JSON object, with no markdown or extra text, with one key per team and, for each team, an "
+        "object with the integer keys `open` and `closed`. A reopened ticket counts as open; a cancelled ticket is "
+        "ignored.\nTickets (id | team | status):\n"
+        + "\n".join(f"{ticket} | {team} | {status}" for ticket, team, status in TICKETS),
+        team_counts,
     )
 )
 weights = [("A-17", 1.2 * 1000), ("B-03", 350), ("C-88", 0.05 * 1000)]
@@ -189,31 +267,54 @@ for item_id in ("code_generation-01", "code_generation-02"):
     items.append(item)
 items.append(
     code_item(
-        "code_generation-06",
-        "interval_merging_edge_cases",
-        "medium",
-        "Write only a Python function `merge_intervals(intervals: list[list[int]]) -> list[list[int]]` that merges "
-        "overlapping intervals and intervals that touch (such as [1, 3] and [3, 5]), accepts the intervals in any "
-        "order, and returns the merged intervals sorted by start; an empty list returns an empty list.",
-        "merge_intervals",
-        ["intervals"],
+        "code_generation-10",
+        "precedence_rules_with_prerelease",
+        "hard",
+        "Write only a Python function `compare_versions(a: str, b: str) -> int` that returns -1, 0 or 1 as version `a` "
+        "is lower than, equal to or higher than version `b`. A version is one to three dot-separated integers, "
+        "missing parts count as 0 (so '1.2' equals '1.2.0'), optionally followed by a hyphen and a pre-release made of "
+        "dot-separated identifiers, such as '2.0.0-rc.1'. Numbers compare numerically. When the numbers are equal, a "
+        "version with a pre-release is lower than the same version without one; two pre-releases compare identifier "
+        "by identifier, numerically when both are digits, alphabetically when both are not, a numeric identifier is "
+        "lower than a non-numeric one, and when all shared identifiers are equal the pre-release with fewer "
+        "identifiers is lower.",
+        "compare_versions",
+        ["a", "b"],
         """
-def merge_intervals(intervals):
-    merged = []
-    for start, end in sorted(intervals):
-        if merged and start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], end)
-        else:
-            merged.append([start, end])
-    return merged
+def compare_versions(a, b):
+    def parse(version):
+        core, _, pre = version.partition("-")
+        numbers = [int(part) for part in core.split(".")]
+        numbers += [0] * (3 - len(numbers))
+        return numbers, pre.split(".") if pre else []
+
+    numbers_a, pre_a = parse(a)
+    numbers_b, pre_b = parse(b)
+    if numbers_a != numbers_b:
+        return -1 if numbers_a < numbers_b else 1
+    if not pre_a or not pre_b:
+        return (len(pre_b) > 0) - (len(pre_a) > 0)
+    for left, right in zip(pre_a, pre_b):
+        if left == right:
+            continue
+        if left.isdigit() and right.isdigit():
+            return -1 if int(left) < int(right) else 1
+        if left.isdigit() != right.isdigit():
+            return -1 if left.isdigit() else 1
+        return -1 if left < right else 1
+    return (len(pre_a) > len(pre_b)) - (len(pre_a) < len(pre_b))
 """,
         [
-            ([[1, 3], [2, 6], [8, 10], [15, 18]],),
-            ([[1, 4], [4, 5]],),
-            ([],),
-            ([[5, 7], [1, 2]],),
-            ([[1, 10], [2, 3], [4, 8]],),
-            ([[6, 8], [1, 3], [3, 4], [9, 9]],),
+            ("1.2.0", "1.10.0"),
+            ("1.2", "1.2.0"),
+            ("2.0.0-rc.1", "2.0.0"),
+            ("2.0.0-rc.2", "2.0.0-rc.10"),
+            ("1.0.0-alpha", "1.0.0-1"),
+            ("1.0.0-alpha", "1.0.0-alpha.1"),
+            ("1.0.0-beta", "1.0.0-alpha.9"),
+            ("3.1.4", "3.1.4"),
+            ("0.10.1", "0.9"),
+            ("2", "1.99.99"),
         ],
         CODE_CRITERIA,
     )
@@ -250,36 +351,36 @@ def roman_to_int(numeral):
 )
 items.append(
     code_item(
-        "code_generation-08",
-        "calendar_arithmetic",
+        "code_generation-11",
+        "sweep_line_with_boundaries",
         "hard",
-        "Write only a Python function `business_days_between(start: str, end: str, holidays: list[str]) -> int` that "
-        "counts the weekdays (Monday to Friday) from `start` included to `end` excluded, both ISO dates such as "
-        "'2026-11-02', skipping every date listed in `holidays`; it returns 0 when `end` is not after `start`.",
-        "business_days_between",
-        ["start", "end", "holidays"],
+        "Write only a Python function `max_overlap(sessions: list[list[int]]) -> int` that returns the largest number "
+        "of sessions active at the same moment. Each session is [start, end] with the end excluded, so a session "
+        "ending at 5 and one starting at 5 never overlap; a session whose end is not after its start is ignored; an "
+        "empty list returns 0.",
+        "max_overlap",
+        ["sessions"],
         """
-import datetime
-
-def business_days_between(start, end, holidays):
-    first = datetime.date.fromisoformat(start)
-    last = datetime.date.fromisoformat(end)
-    skipped = {datetime.date.fromisoformat(day) for day in holidays}
-    count = 0
-    day = first
-    while day < last:
-        if day.weekday() < 5 and day not in skipped:
-            count += 1
-        day += datetime.timedelta(days=1)
-    return count
+def max_overlap(sessions):
+    events = []
+    for start, end in sessions:
+        if end > start:
+            events.append((start, 1))
+            events.append((end, -1))
+    best = current = 0
+    for _, delta in sorted(events):
+        current += delta
+        best = max(best, current)
+    return best
 """,
         [
-            ("2026-11-02", "2026-11-09", []),
-            ("2026-11-02", "2026-11-16", ["2026-11-11"]),
-            ("2026-11-07", "2026-11-09", []),
-            ("2026-12-24", "2027-01-04", ["2026-12-25", "2027-01-01"]),
-            ("2026-11-09", "2026-11-02", []),
-            ("2026-11-06", "2026-11-06", []),
+            ([[1, 5], [2, 6], [5, 7]],),
+            ([[1, 2], [2, 3], [3, 4]],),
+            ([],),
+            ([[3, 3], [1, 4]],),
+            ([[0, 10], [1, 9], [2, 8], [8, 9]],),
+            ([[5, 1], [1, 2]],),
+            ([[4, 6], [1, 5], [5, 9], [6, 7], [5, 6]],),
         ],
         CODE_CRITERIA,
     )
@@ -315,68 +416,93 @@ def top_k_words(text, k):
 
 # ── Contextual question answering ────────────────────────────────────────────
 QA = "contextual_qa"
-item = exact(
-    "contextual_qa-06",
-    QA,
-    "multi_hop_with_stale_fact",
-    "hard",
-    "Context: Team A leads the north branch, which reports to the central hub. Until March, the central hub was led "
-    "by Team K; since April it has been led by Team R. Team K now leads the south branch.\nQuestion: Which team "
-    "currently leads the hub that the north branch reports to? Reply with the team name only.",
-    "Team R",
-    dimension="contextual_accuracy",
-)
-item["accepted_answers"] = ["Team R", "R"]
-items.append(item)
+# The v3.0 items -06 to -10 were answered by every model of the 2 November run; each replacement keeps a
+# construct but adds state to track, a rule that overrides another, or a tempting value that is not stated.
+rooms = {"design review": "2.10", "budget meeting": "3.01"}
+rooms["design review"] = "3.01"
+rooms["budget meeting"] = "2.10"
+rooms = {meeting: "1.05" if room == "2.10" else room for meeting, room in rooms.items()}
+rooms["design review"], rooms["budget meeting"] = rooms["budget meeting"], rooms["design review"]
 items.append(
     exact(
-        "contextual_qa-07",
+        "contextual_qa-12",
         QA,
-        "reinstated_earlier_value",
+        "state_tracking_over_updates",
         "hard",
-        "Context: Notice of 2 May: the deadline is 15 June. Notice of 14 May: the deadline is moved to 30 June. Notice "
-        "of 21 May: the change announced on 14 May is cancelled and the deadline of 2 May applies again.\nQuestion: "
-        "What is the current deadline? Reply with the date only, exactly as written in the context.",
-        "15 June",
+        "Context: Booking log, in order. 1) The design review is booked in room 2.10. 2) The budget meeting is booked "
+        "in room 3.01. 3) The design review moves to room 3.01. 4) Because of the clash, the budget meeting moves to "
+        "room 2.10. 5) Room 2.10 closes for repairs; every meeting booked there moves to room 1.05. 6) Room 2.10 "
+        "reopens, but meetings stay where they are. 7) The design review and the budget meeting swap rooms.\n"
+        "Question: In which room is the budget meeting now? Reply with the room number only.",
+        rooms["budget meeting"],
         dimension="contextual_accuracy",
     )
 )
 items.append(
     exact(
-        "contextual_qa-08",
+        "contextual_qa-13",
         QA,
-        "abstention_with_near_miss",
-        "medium",
-        "Context: The audit covered the north and south sites. The north site had 3 findings, all closed. The south "
-        "site report is still being written.\nQuestion: How many findings did the south site have? If the context does "
-        "not say, reply exactly NOT STATED.",
+        "overriding_exception",
+        "hard",
+        "Context: Refunds are allowed within 30 days of delivery. Exception A: downloaded digital products are not "
+        "refundable. Exception B, which takes precedence over exception A: a defective product is refundable within 90 "
+        "days of delivery.\nCase: a digital product, already downloaded, found defective, delivered 45 days ago.\n"
+        "Question: Is the customer entitled to a refund? Reply with YES or NO only.",
+        "YES" if 45 <= 90 else "NO",
+        dimension="contextual_accuracy",
+    )
+)
+activation = (2025, 8)
+months = 18 + 2
+expiry_month = activation[1] - 1 + months
+expiry = f"{activation[0] + expiry_month // 12}-{expiry_month % 12 + 1:02d}-15"
+items.append(
+    exact(
+        "contextual_qa-14",
+        QA,
+        "date_arithmetic_with_extension",
+        "hard",
+        "Context: A licence expires exactly 18 months after its activation, on the same day of the month. This licence "
+        "was activated on 15 August 2025. It was later suspended for 2 months, and a suspension extends the expiry by "
+        "the same number of months.\nQuestion: On what date does the licence expire? Reply with the date only, as "
+        "YYYY-MM-DD.",
+        expiry,
+        dimension="contextual_accuracy",
+    )
+)
+items.append(
+    exact(
+        "contextual_qa-15",
+        QA,
+        "abstention_against_estimate",
+        "hard",
+        "Context: The annual report gives revenue for the first three quarters of 2025: 4.1, 3.8 and 4.4 million. The "
+        "fourth-quarter figure will be published in March. Analysts expect a fourth quarter similar to the third.\n"
+        "Question: What was the total revenue for 2025, in millions? If the context does not give it, reply exactly "
+        "NOT STATED.",
         "NOT STATED",
         dimension="contextual_accuracy",
     )
 )
-items.append(
-    exact(
-        "contextual_qa-09",
-        QA,
-        "conditional_arithmetic",
-        "hard",
-        "Context: Shipping costs 6 EUR per parcel. For orders above 50 EUR, one parcel ships free. An order of 64 EUR "
-        "is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in euros? Reply with the "
-        "number only.",
-        str(6 * (3 - 1)),
-        dimension="contextual_accuracy",
-    )
+APPLICANTS = [(2023, 12, None), (2025, 8, None), (2019, 50, 2018), (2020, 49, 2023), (2022, 30, 2022), (2010, 5, 2024)]
+eligible = sum(
+    founded <= 2024 and staff < 50 and (grant is None or grant < 2024) for founded, staff, grant in APPLICANTS
 )
 items.append(
     exact(
-        "contextual_qa-10",
+        "contextual_qa-16",
         QA,
-        "exception_to_inherited_rule",
-        "medium",
-        "Context: All plans include email support. Only the Pro and Enterprise plans include phone support. The "
-        "Enterprise plan also includes a dedicated manager. The Team plan includes everything in Pro except phone "
-        "support.\nQuestion: Does the Team plan include phone support? Reply with YES or NO only.",
-        "NO",
+        "multi_condition_count",
+        "hard",
+        "Context: A grant requires all of the following: the company was founded in 2024 or earlier, it has fewer than "
+        "50 employees, and it has not received a grant in 2024 or later.\nApplicants:\n"
+        + "\n".join(
+            f"Applicant {index}: founded in {founded}, {staff} employees, "
+            + ("no previous grant." if grant is None else f"previous grant in {grant}.")
+            for index, (founded, staff, grant) in enumerate(APPLICANTS, start=1)
+        )
+        + "\nQuestion: How many applicants are eligible? Reply with the number only.",
+        str(eligible),
         dimension="contextual_accuracy",
     )
 )
@@ -398,16 +524,22 @@ items.append(
 # ── Reasoning and analysis ───────────────────────────────────────────────────
 RA = "reasoning_analysis"
 items.append(keep("reasoning_analysis-01"))
-best = min(4 * packs + (15 - 6 * packs) for packs in range(0, 3))
+BOOKINGS = [(9 * 60 + 40, 11 * 60 + 15), (13 * 60 + 5, 14 * 60 + 50)]
+slot = next(
+    start
+    for start in range(9 * 60, 15 * 60 - 70 + 1, 5)
+    if all(start + 70 <= begin - 10 or start >= end + 10 for begin, end in BOOKINGS)
+)
 items.append(
     exact(
-        "reasoning_analysis-06",
+        "reasoning_analysis-11",
         RA,
-        "optimisation_under_constraint",
-        "medium",
-        "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in euros, to "
-        "buy exactly 15 pens? Reply with the number only.",
-        str(best),
+        "scheduling_with_buffers",
+        "hard",
+        "A room is booked from 09:40 to 11:15 and from 13:05 to 14:50. A team needs a 70-minute slot between 09:00 and "
+        "15:00 that starts on a multiple of 5 minutes and keeps at least 10 minutes free before every booking starts "
+        "and after every booking ends. What is the earliest possible start time? Reply with the time only, as HH:MM.",
+        f"{slot // 60:02d}:{slot % 60:02d}",
         category="logical_reasoning",
         dimension="elementary_reasoning",
     )
@@ -437,18 +569,21 @@ items.append(
         dimension="elementary_reasoning",
     )
 )
-minutes = 30 + (500 - 120 * 0.5) / (120 + 80) * 60
-assert minutes == int(minutes)
+PROJECTS = [8, 14, 17]
+EXAM = 12
+kept = sorted(PROJECTS)[1:] if EXAM >= 12 else PROJECTS
+grade = Fraction(4, 10) * EXAM + Fraction(6, 10) * Fraction(sum(kept), len(kept))
+assert (grade * 10).denominator == 1
 items.append(
     exact(
-        "reasoning_analysis-08",
+        "reasoning_analysis-12",
         RA,
-        "rate_with_staggered_start",
+        "conditional_weighted_average",
         "hard",
-        "Machine A fills 120 bottles per hour. Machine B fills 80 bottles per hour and starts 30 minutes after A. Both "
-        "stop as soon as 500 bottles have been filled in total. How many minutes after A starts do they stop? Reply "
-        "with the number only.",
-        str(int(minutes)),
+        "A course grade out of 20 is 40% exam and 60% projects. The project mark is the average of the project marks, "
+        "but the lowest project mark is dropped when the exam mark is at least 12. A student has an exam mark of 12 "
+        "and project marks of 8, 14 and 17. What is the course grade? Reply with the number only, with one decimal.",
+        f"{float(grade):.1f}",
         category="logical_reasoning",
         dimension="elementary_reasoning",
     )
@@ -483,53 +618,80 @@ items.append(
 # ── Classification and routing ───────────────────────────────────────────────
 CR = "classification_routing"
 LABELS = "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. "
+# The v3.0 items -07 to -10 and -12 were answered by every model of the 2 November run; each replacement
+# makes an explicit rule decide against the most obvious keyword.
+BATCH = [
+    ("I see error 500 when I open my invoice.", "BILLING"),
+    ("How do I change the phone number on my profile?", "ACCOUNT"),
+    ("The password reset page shows error 403.", "TECHNICAL"),
+    ("Do you have offices abroad?", "OTHER"),
+    ("Please refund the charge from the failed payment; the app froze during checkout.", "BILLING"),
+]
+batch_labels = [label for _, label in BATCH]
+item = exact(
+    "classification_routing-13",
+    CR,
+    "batch_routing_with_precedence",
+    "hard",
+    "Route each message to one queue from BILLING, TECHNICAL, ACCOUNT, OTHER with these rules, in order: a message "
+    "about a charge, an invoice or a refund is BILLING even if it also reports an error; a message about login, "
+    "password or profile is ACCOUNT, unless it reports an error code, then it is TECHNICAL; any other error is "
+    "TECHNICAL; anything else is OTHER. Reply with the five labels in order, separated by a comma and a space, and "
+    "nothing else.\n" + "\n".join(f"{index}. '{text}'" for index, (text, _) in enumerate(BATCH, start=1)),
+    ", ".join(batch_labels),
+    dimension="classification_accuracy",
+)
+item["accepted_answers"] = [", ".join(batch_labels), ",".join(batch_labels)]
+items.append(item)
 items.append(
     exact(
-        "classification_routing-07",
+        "classification_routing-14",
         CR,
-        "priority_rule_for_mixed_intents",
+        "scope_of_sentiment",
         "hard",
-        LABELS + "When a message raises several issues, pick the label of the issue the customer asks to resolve "
-        "first. Reply with the label only.\nMessage: 'The app crashes on login, but first please refund the duplicate "
-        "charge from yesterday.'",
-        "BILLING",
+        "Classify the review as POSITIVE, NEGATIVE or MIXED. MIXED means the review both clearly praises and clearly "
+        "criticises the product itself; complaints about delivery or the courier do not count. Reply with the label "
+        "only.\nReview: 'Shipping took two weeks, which is the courier's fault, but the blender itself is excellent "
+        "and surprisingly quiet.'",
+        "POSITIVE",
         dimension="classification_accuracy",
     )
 )
 items.append(
     exact(
-        "classification_routing-08",
+        "classification_routing-15",
         CR,
-        "sarcasm_detection",
+        "rule_overrides_count",
+        "hard",
+        "Assign a priority with these rules: P1 if more than 100 users are affected or if any payment fails; P2 if 10 "
+        "to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'About 40 users cannot export "
+        "reports since this morning. One of them adds that a card payment failed twice today.'",
+        "P1",
+        dimension="classification_accuracy",
+    )
+)
+items.append(
+    exact(
+        "classification_routing-16",
+        CR,
+        "intent_over_keyword",
         "medium",
-        "Classify the sentiment of the review as POSITIVE, NEGATIVE or MIXED. Reply with the label only.\nReview: "
-        "'Great, another update that deletes my saved filters. Really helpful.'",
-        "NEGATIVE",
+        LABELS + "Reply with the label only.\nMessage: 'A colleague says your billing page takes a full minute to "
+        "load. Our bills are correct; we only want to know whether this slowness is a known bug.'",
+        "TECHNICAL",
         dimension="classification_accuracy",
     )
 )
 items.append(
     exact(
-        "classification_routing-09",
+        "classification_routing-17",
         CR,
-        "abstention_under_explicit_rule",
+        "abstention_on_tie",
         "hard",
-        "Route the message to exactly one queue: BILLING, TECHNICAL, ACCOUNT or UNCLEAR. Use UNCLEAR only when the "
-        "message gives no clue at all about its topic. Reply with the label only.\nMessage: 'Can someone call me back "
-        "about this?'",
+        "Route the message to exactly one queue: BILLING, TECHNICAL, ACCOUNT or UNCLEAR. Use UNCLEAR when the message "
+        "raises issues for two or more queues and does not say which one matters more. Reply with the label only.\n"
+        "Message: 'I was charged twice this month and I can no longer log in to my account.'",
         "UNCLEAR",
-        dimension="classification_accuracy",
-    )
-)
-items.append(
-    exact(
-        "classification_routing-10",
-        CR,
-        "non_english_with_distractor",
-        "medium",
-        LABELS + "Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende. Die "
-        "Rechnung bezahle ich noch.'",
-        "ACCOUNT",
         dimension="classification_accuracy",
     )
 )
@@ -543,18 +705,6 @@ items.append(
         "some users and a workaround exists; P3 = a question or a cosmetic issue. Reply with the label only.\nTicket: "
         "'Since this morning nobody in the company can log in; meanwhile we use the old portal.'",
         "P1",
-        dimension="classification_accuracy",
-    )
-)
-items.append(
-    exact(
-        "classification_routing-12",
-        CR,
-        "negated_keyword",
-        "medium",
-        LABELS + "Reply with the label only.\nMessage: 'This is not about my invoice: I only want to know your opening "
-        "hours on public holidays.'",
-        "OTHER",
         dimension="classification_accuracy",
     )
 )
@@ -777,18 +927,16 @@ items.append(
 
 # ── Instruction following ────────────────────────────────────────────────────
 IF = "instruction_following"
-thirty_day_months = ",".join(
-    calendar.month_name[m].upper() for m in range(1, 13) if calendar.monthrange(2027, m)[1] == 30
-)
+six_letter_days = [day.lower() for day in calendar.day_name if len(day) == 6][::-1]
 items.append(
     exact(
-        "instruction_following-05",
+        "instruction_following-10",
         IF,
-        "multi_constraint_listing",
-        "medium",
-        "Write the names of the months that have exactly 30 days, in calendar order, in uppercase, separated by commas "
-        "with no spaces, and nothing else.",
-        thirty_day_months,
+        "filter_then_reverse",
+        "hard",
+        "Take the English names of the days of the week from Monday to Sunday, keep only the names that have exactly "
+        "six letters, then write them in reverse order, in lowercase, separated by single spaces, and nothing else.",
+        " ".join(six_letter_days),
         category="instruction_following",
         dimension="instruction_reliability",
     )
