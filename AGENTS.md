@@ -226,7 +226,9 @@ must be checked in the static HTML export (`make export-html`).
 ## Documentation Maintenance
 
 - Update `CHANGELOG.md` under `[Unreleased]` for every user-visible feature,
-  behavioral change, bug fix, deprecation, or operational command
+  behavioral change, bug fix, deprecation, or operational command, in the same
+  change (`.github/instructions/changelog.instructions.md`); CI fails a pull
+  request touching code, prompts or the catalog without a `CHANGELOG.md` change
 - Review and update `AGENTS.md` whenever architecture, source ownership,
   workflow commands, result artifacts, safety invariants, or validation
   requirements change
