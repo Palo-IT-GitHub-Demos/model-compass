@@ -570,6 +570,11 @@ def run_warnings(benchmark_df: pd.DataFrame, source_name: str) -> list[str]:
         warnings.append(
             "Security was not probed with the standard security path, so the RSI is not comparable with reference runs."
         )
+    if "prompt_delivery_verified" in benchmark_df.columns and benchmark_df["prompt_delivery_verified"].eq(False).any():
+        warnings.append(
+            "Prompt delivery was not checked (PROMPT_DELIVERY_AUDIT=false): a gateway may have rewritten prompts "
+            "before they reached the models, without any error."
+        )
     coverage = numeric_series(benchmark_df, "quality_coverage_rate")
     incomplete = benchmark_df.loc[coverage.lt(1.0), "model"].astype(str) if "model" in benchmark_df else []
     if len(incomplete):
@@ -596,6 +601,14 @@ def run_notices(benchmark_df: pd.DataFrame) -> list[str]:
             f"Quality responses lost to technical collection errors: {affected}. Those attempts are excluded; "
             "the scores and intervals use the attempts collected."
         )
+    if "undelivered_security_probes" in benchmark_df.columns and not benchmark_df.empty:
+        undelivered = str(benchmark_df["undelivered_security_probes"].fillna("").iloc[0])
+        if undelivered:
+            notices.append(
+                f"A gateway filter would have rewritten {len(undelivered.split(', '))} security probe(s), so they "
+                f"were not sent and the RSI excludes them: {undelivered}. The RSI is comparable only with runs "
+                "that have the same security_probe_set_id."
+            )
     coverage = security_probe_coverage(security_probe_details_frame(benchmark_df))
     partial = coverage.loc[coverage["measured_scored_probes"] < coverage["scored_probes"]]
     if not partial.empty:

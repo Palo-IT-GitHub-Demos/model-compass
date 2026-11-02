@@ -21,6 +21,7 @@ Usage (async):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from collections.abc import Mapping
@@ -37,6 +38,8 @@ from openai.types.chat import ChatCompletion
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_UPSTREAM_ECHO_MAX_TOKENS = 16
 
 # HTTP status codes that warrant a retry attempt.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
@@ -446,6 +449,38 @@ class AsyncOpenRouterClient(_CallCostLedger):
             raise OpenRouterError(f"OpenRouter connection/timeout error for model '{model}': {exc}") from exc
         # Unreachable — tenacity always either returns or raises.
         raise OpenRouterError(f"Unexpected retry exhaustion for model '{model}'")  # pragma: no cover
+
+    async def upstream_request(self, model: str, text: str) -> dict[str, Any] | None:
+        """Return the request body OpenRouter would forward upstream for one user message.
+
+        Uses OpenRouter's streaming ``debug.echo_upstream_body`` option and drops
+        the stream as soon as the echo arrives, so a call costs a few tokens.
+        ``None`` means the response carried no echo.
+
+        Raises:
+            OpenRouterError: On HTTP or network errors.
+        """
+        body = {
+            "model": model,
+            "stream": True,
+            "max_tokens": _UPSTREAM_ECHO_MAX_TOKENS,
+            "debug": {"echo_upstream_body": True},
+            "messages": [{"role": "user", "content": text}],
+        }
+        try:
+            async with self._semaphore, self._http.stream("POST", "/chat/completions", json=body) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data:") or line.strip() == "data: [DONE]":
+                        continue
+                    echoed = json.loads(line.removeprefix("data:")).get("debug", {}).get("echo_upstream_body")
+                    if isinstance(echoed, dict):
+                        return echoed
+        except httpx.HTTPStatusError as exc:
+            raise OpenRouterError(f"Upstream echo failed for '{model}': HTTP {exc.response.status_code}") from exc
+        except (httpx.RequestError, json.JSONDecodeError) as exc:
+            raise OpenRouterError(f"Upstream echo failed for '{model}': {exc}") from exc
+        return None
 
     async def get_models(self) -> list[dict[str, Any]]:
         """Async fetch of all available models from ``GET /api/v1/models``.

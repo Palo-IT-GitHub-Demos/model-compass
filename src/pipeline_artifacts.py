@@ -100,6 +100,7 @@ def save_pending(
     recommendation_weights: RecommendationWeights | None = None,
     *,
     security_profile: str = "full",
+    prompt_delivery: dict[str, object] | None = None,
     log: logging.Logger = logger,
 ) -> Path:
     """Persist the collect payload and the blind copy sent to judges."""
@@ -112,6 +113,7 @@ def save_pending(
         "use_case_catalog_version": load_use_case_catalog(catalog_path).catalog_version,
         "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
         "security_profile": security_profile,
+        "prompt_delivery": prompt_delivery,
         "models": models,
         "pricing": pricing_df.to_dict(orient="records") if not pricing_df.empty else [],
         "security": security_df.to_dict(orient="records") if not security_df.empty else [],

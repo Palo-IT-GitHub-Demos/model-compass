@@ -142,6 +142,8 @@ items: list[dict] = []
 
 # ── Structured extraction ────────────────────────────────────────────────────
 items += [keep("structured_extraction-01"), keep("structured_extraction-04"), keep("structured_extraction-05")]
+# OpenRouter guardrails mask "JSON array" as an address; the item must reach the models as written.
+items[1]["prompt"] = items[1]["prompt"].replace("exactly one JSON array", "exactly one array in JSON format")
 items.append(
     json_item(
         "structured_extraction-06",
@@ -172,7 +174,8 @@ items.append(
         "structured_extraction-08",
         "unit_normalisation",
         "medium",
-        "Return exactly one JSON array, with no markdown or extra text, with one object per line of the packing list, "
+        "Return exactly one array in JSON format, with no markdown or extra text, with one object per line of the "
+        "packing list, "
         "in the same order, with the keys `sku` (string) and `weight_g` (integer, in grams).\nPacking list:\n"
         "A-17 | 1.2 kg\nB-03 | 350 g\nC-88 | 0.05 kg",
         [{"sku": sku, "weight_g": round(grams)} for sku, grams in weights],
@@ -358,8 +361,8 @@ items.append(
         "conditional_arithmetic",
         "hard",
         "Context: Shipping costs 6 EUR per parcel. For orders above 50 EUR, one parcel ships free. An order of 64 EUR "
-        "is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in EUR? Reply with the number "
-        "only.",
+        "is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in euros? Reply with the "
+        "number only.",
         str(6 * (3 - 1)),
         dimension="contextual_accuracy",
     )
@@ -384,8 +387,8 @@ items.append(
         "aggregation_with_exclusions",
         "hard",
         "Context: Warehouse stock: W1 holds 1,200 units; W2 holds 950 units; W3 holds 2 pallets of 400 units each; W4 "
-        "is closed and holds 300 units awaiting transfer to W1.\nQuestion: How many units can be shipped "
-        "today from the "
+        "is closed and holds 300 units awaiting transfer to another warehouse.\nQuestion: How many units can be "
+        "shipped today from the "
         "open warehouses? Reply with the number only, without separators.",
         str(1200 + 950 + 2 * 400),
         dimension="contextual_accuracy",
@@ -402,8 +405,8 @@ items.append(
         RA,
         "optimisation_under_constraint",
         "medium",
-        "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in EUR, to buy "
-        "exactly 15 pens? Reply with the number only.",
+        "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in euros, to "
+        "buy exactly 15 pens? Reply with the number only.",
         str(best),
         category="logical_reasoning",
         dimension="elementary_reasoning",
@@ -524,8 +527,8 @@ items.append(
         CR,
         "non_english_with_distractor",
         "medium",
-        LABELS + "Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende, die "
-        "letzte Rechnung bezahle ich noch.'",
+        LABELS + "Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende. Die "
+        "Rechnung bezahle ich noch.'",
         "ACCOUNT",
         dimension="classification_accuracy",
     )
@@ -677,7 +680,7 @@ items.append(
         "concise_communication",
         "jargon_removal_with_fact_retention",
         "hard",
-        "Rewrite this for a non-technical executive in at most two sentences, keeping every fact: 'p95 latency "
+        "Rewrite this for a non-technical executive in at most two sentences: 'p95 latency "
         "regressed from 180 ms to 420 ms after the ORM upgrade; we are reverting tonight and expect baseline by "
         "08:00.'",
         [

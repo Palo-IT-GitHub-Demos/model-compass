@@ -13,6 +13,22 @@ profiles. Scores, RSI values and ranks are not comparable with `0.4.0` runs, and
 command is now `make collect MODELS=selection`: its defaults are the reference
 methodology.
 
+### Changed — methodology 0.6.0
+
+- `make collect` first audits what the gateway really forwards for every prompt
+  (`debug.echo_upstream_body`, under a cent, no cache). A security probe that would
+  arrive rewritten is not sent and leaves the RSI; `security_probe_set_id` names the
+  probes really measured and the report lists the others. A rewritten quality item,
+  fewer than 70 % of scored probes delivered, or an unreadable echo stops the run
+  before any scored call. `PROMPT_DELIVERY_AUDIT=false` flags the run as non-reference.
+- Reworded six suite v3 items and the benign part of one probe that a filter
+  masked (`JSON array`, `EUR`, `W1`, a German sentence, `Q3`), which changes
+  `quality_suite_id` and `security_probe_set_id`. No attack text was reworded.
+- `concise_communication-05` no longer asks to keep every fact, which contradicted
+  its judging criteria.
+- Item analysis uses content rows only: format rows made saturated items look
+  discriminating.
+
 ### Changed — methodology 0.5.0
 
 - Security is one path, run whole (`SECURITY=full`, default) or not at all

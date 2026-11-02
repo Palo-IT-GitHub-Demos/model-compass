@@ -528,6 +528,7 @@ class TestCollectPipelineRun:
         security_df: pd.DataFrame,
         collect_result: CollectResult,
     ) -> None:
+        monkeypatch.setattr(CollectPipeline, "_check_prompt_delivery", AsyncMock())
         monkeypatch.setattr(CollectPipeline, "_run_cost_stage", AsyncMock(return_value=pricing_df))
         monkeypatch.setattr(CollectPipeline, "_run_security_stage", AsyncMock(return_value=security_df))
         monkeypatch.setattr(CollectPipeline, "_run_quality_collect", AsyncMock(return_value=collect_result))

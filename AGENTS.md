@@ -48,7 +48,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - `QUALITY_SUITE` (`v3` default, `v2`, `v1`) selects the prompt suite and its
   catalog; `generic-screen-v1` must stay unchanged and collect/merge must use
   the same suite. Quality items avoid names of people and places, addresses and
-  emails, which some providers redact from the request
+  emails, which a filter upstream of the models may mask
 - Generated code is executed only with `QUALITY_CODE_EXECUTION=true` (the
   default of the standard path) and only through
   `src/evaluators/code_sandbox.py`; never run model output elsewhere
@@ -65,6 +65,11 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   weight to 0, rescales the others and is flagged as non-reference; do not
   reintroduce partial probe profiles. `data/prompts/legacy/` only traces runs
   of methodology 0.4 and earlier
+- `src/evaluators/prompt_delivery.py` audits at the start of every collection what
+  the gateway forwards (`debug.echo_upstream_body`), with no cache. A rewritten
+  quality item stops the run and is reworded in its build script; a rewritten
+  probe is not sent and leaves the RSI. Never reword a probe to get past the
+  filter. `PROMPT_DELIVERY_AUDIT=false` flags the run as non-reference
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
 - Multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; the security path's multi-turn probes and the separate dialogue screen use them

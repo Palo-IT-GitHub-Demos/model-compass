@@ -117,6 +117,7 @@ flowchart TD
 | `QUALITY_SUITE` | Suite qualité et catalogue : `v3` (48 prompts, 6 par cas d'usage), `v2` (34 prompts) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v3` |
 | `QUALITY_CODE_EXECUTION` | Exécute le code généré des prompts `code_execution` contre leurs tests dans le sandbox restreint, avec crédit partiel ; `false` le fait juger | `true` |
 | `QUALITY_MAX_TOKENS` | Plafond d'une réponse qualité, raisonnement caché compris | `16384` |
+| `PROMPT_DELIVERY_AUDIT` | Contrôle, avant chaque collecte, du texte réellement transmis aux modèles ; `false` signale le run comme non-référence | `true` |
 | `WORKLOAD_PROFILE` | Profil de charge pour le TCO | `enterprise_qa` |
 | `MODEL_COMPASS_WEIGHTS` | JSON optionnel pour remplacer les poids qualité/sécurité/coût/performance | Poids du catalogue |
 

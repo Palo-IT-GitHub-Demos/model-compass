@@ -38,6 +38,7 @@ JUDGE_AGREEMENT_COLUMNS = [
 ]
 
 MIN_MODELS_FOR_ITEM_ANALYSIS = 3
+_FORMAT_DIMENSION = "output_format_compliance"
 SATURATION_MIN_SCORE = 4.0
 """Item is saturated when every model scores at least this value."""
 FLOOR_MAX_SCORE = 2.0
@@ -92,6 +93,9 @@ def analyze_items(quality_df: pd.DataFrame) -> pd.DataFrame:
     )
     corrupted_prompts = set(work_df.loc[flag_suspected_input_corruption(work_df), "prompt_id"])
     work_df = work_df.dropna(subset=["model", "prompt_id", "score"])
+    # An item separates models on content; its format rows are a separate signal, not discrimination.
+    content_df = work_df.loc[work_df["quality_dimension"].ne(_FORMAT_DIMENSION)]
+    work_df = content_df if not content_df.empty else work_df
     if work_df.empty:
         return pd.DataFrame(columns=ITEM_ANALYSIS_COLUMNS)
 

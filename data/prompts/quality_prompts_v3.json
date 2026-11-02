@@ -21,7 +21,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one JSON array, with no markdown or extra text, of the distinct tags in the text, in lowercase, in order of first appearance.\nText: 'Tags mentioned: Urgent, billing; URGENT, Refund-Request, billing.'",
+    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, of the distinct tags in the text, in lowercase, in order of first appearance.\nText: 'Tags mentioned: Urgent, billing; URGENT, Refund-Request, billing.'",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": [
@@ -120,7 +120,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one JSON array, with no markdown or extra text, with one object per line of the packing list, in the same order, with the keys `sku` (string) and `weight_g` (integer, in grams).\nPacking list:\nA-17 | 1.2 kg\nB-03 | 350 g\nC-88 | 0.05 kg",
+    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, with one object per line of the packing list, in the same order, with the keys `sku` (string) and `weight_g` (integer, in grams).\nPacking list:\nA-17 | 1.2 kg\nB-03 | 350 g\nC-88 | 0.05 kg",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": [
@@ -735,7 +735,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: Shipping costs 6 EUR per parcel. For orders above 50 EUR, one parcel ships free. An order of 64 EUR is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in EUR? Reply with the number only.",
+    "prompt": "Context: Shipping costs 6 EUR per parcel. For orders above 50 EUR, one parcel ships free. An order of 64 EUR is sent in 3 parcels.\nQuestion: What is the total shipping cost of this order, in euros? Reply with the number only.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
@@ -773,7 +773,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: Warehouse stock: W1 holds 1,200 units; W2 holds 950 units; W3 holds 2 pallets of 400 units each; W4 is closed and holds 300 units awaiting transfer to W1.\nQuestion: How many units can be shipped today from the open warehouses? Reply with the number only, without separators.",
+    "prompt": "Context: Warehouse stock: W1 holds 1,200 units; W2 holds 950 units; W3 holds 2 pallets of 400 units each; W4 is closed and holds 300 units awaiting transfer to another warehouse.\nQuestion: How many units can be shipped today from the open warehouses? Reply with the number only, without separators.",
     "category": "exact_answer",
     "quality_dimension": "contextual_accuracy",
     "accepted_answers": [
@@ -811,7 +811,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in EUR, to buy exactly 15 pens? Reply with the number only.",
+    "prompt": "Pens are sold in packs of 6 for 4 EUR or individually for 1 EUR each. What is the lowest cost, in euros, to buy exactly 15 pens? Reply with the number only.",
     "category": "logical_reasoning",
     "quality_dimension": "elementary_reasoning",
     "accepted_answers": [
@@ -963,7 +963,7 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende, die letzte Rechnung bezahle ich noch.'",
+    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'Hallo, bitte schliessen Sie mein Konto zum Monatsende. Die Rechnung bezahle ich noch.'",
     "category": "exact_answer",
     "quality_dimension": "classification_accuracy",
     "accepted_answers": [
@@ -1245,7 +1245,7 @@
     }
   },
   {
-    "prompt": "Rewrite this for a non-technical executive in at most two sentences, keeping every fact: 'p95 latency regressed from 180 ms to 420 ms after the ORM upgrade; we are reverting tonight and expect baseline by 08:00.'",
+    "prompt": "Rewrite this for a non-technical executive in at most two sentences: 'p95 latency regressed from 180 ms to 420 ms after the ORM upgrade; we are reverting tonight and expect baseline by 08:00.'",
     "category": "generic_judgment",
     "quality_dimension": "concise_communication",
     "judge_criteria": [

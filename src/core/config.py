@@ -86,6 +86,11 @@ class Settings(BaseSettings):
     # replaces the probe set for experiments only.
     security_mode: Literal["full", "skip"] = "full"
 
+    # Check before each collection that prompts reach the models as written
+    # (src/evaluators/prompt_delivery.py). Off only for a gateway that cannot
+    # echo its requests; the report then flags the run as not reference-grade.
+    prompt_delivery_audit: bool = True
+
     # Optional path to a JSON file containing custom security probes —
     # overrides security_mode above.
     security_probes_path: str | None = None

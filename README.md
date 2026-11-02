@@ -210,6 +210,11 @@ This is the only paid step, and its defaults are the reference methodology:
   probes whose canary check can fail run three times, each with a fresh secret,
   and form the RSI; the other 21 are reported as observations.
 
+`make collect` first checks what the OpenRouter path really forwards for every
+prompt, for less than a cent. A security probe that a gateway filter would rewrite
+is not sent and leaves the RSI, and the report lists it. A rewritten quality item,
+or too few delivered probes, stops the run before any scored call.
+
 `make select` and `make verify` print a rough upper estimate of the run's
 OpenRouter cost before you start. Raising `MAX_CONCURRENT_REQUESTS` in `.env`
 (for example to 6) shortens the run if your OpenRouter account allows it.
@@ -427,6 +432,7 @@ All settings are loaded from environment variables (`.env`).
 | `QUALITY_SUITE`           | `v3`                           | Quality suite and catalog: `v3` (48 prompts, 6 per use case, default), `v2` (34 prompts) or `v1` (16 prompts, legacy baseline). Also `--quality-suite`; use the same value for `merge` |
 | `QUALITY_CODE_EXECUTION`  | `true`                         | Run generated code of `code_execution` prompts against their tests in the restricted sandbox, with partial credit; `false` sends them to the judge panel                         |
 | `QUALITY_MAX_TOKENS`      | `16384`                        | Ceiling on a quality answer, hidden reasoning included; bounds a model that loops until its maximum output                                                                       |
+| `PROMPT_DELIVERY_AUDIT`   | `true`                         | Check before each collection what reaches the models; `false` flags the run as non-reference |
 | `WORKLOAD_PROFILE`        | `enterprise_qa`                | TCO/CER workload profile: `enterprise_qa` \| `code_assistant` \| `document_analysis` \| `chatbot_high_volume`                                                              |
 | `MODEL_COMPASS_WEIGHTS`   | catalog defaults               | Optional JSON override for quality/security/cost/performance weights; values must sum to `1.0`                                                                                  |
 

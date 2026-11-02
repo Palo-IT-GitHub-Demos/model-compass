@@ -24,6 +24,7 @@ def merge_results(
     *,
     min_quality_coverage_for_cer: float = 0.8,
     security_profile: str = "full",
+    prompt_delivery: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Merge quality, security and pricing outputs without changing their metrics.
 
@@ -74,6 +75,10 @@ def merge_results(
         base["quality_suite_id"] = quality_suite_id
     base["methodology_version"] = METHODOLOGY_VERSION
     base["security_profile"] = security_profile
+    if prompt_delivery is not None:
+        undelivered = prompt_delivery.get("undelivered_probes")
+        base["prompt_delivery_verified"] = bool(prompt_delivery.get("verified"))
+        base["undelivered_security_probes"] = ", ".join(undelivered) if isinstance(undelivered, list) else ""
 
     if actual_call_costs is not None and not actual_call_costs.empty:
         base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")

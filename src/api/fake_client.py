@@ -210,6 +210,10 @@ class FakeAsyncOpenRouterClient:
         )
         return _make_completion(content, model)
 
+    async def upstream_request(self, model: str, text: str) -> dict[str, Any] | None:
+        """Echo the message untouched: the offline path has no gateway."""
+        return {"model": model, "messages": [{"role": "user", "content": text}]}
+
     async def get_models(self) -> list[dict[str, Any]]:
         """Return synthetic pricing metadata for every configured target model."""
         context_lengths = (8192, 32768, 131072, 262144)

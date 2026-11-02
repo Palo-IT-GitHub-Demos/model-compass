@@ -299,8 +299,8 @@ Diagnostic sur 12 runs et 3 modèles (2026-09-01 à 2026-09-04) :
   saturés et ne départagent rien tout en pesant dans la couverture ;
 - les prompts 4 et 6 (« capitale de l'Australie », « plus grande planète du
   système solaire ») échouent parce que les modèles reçoivent `[ADDRESS]` à la
-  place du lieu : le fournisseur masque les noms de lieux, le texte local est
-  intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
+  place du lieu : un filtre en amont des modèles masque ce texte (voir section
+  3 ter, *Livraison des prompts*), le texte local est intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
 - les échecs du prompt 3 des premiers runs viennent d'un barème antérieur à la
   séparation contenu/format (balises markdown comptées comme erreur de contenu) ;
 - seul le prompt 8 (syllogisme répondu `NO`) reflète une vraie erreur de modèle.
@@ -335,7 +335,7 @@ manque ou si un `item_id` est dupliqué. Les difficultés sont des hypothèses
 d'auteur jusqu'à la calibration sur run réel (étape 5 du plan 02) ;
 `contamination_status = internal_unscreened` signifie que les items sont
 originaux mais pas comparés à des corpus publics. Les items évitent noms de
-lieux, de personnes, adresses et courriels, que les fournisseurs masquent.
+lieux, de personnes, adresses et courriels, qu'un filtre en amont peut masquer.
 
 Les seuils du catalogue v2 (4,0 ; 3,5 pour résumé et communication) sont des
 valeurs provisoires, au même titre que ceux de la v1.
@@ -403,7 +403,7 @@ priorité entre deux demandes, règle de routage explicite, contraintes de
 format cumulées). Les nouveaux items privilégient les contrôles déterministes :
 seuls résumé, communication concise et un item de suivi d'instruction restent
 jugés, soit 13 items. Comme en v2, ils évitent les noms de personnes et de
-lieux, les adresses et les courriels, que certains fournisseurs masquent.
+lieux, les adresses et les courriels, qu'un filtre en amont peut masquer.
 Les valeurs attendues des nouveaux items sont calculées par
 `scripts/build_quality_suite_v3.py`, et chaque solution de référence des items
 de code doit passer ses propres tests dans le sandbox avant toute écriture. Ce
@@ -415,7 +415,29 @@ jusqu'au premier run de référence de la v3 : l'analyse des items
 (`results/quality_analysis/`) dira lesquels sont saturés, au plancher ou
 contestés.
 
-### Règles de notation introduites en 0.4.0 et 0.5.0
+### Livraison des prompts (méthodologie 0.6.0)
+
+Le run du 2 novembre 2026 a montré que le chemin vers les modèles réécrit
+certains prompts, sans erreur et avec facturation : `JSON array`, `EUR` ou `W1`
+arrivaient sous la forme `[ADDRESS]`, et des sondes sous la forme
+`[PROMPT_INJECTION]`. La cause probable est un garde-fou de workspace OpenRouter.
+Un score obtenu sur un prompt réécrit mesure le filtre, pas le modèle.
+
+Chaque `make collect` contrôle donc d'abord le texte réellement transmis, via
+l'option `debug.echo_upstream_body` d'OpenRouter (16 tokens par prompt, moins
+d'un centime pour le parcours complet). Le contrôle n'a pas de cache : un filtre
+modifié ou retiré est pris en compte au run suivant.
+
+- **Item qualité réécrit :** la collecte s'arrête avant tout appel noté. L'item se
+  reformule dans `scripts/build_quality_suite_v3.py`, car c'est un faux positif
+  sur un texte bénin.
+- **Sonde réécrite :** elle n'est pas envoyée et sort du RSI (voir la
+  [méthodologie sécurité](security-methodology.md)).
+- **Contrôle impossible :** la collecte s'arrête. `PROMPT_DELIVERY_AUDIT=false`
+  permet de passer outre, et le rapport signale alors que le run n'est pas une
+  preuve de référence.
+
+### Règles de notation introduites en 0.4.0, 0.5.0 et 0.6.0
 
 - **Réponse finale.** Pour les items à réponse exacte (`exact_answer`,
   `factual_sanity`, `logical_reasoning`), le contenu est la réponse finale :
@@ -444,6 +466,9 @@ contestés.
   parcours standard : les items de code sont notés par leurs tests dans le
   sandbox, plus objectifs et gratuits, au lieu du panel de juges. Les imports
   autorisés sont listés dans chaque prompt.
+- **Analyse des items sur le contenu.** Depuis 0.6.0, `analyze_items` ignore les
+  lignes de format : un item où tout le monde répond juste reste saturé, même si
+  certains modèles détaillent leur raisonnement.
 - **Corrigé contesté.** L'analyse des items marque `key_disputed` un item à
   réponse exacte dont la réponse la plus fréquente de plus de la moitié des
   modèles est la même réponse rejetée par le corrigé. L'item n'est pas retiré :

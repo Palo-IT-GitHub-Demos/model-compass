@@ -44,6 +44,12 @@ from src.evaluators.cost_analyzer import (
     CostAnalyzer,
     call_costs_to_dataframe,
 )
+from src.evaluators.prompt_delivery import (
+    audit_prompt_delivery,
+    enforce_prompt_delivery,
+    not_verified_payload,
+    prompts_to_audit,
+)
 from src.evaluators.quality_diagnostics import analyze_items, summarize_judge_agreement
 from src.evaluators.quality_judge import (
     FORMAT_COMPLIANCE_DIMENSION,
@@ -67,7 +73,9 @@ from src.evaluators.security_scanner import (
     AsyncSecurityScanner,
     SecurityScanner,
     has_sequential_probes,
+    load_probe_set,
     probe_count,
+    probe_is_scored,
     probe_worst_case_count,
 )
 from src.observability.events import log_event
@@ -472,6 +480,7 @@ def _merge_results(
     quality_suite_id: str | None = None,
     actual_call_costs: pd.DataFrame | None = None,
     security_profile: str = "full",
+    prompt_delivery: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Merge quality, security and pricing outputs into a decision matrix.
 
@@ -493,6 +502,7 @@ def _merge_results(
         actual_call_costs,
         min_quality_coverage_for_cer=_MIN_QUALITY_COVERAGE_FOR_CER,
         security_profile=security_profile,
+        prompt_delivery=prompt_delivery,
     )
 
 
@@ -592,6 +602,7 @@ def _save_pending(
     actual_call_costs: pd.DataFrame,
     recommendation_weights: RecommendationWeights | None = None,
     security_profile: str = "full",
+    prompt_delivery: dict[str, object] | None = None,
 ) -> Path:
     """Persist intermediate data to ``data/intermediate/pending_{ts}.json``.
 
@@ -610,6 +621,7 @@ def _save_pending(
         _MAX_INTERMEDIATE_FILE_BYTES,
         recommendation_weights,
         security_profile=security_profile,
+        prompt_delivery=prompt_delivery,
         log=logger,
     )
 
@@ -660,6 +672,9 @@ class CollectPipeline:
     Phase 2 (Copilot judge) and Phase 3 (merge).
     """
 
+    _undelivered_probes: frozenset[str] = frozenset()
+    _prompt_delivery: dict[str, object] | None = None
+
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
 
@@ -681,6 +696,9 @@ class CollectPipeline:
             security_probe_count=_security_probe_count_for_estimate(probes_path),
         )
         _warn_on_free_tier_request_volume(estimated_free_tier_requests)
+
+        async with AsyncOpenRouterClient(self._settings) as audit_client:
+            await self._check_prompt_delivery(audit_client, models)
 
         pricing_df, security_df, collect_result, actual_call_costs = await collect_stages(
             self._settings,
@@ -728,6 +746,7 @@ class CollectPipeline:
             actual_call_costs=actual_call_costs,
             recommendation_weights=_effective_recommendation_weights(self._settings),
             security_profile=self._settings.security_mode,
+            prompt_delivery=self._prompt_delivery,
         )
 
         n_det = len(collect_result.deterministic_rows)
@@ -795,12 +814,41 @@ class CollectPipeline:
         logger.info("[security] Scanning %d models …", len(models))
         probes_path = _resolve_security_probes_path(self._settings)
         try:
-            df = await AsyncSecurityScanner(client, probes_path=probes_path).run_full_scan(models)
+            scanner = AsyncSecurityScanner(client, probes_path=probes_path, excluded_probes=self._undelivered_probes)
+            df = await scanner.run_full_scan(models)
             logger.info("[security] Scan complete — %d models scanned.", len(df))
             return df
         except OpenRouterError as exc:
             logger.error("[security] Failed: %s", exc)
             return pd.DataFrame()
+
+    async def _check_prompt_delivery(self, client: Any, models: list[str]) -> None:
+        """Audit what reaches the models before any scored call; see :mod:`src.evaluators.prompt_delivery`."""
+        if not self._settings.prompt_delivery_audit:
+            logger.warning("[delivery] PROMPT_DELIVERY_AUDIT=false: prompts may reach the models rewritten.")
+            self._prompt_delivery = not_verified_payload()
+            return
+        quality_prompts = [
+            (prompt.item_id or f"prompt-{index}", prompt.prompt)
+            for index, prompt in enumerate(load_quality_prompts(_QUALITY_PROMPTS) if _QUALITY_PROMPTS.exists() else [])
+            if prompt.prompt
+        ]
+        probes_path = _resolve_security_probes_path(self._settings)
+        probes = load_probe_set(probes_path) if _security_enabled(self._settings) else []
+        prompts = prompts_to_audit(quality_prompts, probes)
+        audit = await audit_prompt_delivery(client, models, prompts)
+        enforce_prompt_delivery(audit, [str(probe["name"]) for probe in probes if probe_is_scored(probe)])
+        for name, text in sorted(audit.altered_probes.items()):
+            logger.warning("[delivery] Probe '%s' would arrive rewritten, so it is not sent: %r", name, text[:120])
+        logger.info(
+            "[delivery] %d prompts checked through '%s': %d probe(s) left out, %d unverifiable.",
+            audit.checked_count,
+            audit.audit_model,
+            len(audit.altered_probes),
+            len(audit.unverifiable),
+        )
+        self._undelivered_probes = frozenset(audit.altered_probes)
+        self._prompt_delivery = audit.to_payload()
 
     async def _run_quality_collect(self, client: AsyncOpenRouterClient, models: list[str]) -> CollectResult:
         logger.info("[quality] Collecting responses (no LLM judge) …")
@@ -945,6 +993,7 @@ class MergePipeline:
             quality_suite_id=suite_id,
             actual_call_costs=actual_call_costs,
             security_profile=str(pending.get("security_profile") or "full"),
+            prompt_delivery=cast("dict[str, object] | None", pending.get("prompt_delivery")),
         )
         recommendation_weights = _merge_recommendation_weights(
             self._settings,
@@ -1447,6 +1496,7 @@ class DryRunPipeline(CollectPipeline):
         _DRY_RUN_DIR.mkdir(parents=True, exist_ok=True)
 
         async with FakeAsyncOpenRouterClient(settings) as client:
+            await self._check_prompt_delivery(client, models)
             pricing_df, security_df, collect_result = await asyncio.gather(
                 self._run_cost_stage(cast(AsyncOpenRouterClient, client)),
                 self._run_security_stage(cast(AsyncOpenRouterClient, client), models),
@@ -1473,6 +1523,7 @@ class DryRunPipeline(CollectPipeline):
             "use_case_catalog_version": load_use_case_catalog(_USE_CASE_CATALOG).catalog_version,
             "model_compass_weights": recommendation_weights.model_dump() if recommendation_weights else None,
             "security_profile": settings.security_mode,
+            "prompt_delivery": self._prompt_delivery,
             "models": models,
             "pricing": pricing_df.to_dict(orient="records") if not pricing_df.empty else [],
             "security": security_df.to_dict(orient="records") if not security_df.empty else [],
@@ -1508,6 +1559,7 @@ class DryRunPipeline(CollectPipeline):
             quality_suite_id=collect_result.quality_suite_id,
             actual_call_costs=actual_call_costs,
             security_profile=settings.security_mode,
+            prompt_delivery=self._prompt_delivery,
         )
         recommendations = build_recommendation_report(
             result,

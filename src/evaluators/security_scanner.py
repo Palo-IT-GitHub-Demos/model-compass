@@ -326,6 +326,11 @@ def _load_probes(probes_path: Path | None) -> list[dict[str, object]]:
         return json.load(fh)  # type: ignore[no-any-return]
 
 
+def load_probe_set(probes_path: Path | None) -> list[dict[str, object]]:
+    """Return the probes a scan of *probes_path* would send."""
+    return _load_probes(probes_path)
+
+
 def probe_attempts(probe: dict[str, Any]) -> int:
     """Attempts a probe runs: :data:`SECURITY_ATTEMPTS` when it counts in the RSI, else one."""
     return SECURITY_ATTEMPTS if probe_is_scored(probe) else 1
@@ -601,9 +606,12 @@ class AsyncSecurityScanner:
         self,
         client: AsyncOpenRouterClient,
         probes_path: Path | None = None,
+        *,
+        excluded_probes: frozenset[str] = frozenset(),
     ) -> None:
         self._client = client
-        self._probes = _load_probes(probes_path)
+        # Probes a gateway would rewrite are not sent; the set id then names what was really measured.
+        self._probes = [probe for probe in _load_probes(probes_path) if probe["name"] not in excluded_probes]
         self._probe_set_id = probe_set_id(self._probes, probes_path)
 
     async def scan_prompt_leakage(

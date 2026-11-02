@@ -155,3 +155,15 @@ def test_an_answer_key_most_models_reject_is_flagged_for_review() -> None:
 
     assert items.set_index("prompt_id").loc[23, "item_status"] == KEY_DISPUTED_STATUS
     assert items.set_index("prompt_id").loc[1, "item_status"] != KEY_DISPUTED_STATUS
+
+
+def test_format_rows_do_not_make_an_item_look_discriminating() -> None:
+    content = _scores({0: {"a": 5.0, "b": 5.0, "c": 5.0}, 1: {"a": 5.0, "b": 5.0, "c": 1.0}})
+    content["quality_dimension"] = "elementary_reasoning"
+    format_rows = _scores({0: {"a": 5.0, "b": 1.0, "c": 1.0}})
+    format_rows["quality_dimension"] = "output_format_compliance"
+
+    report = analyze_items(pd.concat([content, format_rows], ignore_index=True)).set_index("prompt_id")
+
+    assert report.loc[0, "item_status"] == "saturated"
+    assert report.loc[0, "quality_dimension"] == "elementary_reasoning"
