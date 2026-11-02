@@ -264,7 +264,10 @@ Toutes les requêtes API passent par ce client. Il gère :
 
 ### 3b. TCO projeté (`compute_tco`)
 
-Estimation mensuelle basée sur un **profil de charge** configurable :
+Estimation mensuelle basée sur un **profil de charge** configurable. Le profil
+fixe le volume et la taille d'entrée ; la longueur de sortie est celle que
+chaque modèle a mesurée sur la suite qualité, pas la colonne « Tokens output »
+ci-dessous, qui ne sert plus qu'au prix affiché de référence :
 
 | Profil | Requêtes/jour | Tokens input | Tokens output |
 |---|---|---|---|
@@ -623,15 +626,18 @@ La moyenne `quality_score` (1–5) sert au seuil d'éligibilité ;
 `quality_score_100 = (quality_score - 1) × 25` (0–100) sert à la somme pondérée
 avec RSI, coût et performance, également sur 0–100. Les poids par défaut
 50/25/20/5 s'appliquent donc effectivement à quatre composantes homogènes.
-Le coût est le prix moyen pondéré par le profil de charge, en dollars par
-million de tokens (`cost_usd_per_1m_tokens`), et la performance est la latence
+Le coût est celui de 1 000 requêtes du profil de charge
+(`cost_usd_per_1k_requests`) : la taille d'entrée du profil au prix d'entrée,
+plus la longueur de sortie que le modèle a réellement produite sur la suite
+qualité (raisonnement compris) au prix de sortie. La performance est la latence
 p95 en millisecondes (`actual_latency_p95_ms`). Les deux utilisent des bornes
-logarithmiques fixes définies dans le catalogue actif : coût 0,10–100 USD/M,
-latence 1–30 secondes. Le score est 100 à la borne « best » et 0 à la borne
+logarithmiques fixes définies dans le catalogue actif : coût 0,05–50 USD pour
+1 000 requêtes, latence 1–30 secondes. Le score est 100 à la borne « best » et 0 à la borne
 « worst » ; les valeurs hors plage sont plafonnées. Un coût nul (modèle gratuit)
 reçoit 100. La note ne change pas quand on ajoute ou retire un modèle du run.
 Sans latence p95, la preuve de performance est manquante — le débit tokens/s
-n'est pas utilisé comme substitut. Les catalogues v1.1 et v2.1 enregistrent
+n'est pas utilisé comme substitut ; sans longueur de sortie mesurée, la preuve
+de coût est manquante. Les catalogues v1.2, v2.2 et v3.1 enregistrent
 ces bornes ; leurs scores ne sont comparables qu'à version de méthode,
 catalogue, poids et profil de charge identiques.
 

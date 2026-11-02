@@ -148,7 +148,7 @@ class TestV2Suite:
     def test_catalog_v2_partitions_the_suite_by_declared_use_case(self) -> None:
         prompts = load_quality_prompts(_V2)
         catalog = load_use_case_catalog(_CATALOG_V2)
-        assert catalog.catalog_version == "model-compass-use-cases-v2.1"
+        assert catalog.catalog_version == "model-compass-use-cases-v2.2"
         owned = [pid for use_case in catalog.use_cases for pid in use_case.prompt_ids]
         assert sorted(owned) == list(range(len(prompts)))
         for use_case in catalog.use_cases:

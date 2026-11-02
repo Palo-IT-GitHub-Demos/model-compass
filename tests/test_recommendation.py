@@ -24,21 +24,21 @@ def _benchmark(*, complete: bool = True) -> pd.DataFrame:
         {
             "model": "model-a",
             "tco_usd": 1.0,
-            "cost_usd_per_1m_tokens": 0.1,
+            "cost_usd_per_1k_requests": 0.05,
             "rsi": 90.0,
             "actual_latency_p95_ms": 100.0,
         },
         {
             "model": "model-b",
             "tco_usd": 2.0,
-            "cost_usd_per_1m_tokens": 1.0,
+            "cost_usd_per_1k_requests": 0.5,
             "rsi": 80.0,
             "actual_latency_p95_ms": 200.0,
         },
         {
             "model": "model-c",
             "tco_usd": 3.0,
-            "cost_usd_per_1m_tokens": 10.0,
+            "cost_usd_per_1k_requests": 5.0,
             "rsi": 70.0,
             "actual_latency_p95_ms": 300.0,
         },
@@ -67,11 +67,11 @@ class TestModelCompassCatalog:
     def test_catalog_is_versioned_and_has_normalized_weights(self) -> None:
         catalog = load_use_case_catalog(DEFAULT_USE_CASE_CATALOG_PATH)
 
-        assert catalog.catalog_version == "model-compass-use-cases-v1.1"
+        assert catalog.catalog_version == "model-compass-use-cases-v1.2"
         assert len(catalog.use_cases) == 6
         assert sum(catalog.weights.model_dump().values()) == pytest.approx(1.0)
-        assert catalog.score_scales.cost_usd_per_1m_tokens.best == pytest.approx(0.1)
-        assert catalog.score_scales.cost_usd_per_1m_tokens.worst == pytest.approx(100.0)
+        assert catalog.score_scales.cost_usd_per_1k_requests.best == pytest.approx(0.05)
+        assert catalog.score_scales.cost_usd_per_1k_requests.worst == pytest.approx(50.0)
         assert catalog.score_scales.actual_latency_p95_ms.best == pytest.approx(1000.0)
         assert catalog.score_scales.actual_latency_p95_ms.worst == pytest.approx(30000.0)
 
@@ -122,7 +122,7 @@ class TestModelCompassRecommendations:
     def test_sensitivity_flags_weight_rank_reversal_without_changing_baseline(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
-        benchmark["cost_usd_per_1m_tokens"] = 0.1
+        benchmark["cost_usd_per_1k_requests"] = 0.05
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [70.8, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"].copy()
@@ -143,7 +143,7 @@ class TestModelCompassRecommendations:
     def test_weighted_score_uses_four_components_on_the_same_scale(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
-        benchmark["cost_usd_per_1m_tokens"] = 0.1
+        benchmark["cost_usd_per_1k_requests"] = 0.05
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [50.0, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
@@ -166,7 +166,7 @@ class TestModelCompassRecommendations:
     def test_custom_weights_apply_to_normalized_quality(self) -> None:
         benchmark = _benchmark().iloc[:2].copy()
         benchmark["tco_usd"] = 1.0
-        benchmark["cost_usd_per_1m_tokens"] = 0.1
+        benchmark["cost_usd_per_1k_requests"] = 0.05
         benchmark["actual_latency_p95_ms"] = 100.0
         benchmark["rsi"] = [50.0, 90.0]
         quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
@@ -227,7 +227,7 @@ class TestModelCompassRecommendations:
             90.0,
             100.0,
         ]
-        benchmark.loc[benchmark["model"] == "model-b", "cost_usd_per_1m_tokens"] = 0.1
+        benchmark.loc[benchmark["model"] == "model-b", "cost_usd_per_1k_requests"] = 0.05
         quality = _quality()
         quality.loc[quality["model"] == "model-b", "score"] = 5.0
 
@@ -255,7 +255,7 @@ class TestModelCompassRecommendations:
         baseline = _benchmark().iloc[:2].copy()
         baseline_quality = _quality().loc[lambda frame: frame["model"] != "model-c"]
         expanded = _benchmark().copy()
-        expanded.loc[expanded["model"] == "model-c", "cost_usd_per_1m_tokens"] = 1000.0
+        expanded.loc[expanded["model"] == "model-c", "cost_usd_per_1k_requests"] = 1000.0
         expanded.loc[expanded["model"] == "model-c", "actual_latency_p95_ms"] = 60000.0
 
         baseline_report = build_recommendation_report(baseline, baseline_quality)
@@ -330,7 +330,7 @@ class TestAffiliatedJudges:
     def test_flags_a_recommendation_that_depends_on_the_own_provider_judge(self) -> None:
         benchmark = pd.DataFrame(
             [
-                {"model": model, "cost_usd_per_1m_tokens": 1.0, "rsi": 90.0, "actual_latency_p95_ms": 2000.0}
+                {"model": model, "cost_usd_per_1k_requests": 1.0, "rsi": 90.0, "actual_latency_p95_ms": 2000.0}
                 for model in ("anthropic/claude", "openai/gpt")
             ]
         )
@@ -372,7 +372,7 @@ def test_use_case_quality_scores_content_and_reports_format_apart(tmp_path) -> N
         "description": "t",
         "weights": {"quality": 0.5, "security": 0.25, "cost": 0.2, "performance": 0.05},
         "score_scales": {
-            "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+            "cost_usd_per_1k_requests": {"best": 0.1, "worst": 100.0},
             "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
         },
         "use_cases": [
@@ -389,7 +389,7 @@ def test_use_case_quality_scores_content_and_reports_format_apart(tmp_path) -> N
         ]
     )
     benchmark = pd.DataFrame(
-        [{"model": "v/a", "rsi": 100.0, "cost_usd_per_1m_tokens": 1.0, "actual_latency_p95_ms": 2000.0}]
+        [{"model": "v/a", "rsi": 100.0, "cost_usd_per_1k_requests": 1.0, "actual_latency_p95_ms": 2000.0}]
     )
 
     row = build_recommendation_report(benchmark, quality, catalog_path=path).iloc[0]
@@ -413,7 +413,7 @@ def _two_model_inputs(tmp_path, *, security_profile: str = "full"):  # type: ign
             "cost_sensitive": {"quality": 0.35, "security": 0.2, "cost": 0.4, "performance": 0.05},
         },
         "score_scales": {
-            "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+            "cost_usd_per_1k_requests": {"best": 0.1, "worst": 100.0},
             "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
         },
         "use_cases": [{"id": "u", "name": "U", "description": "d", "prompt_ids": [0], "minimum_quality_score": 3.0}],
@@ -428,8 +428,8 @@ def _two_model_inputs(tmp_path, *, security_profile: str = "full"):  # type: ign
     )
     benchmark = pd.DataFrame(
         [
-            {"model": "v/strong", "rsi": 100.0, "cost_usd_per_1m_tokens": 20.0, "actual_latency_p95_ms": 3000.0},
-            {"model": "v/cheap", "rsi": 100.0, "cost_usd_per_1m_tokens": 0.2, "actual_latency_p95_ms": 3000.0},
+            {"model": "v/strong", "rsi": 100.0, "cost_usd_per_1k_requests": 20.0, "actual_latency_p95_ms": 3000.0},
+            {"model": "v/cheap", "rsi": 100.0, "cost_usd_per_1k_requests": 0.2, "actual_latency_p95_ms": 3000.0},
         ]
     )
     if security_profile == "skip":

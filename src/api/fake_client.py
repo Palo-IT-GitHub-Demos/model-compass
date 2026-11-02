@@ -199,8 +199,9 @@ class FakeAsyncOpenRouterClient:
                 requested_model=model,
                 resolved_model=model,
                 generation_id=None,
-                prompt_tokens=None,
-                completion_tokens=None,
+                prompt_tokens=len(user_msg) // 4,
+                # Synthetic hidden reasoning varies by model so the dry run exercises the cost component.
+                completion_tokens=len(content) // 4 + _stable_int(model) % 400,
                 total_tokens=None,
                 actual_cost_credits=None,
                 cost_source="dry_run",

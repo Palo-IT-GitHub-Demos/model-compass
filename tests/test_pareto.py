@@ -66,7 +66,7 @@ class TestParetoChart:
         df = pd.DataFrame(
             {
                 "model": ["provider/model-a"],
-                "cost_per_1m_tokens_usd": [1.0],
+                "cost_per_1k_requests_usd": [1.0],
                 "avg_quality_score": [4.0],
                 "security_status": ["Safe"],
                 "zero_data_retention": [True],

@@ -128,6 +128,32 @@ def summarize_actual_call_costs(call_costs_df: pd.DataFrame) -> pd.DataFrame:
     return summary_df[_ACTUAL_COST_SUMMARY_COLUMNS].sort_values("model").reset_index(drop=True)
 
 
+def measured_completion_tokens(call_costs_df: pd.DataFrame) -> pd.DataFrame:
+    """Mean completion tokens per quality answer, by model, hidden reasoning included.
+
+    Only ``quality_screen`` calls count: every model answers the same suite
+    items, so the mean measures its verbosity, not the prompt mix. Calls
+    without reported usage are left out rather than counted as zero.
+    """
+    columns = ["model", "measured_completion_tokens_per_answer", "measured_completion_answer_count"]
+    required = {"requested_model", "usage_context", "completion_tokens"}
+    if call_costs_df.empty or not required.issubset(call_costs_df.columns):
+        return pd.DataFrame(columns=columns)
+    work = call_costs_df.loc[call_costs_df["usage_context"].eq("quality_screen"), ["requested_model"]].copy()
+    work["tokens"] = pd.to_numeric(call_costs_df.loc[work.index, "completion_tokens"], errors="coerce")
+    work = work.dropna(subset=["tokens"])
+    if work.empty:
+        return pd.DataFrame(columns=columns)
+    return (
+        work.groupby("requested_model", as_index=False)
+        .agg(
+            measured_completion_tokens_per_answer=("tokens", "mean"),
+            measured_completion_answer_count=("tokens", "size"),
+        )
+        .rename(columns={"requested_model": "model"})[columns]
+    )
+
+
 @dataclass(frozen=True)
 class WorkloadProfile:
     """Parameterized client workload for monthly TCO computation."""
@@ -139,12 +165,31 @@ class WorkloadProfile:
     working_days_per_month: int = 22
 
     @property
+    def monthly_requests(self) -> int:
+        return self.daily_requests * self.working_days_per_month
+
+    @property
     def monthly_prompt_tokens(self) -> int:
         return self.daily_requests * self.avg_prompt_tokens * self.working_days_per_month
 
     @property
     def monthly_completion_tokens(self) -> int:
         return self.daily_requests * self.avg_completion_tokens * self.working_days_per_month
+
+
+def effective_cost_per_1k_requests(
+    prompt_price: pd.Series,
+    completion_price: pd.Series,
+    completion_tokens: pd.Series,
+    profile: WorkloadProfile,
+) -> pd.Series:
+    """USD per 1,000 requests: the profile's input size plus the model's measured output.
+
+    The input size belongs to the workload; the output length belongs to the
+    model (verbosity, hidden reasoning), so it comes from the run. A missing
+    price or measurement gives NaN: missing evidence, never a substitute.
+    """
+    return (prompt_price * profile.avg_prompt_tokens + completion_price * completion_tokens) * 1_000
 
 
 BUILTIN_WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {

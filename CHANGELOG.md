@@ -28,6 +28,17 @@ methodology.
   its judging criteria.
 - Item analysis uses content rows only: format rows made saturated items look
   discriminating.
+- Cost is what 1,000 workload-profile requests cost with each model's output
+  length measured on the quality suite, hidden reasoning included
+  (`cost_usd_per_1k_requests`, `measured_completion_tokens_per_answer`), not the
+  listed price blended with an assumed output length. On the 2 November run,
+  Gemini 3.8 Flash is listed 2.7 times cheaper than GPT-6.1 Sol but writes nine
+  times more tokens per answer and costs 1.5 times more per request. Catalog
+  anchors become USD 0.05–50 per 1,000 requests (still three decades, so the
+  weight trade-offs are unchanged) in catalogs `v1.2`, `v2.2` and `v3.1`.
+  Missing measured output is missing cost evidence. The monthly TCO, the CER
+  and the Quality × cost chart use the same cost; the listed price per 1M
+  tokens stays in the cost table for reference.
 
 ### Changed — methodology 0.5.0
 

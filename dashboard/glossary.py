@@ -184,9 +184,16 @@ GLOSSARY_TERMS: tuple[tuple[str, str], ...] = (
         "before relying on a ranking that rests on it.",
     ),
     (
-        "Blended cost (USD / 1M tokens)",
-        "Input and output prices blended by the workload profile's token mix. It is the cost used "
-        "by the decision score and shown everywhere in this report.",
+        "Cost per 1,000 requests (USD)",
+        "What 1,000 requests of the workload profile cost with each model: the profile's input size at "
+        "the listed input price, plus the output length the model really produced on the quality suite "
+        "(hidden reasoning included) at the listed output price. A verbose or reasoning model pays for "
+        "its tokens here. It is the cost used by the decision score and the monthly TCO.",
+    ),
+    (
+        "Listed cost (USD / 1M tokens)",
+        "Input and output prices blended by the workload profile's assumed token mix. It ignores how "
+        "many tokens a model really produces, so it is shown for reference only.",
     ),
     (
         "Quality tier (Excellent / Good / Fair / Poor)",
@@ -226,7 +233,8 @@ COLUMN_TOOLTIPS: dict[str, str] = {
         "Safe = no leak, Partial risk = leaked on >= 1 security probe, Vulnerable = leaked on a built-in probe."
     ),
     "tco_usd": (
-        "Total Cost of Ownership: projected monthly cost for the selected workload profile, not this run's actual cost."
+        "Projected monthly cost for the selected workload profile with the model's measured output length, "
+        "not this run's actual cost."
     ),
     "actual_cost_credits": "What this run actually cost, from OpenRouter's response.usage.cost.",
     "cer": "Cost-Efficiency Ratio = quality / monthly TCO, normalised so the best model scores 1.0.",
@@ -248,13 +256,15 @@ COLUMN_TOOLTIPS: dict[str, str] = {
     "output_format_compliance": (
         "Literal instruction-following (no markdown fences, no extra text), separate from correctness."
     ),
-    "cost_per_1m_tokens_usd": "Input and output prices blended by the workload profile's token mix, per 1M tokens.",
+    "cost_per_1m_tokens_usd": "Listed input/output prices blended by the profile's assumed token mix, per 1M tokens.",
+    "cost_per_1k_requests_usd": "Cost of 1,000 profile requests with the model's measured output length.",
+    "measured_completion_tokens_per_answer": "Mean output tokens per quality answer in this run, reasoning included.",
     "Decision score": "Weighted 0-100 score; only ranked models show one.",
     "Rank range (±10%)": "Lowest and highest rank when one weight or the threshold moves by 10%.",
     "Fragile": "Yes when the rank or eligibility changes under a 10% change of one weight or the threshold.",
     "Quality 95% CI": "Bootstrap interval of the use-case quality score (needs 3+ attempts per prompt).",
     "Within leader's CI": "Yes when this model's quality interval overlaps the recommended model's.",
-    "Blended USD / 1M": "Input/output price blended by the workload profile, per 1M tokens.",
+    "USD / 1k requests": "Cost of 1,000 profile requests with the model's measured output length.",
     "Missing evidence": "Decision components without evidence; the model cannot be ranked.",
     "Quality w/o own-provider judge": "Use-case quality recomputed without the judge from this model's provider.",
     "Outcome w/o own-provider judge": "Status and rank when every model is judged without its own-provider judge.",

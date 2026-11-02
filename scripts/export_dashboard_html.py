@@ -476,7 +476,7 @@ def _use_case_detail_table(rows: pd.DataFrame) -> str:
             "Format respected": numbers("format_compliance_rate", "{:.0%}"),
             "Security": numbers("security_score", "{:.0f}"),
             "Cost score": numbers("cost_score", "{:.0f}"),
-            "Blended USD / 1M": numbers("cost_usd_per_1m_tokens", "${:.2f}"),
+            "USD / 1k requests": numbers("cost_usd_per_1k_requests", "${:.3f}"),
             "Performance": numbers("performance_score", "{:.0f}"),
             "Rank range (±10%)": rows.apply(rank_range, axis=1),
             **{
@@ -553,8 +553,8 @@ def _recommendations_section(recommendations_df: pd.DataFrame) -> str:
 
 
 def _overview_section(df: pd.DataFrame) -> str:
-    plot_df = df.dropna(subset=["cost_per_1m_tokens_usd", "avg_quality_score"])
-    pareto_df = compute_pareto_front(plot_df, cost_col="cost_per_1m_tokens_usd", quality_col="avg_quality_score")
+    plot_df = df.dropna(subset=["cost_per_1k_requests_usd", "avg_quality_score"])
+    pareto_df = compute_pareto_front(plot_df, cost_col="cost_per_1k_requests_usd", quality_col="avg_quality_score")
 
     best_value_card = _kpi_card("Best value", "—", "")
     if not pareto_df.empty:
@@ -565,8 +565,8 @@ def _overview_section(df: pd.DataFrame) -> str:
         best_value_card = _leader_card(
             "Best value (cheapest within 10% of peak quality)",
             value_candidates,
-            "cost_per_1m_tokens_usd",
-            "${:.2f} / 1M tokens",
+            "cost_per_1k_requests_usd",
+            "${:.3f} / 1k requests",
             ascending=True,
         )
     safest_headline, safest_detail = safest_summary(df)
@@ -574,15 +574,13 @@ def _overview_section(df: pd.DataFrame) -> str:
     kpi_cards = "".join(
         [
             _leader_card("Highest overall quality", plot_df, "avg_quality_score", "{:.2f} / 5"),
-            _leader_card(
-                "Lowest blended cost", plot_df, "cost_per_1m_tokens_usd", "${:.2f} / 1M tokens", ascending=True
-            ),
+            _leader_card("Lowest cost", plot_df, "cost_per_1k_requests_usd", "${:.3f} / 1k requests", ascending=True),
             best_value_card,
             _kpi_card("Highest RSI", safest_headline, safest_detail),
         ]
     )
 
-    overview_columns = ["model", "avg_quality_score", "quality_coverage_rate", "cost_per_1m_tokens_usd"]
+    overview_columns = ["model", "avg_quality_score", "quality_coverage_rate", "cost_per_1k_requests_usd"]
     if "security_status" in pareto_df.columns:
         overview_columns.append("security_status")
     pareto_table = _table_html(
@@ -590,7 +588,7 @@ def _overview_section(df: pd.DataFrame) -> str:
         formats={
             "avg_quality_score": "{:.2f} / 5",
             "quality_coverage_rate": "{:.0%}",
-            "cost_per_1m_tokens_usd": "${:.4f}",
+            "cost_per_1k_requests_usd": "${:.4f}",
         },
         status_column="security_status",
     )
@@ -598,7 +596,8 @@ def _overview_section(df: pd.DataFrame) -> str:
     return f"""
     <h2 id="overview">Quality × cost</h2>
     <p class="callout"><strong>How to read this:</strong> quality runs from 1 (poor) to 5 (excellent),
-    while the blended cost per million tokens is better when lower. This is an aggregate view across all
+    while the cost of 1,000 requests, with each model's measured output length, is better when lower.
+    This is an aggregate view across all
     use cases: it ignores the use-case thresholds and the security weighting, so choose from the
     <a href="index.html">Decision summary</a>, not from this page.</p>
     <div class="kpi-row">{kpi_cards}</div>
@@ -912,6 +911,7 @@ def _cost_section(df: pd.DataFrame, profile_name: str, profile: WorkloadProfile)
         "prompt_price_per_token",
         "completion_price_per_token",
         "cost_per_1m_tokens_usd",
+        "measured_completion_tokens_per_answer",
         "tco_usd",
         "actual_cost_credits",
         "avg_quality_score",
@@ -925,6 +925,7 @@ def _cost_section(df: pd.DataFrame, profile_name: str, profile: WorkloadProfile)
             "prompt_price_per_token": "${:.8f}",
             "completion_price_per_token": "${:.8f}",
             "cost_per_1m_tokens_usd": "${:.2f}",
+            "measured_completion_tokens_per_answer": "{:.0f}",
             "tco_usd": "${:.2f}",
             "actual_cost_credits": "${:.8f}",
             "avg_quality_score": "{:.2f} / 5",

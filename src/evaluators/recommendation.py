@@ -15,7 +15,7 @@ from typing import Final
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.quality_metrics import bootstrap_quality_interval
@@ -105,7 +105,10 @@ class RecommendationScales(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    cost_usd_per_1m_tokens: LogScaleBounds
+    # Artifacts before methodology 0.6 name the cost anchor by listed price per 1M tokens.
+    cost_usd_per_1k_requests: LogScaleBounds = Field(
+        validation_alias=AliasChoices("cost_usd_per_1k_requests", "cost_usd_per_1m_tokens")
+    )
     actual_latency_p95_ms: LogScaleBounds
 
 
@@ -271,7 +274,7 @@ def implied_tradeoffs(weights: dict[str, float], scales: RecommendationScales) -
     actually encode, which is what their justification must defend.
     """
     quality_point = 25.0 * weights["quality"]
-    cost_per_decade = 100.0 / math.log10(scales.cost_usd_per_1m_tokens.worst / scales.cost_usd_per_1m_tokens.best)
+    cost_per_decade = 100.0 / math.log10(scales.cost_usd_per_1k_requests.worst / scales.cost_usd_per_1k_requests.best)
     latency_per_decade = 100.0 / math.log10(scales.actual_latency_p95_ms.worst / scales.actual_latency_p95_ms.best)
     cost_swing = cost_per_decade * weights["cost"]
     return {
@@ -505,8 +508,8 @@ def _build_report(
     model_frame = benchmark_df[["model"]].drop_duplicates().reset_index(drop=True)
     security_score = _numeric_column(benchmark_df, "rsi").groupby(benchmark_df["model"]).first()
     cost_score = _normalize_lower_log_score(
-        _numeric_column(benchmark_df, "cost_usd_per_1m_tokens"),
-        catalog.score_scales.cost_usd_per_1m_tokens,
+        _numeric_column(benchmark_df, "cost_usd_per_1k_requests"),
+        catalog.score_scales.cost_usd_per_1k_requests,
         zero_is_best=True,
     )
     performance_score, performance_basis = _performance_component(
@@ -515,7 +518,7 @@ def _build_report(
     metric_frame = benchmark_df[["model"]].copy()
     metric_frame["security_score"] = metric_frame["model"].map(security_score)
     metric_frame["cost_score"] = cost_score.to_numpy()
-    metric_frame["cost_usd_per_1m_tokens"] = _numeric_column(benchmark_df, "cost_usd_per_1m_tokens").to_numpy()
+    metric_frame["cost_usd_per_1k_requests"] = _numeric_column(benchmark_df, "cost_usd_per_1k_requests").to_numpy()
     metric_frame["performance_score"] = performance_score.to_numpy()
     metric_frame = metric_frame.drop_duplicates("model")
 
@@ -639,7 +642,7 @@ def _build_report(
         "format_compliance_rate",
         "security_score",
         "cost_score",
-        "cost_usd_per_1m_tokens",
+        "cost_usd_per_1k_requests",
         "performance_score",
         "performance_basis",
         "recommendation_score",

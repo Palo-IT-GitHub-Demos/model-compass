@@ -52,7 +52,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
     """Return the quality-vs-cost scatter, colour-coded by security status.
 
     Args:
-        plot_df: DataFrame with ``model``, ``cost_per_1m_tokens_usd``,
+        plot_df: DataFrame with ``model``, ``cost_per_1k_requests_usd``,
             ``avg_quality_score``, ``security_status`` and
             ``zero_data_retention`` columns — one point per model.
         pareto_df: Pareto-optimal subset of *plot_df* (see
@@ -71,7 +71,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
         is_pareto = subset["model"].isin(pareto_models).map({True: "Yes", False: "No"})
         figure.add_trace(
             go.Scatter(
-                x=subset["cost_per_1m_tokens_usd"],
+                x=subset["cost_per_1k_requests_usd"],
                 y=subset["avg_quality_score"],
                 mode="markers+text",
                 name=label,
@@ -81,7 +81,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
                 customdata=subset[["model", "zero_data_retention"]].assign(is_pareto=is_pareto).values,
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>"
-                    "Cost / 1M input tokens: $%{x:.4f}<br>"
+                    "Cost / 1k requests: $%{x:.4f}<br>"
                     "Quality screen score: %{y:.2f}<br>"
                     "Zero data retention: %{customdata[1]}<br>"
                     "Pareto-optimal: %{customdata[2]}<extra></extra>"
@@ -96,7 +96,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
         # depend on sub-pixel cursor position (edge vs. center of the diamond).
         figure.add_trace(
             go.Scatter(
-                x=pareto_df["cost_per_1m_tokens_usd"],
+                x=pareto_df["cost_per_1k_requests_usd"],
                 y=pareto_df["avg_quality_score"],
                 mode="lines+markers+text",
                 name="Pareto frontier",
@@ -109,7 +109,7 @@ def build_pareto_scatter(plot_df: pd.DataFrame, pareto_df: pd.DataFrame) -> go.F
         )
 
     figure.update_layout(
-        xaxis_title="Blended cost per 1M tokens (USD)",
+        xaxis_title="Cost per 1,000 requests, measured output length (USD)",
         yaxis_title="Generic quality screen score (1–5)",
         legend_title="Security",
         height=560,

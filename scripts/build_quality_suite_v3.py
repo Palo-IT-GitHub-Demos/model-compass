@@ -892,7 +892,7 @@ assert len(ids) == len(set(ids)) == 48, len(ids)
 
 catalog = json.loads((ROOT / "data/catalog/model_compass_use_cases_v2.json").read_text(encoding="utf-8"))
 names = {use_case["id"]: use_case for use_case in catalog["use_cases"]}
-catalog["catalog_version"] = "model-compass-use-cases-v3.0"
+catalog["catalog_version"] = "model-compass-use-cases-v3.1"
 catalog["description"] = (
     "Use-case catalog for the generic-screen-v3 suite: six items per generic use case. Thresholds stay draft "
     "until calibrated on a reference run; weights and profiles are justified in docs/model-compass-scope.md. "

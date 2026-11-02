@@ -1,5 +1,5 @@
 {
-  "catalog_version": "model-compass-use-cases-v3.0",
+  "catalog_version": "model-compass-use-cases-v3.1",
   "description": "Use-case catalog for the generic-screen-v3 suite: six items per generic use case. Thresholds stay draft until calibrated on a reference run; weights and profiles are justified in docs/model-compass-scope.md. Recommendation component scores use the fixed logarithmic anchors below.",
   "weights": {
     "quality": 0.5,
@@ -8,9 +8,9 @@
     "performance": 0.05
   },
   "score_scales": {
-    "cost_usd_per_1m_tokens": {
-      "best": 0.1,
-      "worst": 100.0
+    "cost_usd_per_1k_requests": {
+      "best": 0.05,
+      "worst": 50.0
     },
     "actual_latency_p95_ms": {
       "best": 1000.0,

@@ -5,7 +5,12 @@ from __future__ import annotations
 import pandas as pd
 
 from src.core.methodology import METHODOLOGY_VERSION
-from src.evaluators.cost_analyzer import BUILTIN_WORKLOAD_PROFILES, summarize_actual_call_costs
+from src.evaluators.cost_analyzer import (
+    BUILTIN_WORKLOAD_PROFILES,
+    effective_cost_per_1k_requests,
+    measured_completion_tokens,
+    summarize_actual_call_costs,
+)
 from src.evaluators.quality_metrics import summarize_quality_dimensions, summarize_quality_scores
 
 
@@ -82,6 +87,7 @@ def merge_results(
 
     if actual_call_costs is not None and not actual_call_costs.empty:
         base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")
+        base = base.merge(measured_completion_tokens(actual_call_costs), on="model", how="left")
 
     if not security_df.empty:
         wanted = [
@@ -114,12 +120,22 @@ def merge_results(
         input_price = pd.to_numeric(base["prompt_price_per_token"], errors="coerce")
         completion_price = pd.to_numeric(base["completion_price_per_token"], errors="coerce")
         has_pricing = input_price.notna() & completion_price.notna()
-        base["tco_usd"] = (
-            input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens
-        ).where(has_pricing, float("inf"))
         monthly_tokens = profile.monthly_prompt_tokens + profile.monthly_completion_tokens
         base["cost_usd_per_1m_tokens"] = (
-            base["tco_usd"].replace([float("inf"), -float("inf")], float("nan")) / monthly_tokens * 1_000_000
+            (input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens)
+            / monthly_tokens
+            * 1_000_000
+        )
+        measured_tokens = (
+            pd.to_numeric(base["measured_completion_tokens_per_answer"], errors="coerce")
+            if "measured_completion_tokens_per_answer" in base.columns
+            else pd.Series(float("nan"), index=base.index)
+        )
+        base["cost_usd_per_1k_requests"] = effective_cost_per_1k_requests(
+            input_price, completion_price, measured_tokens, profile
+        )
+        base["tco_usd"] = (base["cost_usd_per_1k_requests"] / 1_000 * profile.monthly_requests).where(
+            has_pricing & measured_tokens.notna(), float("inf")
         )
 
         quality_col = "avg_quality_score"

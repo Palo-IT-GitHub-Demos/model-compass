@@ -478,20 +478,26 @@ is required.
 See [docs/quality-methodology.md](docs/quality-methodology.md) for prompt provenance, coverage
 limits, the validation protocol and the comparison procedure with `gen-e2-eval`.
 
-For recommendations, the catalog fixes logarithmic score anchors: blended cost
-is scored from USD 0.10 to USD 100 per million tokens, and p95 latency from 1 to
-30 seconds. A free model receives 100 for cost; missing p95 is missing evidence.
-Unlike run-relative min-max scoring, adding or removing models does not change
-another model's component score. The workload profile remains part of run
-provenance because it determines the input/output token mix used for the blend.
+For recommendations, cost is what 1,000 requests of the workload profile cost
+with each model: the profile's input size at the listed input price, plus the
+output length the model really produced on the quality suite (hidden reasoning
+included, `measured_completion_tokens_per_answer`) at the listed output price.
+A verbose or reasoning model therefore pays for its tokens. The catalog fixes
+logarithmic score anchors: cost is scored from USD 0.05 to USD 50 per 1,000
+requests, and p95 latency from 1 to 30 seconds. A free model receives 100 for
+cost; missing measured output or p95 is missing evidence. Unlike run-relative
+min-max scoring, adding or removing models does not change another model's
+component score. The workload profile remains part of run provenance because it
+sets the input size and the monthly volume.
 
 ### Actual cost versus TCO projection
 
 - `actual_cost_credits` is the amount returned by OpenRouter in `response.usage.cost` for the calls
   made during the benchmark. `actual_cost_coverage_rate` indicates how many calls supplied this value.
   A free model is correctly represented by **0 credits with 100% coverage**.
-- `tco_usd` is a forward-looking monthly estimate based on the selected workload profile and the
-  pricing snapshot from `/models`; it is not the charge for the current benchmark run.
+- `tco_usd` is a forward-looking monthly estimate based on the selected workload profile, the
+  pricing snapshot from `/models` and each model's measured output length; it is not the charge
+  for the current benchmark run.
 - Calls issued by Copilot judge agents are outside OpenRouter and therefore are not present in the
   OpenRouter call-cost ledger.
 

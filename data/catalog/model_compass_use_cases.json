@@ -1,5 +1,5 @@
 {
-  "catalog_version": "model-compass-use-cases-v1.1",
+  "catalog_version": "model-compass-use-cases-v1.2",
   "description": "Legacy v1 generic use-case catalog. Thresholds are provisional until calibrated against representative evaluation evidence. Recommendation component scores use the fixed logarithmic anchors below.",
   "weights": {
     "quality": 0.5,
@@ -8,9 +8,9 @@
     "performance": 0.05
   },
   "score_scales": {
-    "cost_usd_per_1m_tokens": {
-      "best": 0.1,
-      "worst": 100.0
+    "cost_usd_per_1k_requests": {
+      "best": 0.05,
+      "worst": 50.0
     },
     "actual_latency_p95_ms": {
       "best": 1000.0,

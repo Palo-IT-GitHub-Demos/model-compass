@@ -493,12 +493,12 @@ class TestDecisionReport:
             or "RSI 100 / 100: claude-3.5-sonnet, gpt-4o-mini" in html
         )
 
-    def test_overview_uses_the_blended_cost(self, tmp_path: Path) -> None:
+    def test_overview_uses_the_cost_per_1k_requests(self, tmp_path: Path) -> None:
         self._export(tmp_path)
         html = (tmp_path / "dashboard" / "overview.html").read_text(encoding="utf-8")
 
-        # enterprise_qa blends 512 input + 256 output tokens: (0.1 × 2 + 0.5) / 3 = $0.2333 / 1M.
-        assert "$0.2333" in html
+        # No measured output in this legacy row: enterprise_qa's 512 input + 256 output tokens at $0.1 / $0.5 per 1M.
+        assert "$0.1792" in html
 
     def test_non_standard_run_shows_a_warning_on_every_page(self, tmp_path: Path) -> None:
         output = self._export(tmp_path)

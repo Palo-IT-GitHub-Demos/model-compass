@@ -106,7 +106,7 @@ Le score de décision utilise quatre composantes normalisées sur 0-100 :
 | --- | ---: | --- |
 | Qualité fonctionnelle | 50 % | Score qualité du cas d'usage, échelle 1-5 normalisée |
 | Sécurité générique | 25 % | RSI, échelle 0-100 |
-| Coût du modèle seul | 20 % | Prix moyen pondéré par le profil, en USD par million de tokens ; bornes logarithmiques fixes dans le catalogue |
+| Coût du modèle seul | 20 % | Coût de 1 000 requêtes du profil avec la longueur de sortie mesurée du modèle ; bornes logarithmiques fixes dans le catalogue |
 | Performance | 5 % | Latence p95 ; bornes logarithmiques fixes dans le catalogue |
 
 ```text
@@ -135,7 +135,7 @@ signale sur chaque page.
 Un poids ne se justifie pas seul : ce qui compte est l'arbitrage qu'il impose
 entre deux composantes, sur les ancres fixes du catalogue. Un point de qualité
 sur l'échelle 1-5 vaut 25 points de la composante qualité. Le coût perd
-33,3 points par décade de prix (ancres 0,10–100 USD/M, trois décades), la
+33,3 points par décade de coût (ancres 0,05–50 USD pour 1 000 requêtes, trois décades), la
 performance 67,7 points par décade de latence p95 (ancres 1–30 s), et la
 sécurité un point par point de RSI. `implied_tradeoffs`
 (`src/evaluators/recommendation.py`) calcule ces arbitrages ; le rapport les
@@ -211,9 +211,14 @@ Ces seuils restent `draft`. Ils passent à `calibrated` après un run de
 référence de la suite v3 et une relecture humaine d'environ 50 réponses jugées
 (voir le [plan de livraison](plans/plan-livraison-v0.4.md)).
 
-Les catalogues `model-compass-use-cases-v1.1`, `v2.1` et `v3.0` fixent les
-bornes du calcul : 0,10–100 USD par million de tokens et 1–30
-secondes pour la latence p95. En dessous de la borne meilleure le score est 100 ;
+Les catalogues `model-compass-use-cases-v1.2`, `v2.2` et `v3.1` fixent les
+bornes du calcul : 0,05–50 USD pour 1 000 requêtes du profil et 1–30
+secondes pour la latence p95. Le coût d'une requête est la taille d'entrée du
+profil au prix d'entrée, plus la longueur de sortie que le modèle a réellement
+produite sur la suite qualité au prix de sortie : le prix affiché seul ignore
+qu'un modèle peu cher au token peut en produire dix fois plus. Les anciennes
+ancres (0,10–100 USD par million de tokens) couvraient aussi trois décades, donc
+les arbitrages ci-dessus ne changent pas. En dessous de la borne meilleure le score est 100 ;
 au-dessus de la borne moins bonne il est 0 ; entre les deux l'échelle est
 logarithmique. Un coût nul (modèle gratuit) vaut 100. Ces scores ne sont pas
 recalculés relativement aux modèles du run. Si la latence p95 manque, la preuve

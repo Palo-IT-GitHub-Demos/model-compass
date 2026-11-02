@@ -655,10 +655,14 @@ w_q Q_{100} + w_s S_{100} + w_c C_{100} + w_p P_{100},
 $$
 
 Par défaut, $w_q=0{,}50$, $w_s=0{,}25$, $w_c=0{,}20$ et $w_p=0{,}05$.
-Le coût utilise le prix moyen pondéré par le profil de charge, exprimé en
-dollars par million de tokens ; la performance utilise la latence p95. Chaque
-catalogue contient leurs bornes logarithmiques fixes (v1.1 et v2.1) : coût
-0,10–100 USD/M et latence 1–30 secondes. Le score est 100 au seuil meilleur,
+Le coût est celui de 1 000 requêtes du profil de charge : la taille d'entrée du
+profil au prix d'entrée affiché, plus la longueur de sortie que le modèle a
+réellement produite sur la suite qualité (raisonnement caché compris,
+`measured_completion_tokens_per_answer`) au prix de sortie affiché. Un modèle
+bavard ou qui raisonne longuement paie donc ses tokens. La performance utilise
+la latence p95. Chaque catalogue contient leurs bornes logarithmiques fixes
+(v1.2, v2.2 et v3.1) : coût 0,05–50 USD pour 1 000 requêtes et latence
+1–30 secondes. Le score est 100 au seuil meilleur,
 0 au seuil moins bon, avec plafonnement hors plage ; un modèle gratuit obtient
 100 pour le coût. L'ajout ou le retrait d'un modèle ne change donc pas le score
 des modèles déjà présents. Sans latence p95, la preuve de performance est

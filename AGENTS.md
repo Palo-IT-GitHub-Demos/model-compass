@@ -146,10 +146,13 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   not the 1–5 `quality_score` used for eligibility; historical ranks calculated
   on the mixed scale are not comparable without recomputation
 - Cost and performance recommendation components use the fixed logarithmic
-  anchors in the versioned catalog (`cost_usd_per_1m_tokens` and
+  anchors in the versioned catalog (`cost_usd_per_1k_requests` and
   `actual_latency_p95_ms`), never run-relative min-max normalization. Cost is
-  blended by the workload profile; missing p95 latency is missing evidence, not
-  a reason to substitute throughput
+  the price of 1,000 workload-profile requests with the output length each
+  model really produced on the quality suite
+  (`measured_completion_tokens_per_answer`, reasoning included), never the
+  listed price alone; missing measured tokens or p95 latency is missing
+  evidence, not a reason to substitute the profile's assumed output or throughput
 - Every model remains visible for every catalog use case. Equal recommendation
   scores keep the same dense rank; do not add arbitrary provider/model-name
   tie-breakers

@@ -14,7 +14,11 @@ from pathlib import Path
 import pandas as pd
 
 from src.core.methodology import METHODOLOGY_VERSION
-from src.evaluators.cost_analyzer import BUILTIN_WORKLOAD_PROFILES, WorkloadProfile
+from src.evaluators.cost_analyzer import (
+    BUILTIN_WORKLOAD_PROFILES,
+    WorkloadProfile,
+    effective_cost_per_1k_requests,
+)
 from src.evaluators.quality_diagnostics import KEY_DISPUTED_STATUS, analyze_items
 
 DEFAULT_WORKLOAD_PROFILE = "enterprise_qa"
@@ -317,12 +321,12 @@ def security_category_table(security_long_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def blended_cost_per_1m_tokens(df: pd.DataFrame) -> pd.Series:
-    """Return the workload-blended USD price per million tokens for every row.
+    """Return the workload-blended listed USD price per million tokens for every row.
 
-    This is the cost the recommendation scores (``cost_usd_per_1m_tokens``,
-    written at merge time). Older runs that lack it are blended here from
-    their input and output prices with the recorded workload profile, so the
-    whole report shows one consistent cost per model.
+    This listed price ignores how many tokens a model really produces; the
+    recommendation scores :func:`cost_per_1k_requests` instead. Older runs
+    that lack ``cost_usd_per_1m_tokens`` are blended here from their input
+    and output prices with the recorded workload profile.
     """
     recorded = numeric_series(df, "cost_usd_per_1m_tokens")
     profile_names = (
@@ -343,6 +347,21 @@ def blended_cost_per_1m_tokens(df: pd.DataFrame) -> pd.Series:
     return recorded.where(recorded.notna(), derived)
 
 
+def cost_per_1k_requests(df: pd.DataFrame, profile: WorkloadProfile) -> pd.Series:
+    """USD per 1,000 requests of *profile* with each model's measured output length.
+
+    Runs collected before the measurement fall back to the profile's assumed
+    output length, i.e. to the listed price; they rank nothing anyway.
+    """
+    measured = numeric_series(df, "measured_completion_tokens_per_answer")
+    return effective_cost_per_1k_requests(
+        numeric_series(df, "prompt_price_per_token"),
+        numeric_series(df, "completion_price_per_token"),
+        measured.fillna(float(profile.avg_completion_tokens)),
+        profile,
+    )
+
+
 def enrich_benchmark(df: pd.DataFrame) -> pd.DataFrame:
     """Add the derived columns every view relies on: cost/1M tokens + security_status.
 
@@ -351,6 +370,14 @@ def enrich_benchmark(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
     df["cost_per_1m_tokens_usd"] = blended_cost_per_1m_tokens(df)
+    profile_name = (
+        str(df["workload_profile"].dropna().iloc[0])
+        if "workload_profile" in df.columns and df["workload_profile"].notna().any()
+        else DEFAULT_WORKLOAD_PROFILE
+    )
+    profile = BUILTIN_WORKLOAD_PROFILES.get(profile_name, BUILTIN_WORKLOAD_PROFILES[DEFAULT_WORKLOAD_PROFILE])
+    recorded = numeric_series(df, "cost_usd_per_1k_requests")
+    df["cost_per_1k_requests_usd"] = recorded.where(recorded.notna(), cost_per_1k_requests(df, profile))
     for column, default in (("is_vulnerable", False), ("leak_count", 0), ("zero_data_retention", False)):
         if column not in df.columns:
             df[column] = default
@@ -370,11 +397,7 @@ def compute_cost_columns(df: pd.DataFrame, profile: WorkloadProfile) -> pd.DataF
     leaves a stale value behind.
     """
     cost_df = df.copy()
-    input_price = numeric_series(cost_df, "prompt_price_per_token")
-    completion_price = numeric_series(cost_df, "completion_price_per_token")
-    cost_df["tco_usd"] = (
-        input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens
-    )
+    cost_df["tco_usd"] = cost_per_1k_requests(cost_df, profile) / 1_000 * profile.monthly_requests
 
     if "quality_cer_eligible" in cost_df.columns:
         eligible = cost_df["quality_cer_eligible"].fillna(False).astype(bool)
