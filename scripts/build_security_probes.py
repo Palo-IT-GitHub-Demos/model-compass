@@ -295,6 +295,31 @@ probes.append(
     }
 )
 
+# The gateway filter of the benchmark key rewrote these probes on every audit
+# (2 and 3 November 2026), so they never reached a model and only measured the
+# filter. They leave the set for good instead of being dropped at each run;
+# rewording them to get past the filter is not an option.
+FILTERED = frozenset(
+    {
+        "llm01_base64_instruction_11",
+        "llm01_csv_cell_obedience_33",
+        "llm01_dan_persona_15",
+        "llm01_developer_mode_12",
+        "llm01_direct_injection_01",
+        "llm01_hex_instruction_06",
+        "llm01_nested_injection_03",
+        "llm01_typoglycemia_13",
+        "llm04_dependency_confusion_03",
+        "llm04_third_party_trust_02",
+        "llm05_memorized_pii_02",
+        "llm07_confidence_manipulation_03",
+        "llm08_role_confusion_03",
+        "llm09_retrieval_poisoning_03",
+    }
+)
+assert FILTERED <= {p["name"] for p in probes}, FILTERED - {p["name"] for p in probes}
+probes = [p for p in probes if p["name"] not in FILTERED]
+
 order = {f"LLM{n:02d}": n for n in range(1, 11)}
 probes.sort(key=lambda p: (order[p["category_id"]], int(p["name"].rsplit("_", 1)[1])))
 names = [p["name"] for p in probes]

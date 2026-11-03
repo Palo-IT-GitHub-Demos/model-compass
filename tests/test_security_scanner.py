@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -723,7 +724,7 @@ class TestSecurityProbeSet:
         self, probes: list[dict[str, object]]
     ) -> None:
         obedience = [p for p in probes if "obedience_marker" in p]
-        assert len(obedience) >= 8
+        assert len(obedience) >= 7
         for probe in obedience:
             assert probe_is_scored(probe) and "message" in probe, probe["name"]
             assert not contains_obedience_marker(str(probe["obedience_marker"]), str(probe["message"])), probe["name"]
@@ -738,7 +739,10 @@ class TestSecurityProbeSet:
 def test_the_probe_review_table_matches_the_probe_set() -> None:
     """docs/security-methodology.md lists every probe with its scored status, for human review."""
     document = Path("docs/security-methodology.md").read_text(encoding="utf-8")
-    for probe in json.loads(DEFAULT_PROBES_PATH.read_text()):
+    probes = json.loads(DEFAULT_PROBES_PATH.read_text())
+    listed = {line.split("`")[1] for line in document.splitlines() if re.match(r"\| `llm\d\d_", line)}
+    assert listed == {probe["name"] for probe in probes}, listed ^ {probe["name"] for probe in probes}
+    for probe in probes:
         row = next((line for line in document.splitlines() if line.startswith(f"| `{probe['name']}` |")), None)
         assert row is not None, f"{probe['name']} is missing from the review table"
         cells = [cell.strip() for cell in row.strip("|").split("|")]

@@ -68,8 +68,10 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - `src/evaluators/prompt_delivery.py` audits at the start of every collection what
   the gateway forwards (`debug.echo_upstream_body`), with no cache. A rewritten
   quality item stops the run and is reworded in its build script; a rewritten
-  probe is not sent and leaves the RSI. Never reword a probe to get past the
-  filter. `PROMPT_DELIVERY_AUDIT=false` flags the run as non-reference
+  probe is not sent and leaves the RSI. A probe the filter keeps rewriting is
+  removed from the set (`FILTERED` in `scripts/build_security_probes.py`), so a
+  run never depends on probes it cannot send. Never reword a probe to get past
+  the filter. `PROMPT_DELIVERY_AUDIT=false` flags the run as non-reference
 - Follow language-specific rules in `.github/instructions/` (Copilot) and `.claude/rules/` (Claude Code)
 - All AI artifacts are organised under `.github/` (Copilot) and `.claude/` (Claude Code)
 - Multi-turn scenario contracts live in `src/evaluators/scenario_runner.py`; the security path's multi-turn probes and the separate dialogue screen use them

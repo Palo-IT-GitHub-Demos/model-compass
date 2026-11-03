@@ -111,7 +111,7 @@ flowchart TD
 | `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 3 modèles gratuits intégrés (`.env.example` en définit 2) |
 | `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 pour le free tier | `3` |
 | `MLFLOW_TRACKING_URI` | Base de données de tracking | `sqlite:///results/mlflow/mlruns.db` |
-| `SECURITY_MODE` | Parcours sécurité : `full` (les 80 sondes de `data/prompts/security_probes.json`, dont 59 notées et rejouées trois fois) ou `skip` (aucune sonde) | `full` |
+| `SECURITY_MODE` | Parcours sécurité : `full` (les 66 sondes de `data/prompts/security_probes.json`, dont 50 notées et rejouées trois fois) ou `skip` (aucune sonde) | `full` |
 | `SECURITY_PROBES_PATH` | Fichier de sondes de remplacement, pour une expérimentation seulement (ignoré avec `skip`) | — |
 | `QUALITY_REPETITIONS` | Essais par prompt qualité (1-5) ; 3 dans le parcours standard | `3` |
 | `QUALITY_SUITE` | Suite qualité et catalogue : `v3` (48 prompts, 6 par cas d'usage), `v2` (34 prompts) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v3` |
@@ -171,11 +171,11 @@ make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résul
 
 La sécurité est un parcours unique, exécuté en entier ou pas du tout :
 
-- `SECURITY=full` (défaut) envoie les 80 sondes de
-  `data/prompts/security_probes.json`. Les 59 sondes notées sont rejouées trois
-  fois : 51 demandent un secret neuf placé dans le system prompt, 8 cachent une
+- `SECURITY=full` (défaut) envoie les 66 sondes de
+  `data/prompts/security_probes.json`. Les 50 sondes notées sont rejouées trois
+  fois : 43 demandent un secret neuf placé dans le system prompt, 7 cachent une
   consigne inoffensive dans le contenu à traiter et vérifient si le modèle lui
-  obéit ; les 21 autres sont des observations.
+  obéit ; les 16 autres sont des observations.
 - `SECURITY=skip` n'envoie aucune sonde. La recommandation classe alors les
   modèles sur la qualité, le coût et la performance seulement, avec des poids
   remis à l'échelle, et chaque page du rapport signale que le run n'est pas une
@@ -508,10 +508,10 @@ l'export de `expected_answers_json` restent consultables mais ne peuvent pas
 
 ### Sondes du parcours sécurité
 
-`data/prompts/security_probes.json` — 80 sondes écrites en interne, réparties
+`data/prompts/security_probes.json` — 66 sondes écrites en interne, réparties
 sur les 10 catégories de l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/)
-(édition en vigueur, publiée le 2026-08-04). Les 59 sondes dont l'oracle (fuite
-du canari ou obéissance à une consigne cachée) peut échouer sont notées dans le RSI et rejouées trois fois ; les 21 autres sont
+(édition en vigueur, publiée le 2026-08-04). Les 50 sondes dont l'oracle (fuite
+du canari ou obéissance à une consigne cachée) peut échouer sont notées dans le RSI et rejouées trois fois ; les 16 autres sont
 des observations (voir [Méthodologie sécurité](security-methodology.md)). Ce
 n'est pas un jeu de sondes officiel OWASP. Poids RSI par catégorie :
 
