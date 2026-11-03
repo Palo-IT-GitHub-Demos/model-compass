@@ -625,8 +625,8 @@ reflètent le rééchantillonnage de cette suite et de ces tentatives, **pas** u
 de généralisation aux tâches métier. `quality_ci95_overlaps_leader` indique
 le chevauchement des IC de qualité avec au moins un premier du classement,
 pour les modèles éligibles avec IC disponible. Un chevauchement n'est pas
-une preuve d'égalité statistique : les ex æquo restent définis uniquement
-par l'égalité des scores de recommandation.
+une preuve d'égalité statistique : les ex æquo de rang restent définis
+uniquement par l'égalité des scores de recommandation.
 
 `recommendation_sensitivity_rank_min/max` et `recommendation_fragile`
 décrivent 10 scénarios déterministes par cas d'usage : chacun des quatre
@@ -636,7 +636,10 @@ borné à l'échelle 1–5. Les autres poids et seuils restent fixes à chaque
 scénario. `recommendation_fragile=true` si l'éligibilité ou le rang diffère
 du scénario de référence ; les bornes de rang ignorent les scénarios où le
 modèle n'a pas de rang. Une preuve de décision incomplète produit `null`
-pour cette alerte, pas une fausse stabilité. Cette analyse locale ne remplace
+pour cette alerte, pas une fausse stabilité. Depuis 0.7.0, tout modèle classé
+qu'au moins un scénario met premier (`recommendation_sensitivity_rank_min = 1`)
+est `recommended` à côté du premier, avec son rang inchangé : un écart que
+±10 % sur un poids renverse n'est pas une décision. Cette analyse locale ne remplace
 ni la calibration humaine des seuils provisoires ni un test de toutes les
 combinaisons de poids.
 

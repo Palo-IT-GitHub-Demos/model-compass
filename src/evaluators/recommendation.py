@@ -406,7 +406,10 @@ def build_recommendation_report(
     misses the use-case threshold is never marked recommended because of a low
     cost or fast response. A complete decision score requires all four default
     components; incomplete runs remain visible with an evidence status rather
-    than receiving a misleading partial recommendation.
+    than receiving a misleading partial recommendation. Every ranked model
+    that a ±10% change of one weight or of the threshold would put first is
+    ``recommended`` beside the leader, its rank unchanged: a gap that small is
+    not a decision.
 
     Each row also carries the outcome recomputed without own-provider judges
     (see :func:`exclude_affiliated_judges`); it never replaces the baseline
@@ -602,6 +605,9 @@ def _build_report(
         status.loc[report["recommendation_rank"].eq(1)] = "recommended"
         report["recommendation_status"] = status
         _add_sensitivity(report, weight_values, use_case.minimum_quality_score, components)
+        # A ranked model that leads under one ±10% scenario is too close to the leader to call: co-recommended.
+        can_lead = report["recommendation_rank"].notna() & report["recommendation_sensitivity_rank_min"].eq(1)
+        report.loc[can_lead.fillna(False).astype(bool), "recommendation_status"] = "recommended"
         leaders = report.loc[report["recommendation_rank"].eq(1)]
         available_ci = report["quality_score_ci95_low"].notna() & report["quality_score_ci95_high"].notna()
         report["quality_ci95_overlaps_leader"] = pd.array([pd.NA] * len(report), dtype="boolean")

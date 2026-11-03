@@ -165,7 +165,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   evidence, not a reason to substitute the profile's assumed output or throughput
 - Every model remains visible for every catalog use case. Equal recommendation
   scores keep the same dense rank; do not add arbitrary provider/model-name
-  tie-breakers
+  tie-breakers. A ranked model that one ±10% weight or threshold scenario
+  puts first (`recommendation_sensitivity_rank_min = 1`) is also
+  `recommended`, its rank unchanged
 - Missing security, cost, or performance evidence yields an explicit
   `insufficient_decision_evidence` status and no recommendation rank
 - For `QUALITY_REPETITIONS > 1`, use the attempts already collected to assess

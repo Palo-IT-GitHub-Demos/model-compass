@@ -42,7 +42,7 @@ génération de code, synthèse, etc.) et indique, dans l'ordre :
 
 | Élément | Signification | Que faire |
 | --- | --- | --- |
-| **Recommended** | Meilleur score de décision parmi les modèles qui franchissent le seuil qualité du cas d'usage avec des preuves complètes. Plusieurs noms = ex æquo exacts. | Point de départ du choix. |
+| **Recommended** | Meilleur score de décision parmi les modèles qui franchissent le seuil qualité du cas d'usage avec des preuves complètes. Plusieurs noms (*too close to call*) = ex æquo exacts, ou modèles qu'une variation de 10 % d'un poids ou du seuil mettrait premiers, du meilleur score au moins bon. | Point de départ du choix ; entre plusieurs noms, trancher selon le dossier. |
 | Badge **fragile** | Le classement ou l'éligibilité change si un poids, ou le seuil, bouge de 10 %. | Considérer le modèle suivant comme une alternative sérieuse. |
 | Badge **judge-sensitive** | Sans le juge du même fournisseur que le modèle (par exemple le juge Claude pour un modèle Anthropic), le recommandé changerait ; la carte nomme l'alternative. | Traiter la recommandation comme non confirmée et comparer les deux modèles nommés. |
 | Badge **weight-profile-sensitive** | Le recommandé change selon le profil de poids (`quality-first`, `balanced`, `cost-sensitive`) ; la carte nomme le leader de chaque profil. | Retenir le leader du profil qui correspond au dossier : `quality-first` pour des réponses critiques, `cost-sensitive` pour un fort volume ou un budget serré, `balanced` sinon. |

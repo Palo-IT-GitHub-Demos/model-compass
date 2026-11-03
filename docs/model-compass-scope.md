@@ -237,7 +237,9 @@ même rang et peuvent tous être `recommended`.
 Les statuts sont :
 
 - `recommended` : meilleur rang parmi les modèles éligibles et suffisamment
-  documentés ;
+  documentés, ou modèle classé qu'une variation de ±10 % d'un poids ou du seuil
+  mettrait premier (`recommendation_sensitivity_rank_min = 1`, rang inchangé) :
+  la carte affiche alors *Recommended (too close to call)* ;
 - `eligible` : dépasse le seuil et possède les preuves nécessaires, mais n'a
   pas le meilleur rang ;
 - `below_quality_threshold` : qualité insuffisante pour ce cas d'usage ;

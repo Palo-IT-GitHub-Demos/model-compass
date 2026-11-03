@@ -28,6 +28,10 @@ methodology.
   the second (partial credit `1 + 2 × share correct`). Format compliance still
   fails. Replayed on the 3 November answers, only Claude Sonnet 5.5's 15
   correct-but-explained answers change.
+- Every ranked model that a ±10% change of one weight or of the threshold would
+  put first is `recommended` beside the leader, its rank unchanged, and the
+  decision card reads *Recommended (too close to call)*. On 3 November this adds
+  GPT-6 Luna beside DeepSeek V4.1 Flash for code generation (0.11 point apart).
 
 ### Changed — methodology 0.6.0
 

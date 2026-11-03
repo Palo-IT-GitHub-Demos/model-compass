@@ -289,7 +289,7 @@ def _use_case_card(rows: pd.DataFrame, disputed_prompts: set[int] | frozenset[in
         headline = '<p class="none">No model can be recommended for this use case in this run.</p>'
     else:
         leaders = []
-        for _, row in recommended.iterrows():
+        for _, row in recommended.sort_values("recommendation_score", ascending=False).iterrows():
             badges = ""
             if _is_true(row.get("recommendation_fragile")):
                 low = _number(row.get("recommendation_sensitivity_rank_min"), "{:.0f}")
@@ -300,7 +300,7 @@ def _use_case_card(rows: pd.DataFrame, disputed_prompts: set[int] | frozenset[in
                 f'<span class="meta">({_number(row.get("recommendation_score"), "{:.1f}")} / 100 · '
                 f"quality {_number(row.get('quality_score'), '{:.2f}')} / 5)</span>{badges}"
             )
-        label = "Recommended (tied)" if len(leaders) > 1 else "Recommended"
+        label = "Recommended (too close to call)" if len(leaders) > 1 else "Recommended"
         headline = f'<p>{label}: <span class="leader">{"; ".join(leaders)}</span></p>'
 
     items: list[str] = []

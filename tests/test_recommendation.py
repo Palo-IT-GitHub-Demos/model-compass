@@ -451,6 +451,22 @@ def test_each_weight_profile_ranks_models_and_flags_a_profile_sensitive_use_case
     assert report["weight_profile_sensitive"].all()
 
 
+def test_a_model_that_a_small_weight_change_puts_first_is_co_recommended(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from src.evaluators.recommendation import build_recommendation_report
+
+    benchmark, quality, path = _two_model_inputs(tmp_path)
+
+    close = build_recommendation_report(benchmark, quality, catalog_path=path).set_index("model")
+    assert close.loc["v/strong", "recommendation_rank"] == 2
+    assert close.loc["v/strong", "recommendation_sensitivity_rank_min"] == 1
+    assert set(close["recommendation_status"]) == {"recommended"}
+
+    benchmark.loc[benchmark["model"].eq("v/strong"), "cost_usd_per_1k_requests"] = 2.0
+    clear = build_recommendation_report(benchmark, quality, catalog_path=path).set_index("model")
+    assert clear.loc["v/strong", "recommendation_status"] == "recommended"
+    assert clear.loc["v/cheap", "recommendation_status"] == "eligible"
+
+
 def test_a_skipped_security_run_ranks_without_security_and_says_so(tmp_path) -> None:  # type: ignore[no-untyped-def]
     import json
 
@@ -460,7 +476,7 @@ def test_a_skipped_security_run_ranks_without_security_and_says_so(tmp_path) -> 
 
     report = build_recommendation_report(benchmark, quality, catalog_path=path)
 
-    assert set(report["recommendation_status"]) == {"recommended", "eligible"}
+    assert set(report["recommendation_rank"]) == {1, 2}
     assert not report["security_evaluated"].any()
     weights = json.loads(report["recommendation_weights"].iloc[0])
     assert weights["security"] == 0.0
