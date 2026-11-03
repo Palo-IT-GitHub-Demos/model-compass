@@ -111,6 +111,7 @@ dans `gen-e2-eval` sur les tâches métier concernées.
 | --- | --- | --- |
 | Guide du pipeline | Exécution, entrées, sorties et interprétation | `docs/workflow.md` |
 | Scope Model Compass | Mission, logique de décision, limites et calibrations restantes | `docs/model-compass-scope.md` |
+| Présentation | Deux slides : ce qui est mesuré, comment un modèle est recommandé | `docs/assets/model-compass/model-compass-overview.pptx` |
 | Méthodologie qualité | Provenance des prompts, couverture, validation, comparaison `gen-e2-eval` | `docs/quality-methodology.md` |
 | Référence API | Classes, fonctions et signatures publiques | Docstrings dans `src/` et `dashboard/` |
 | ADR | Décisions d'architecture et compromis | `docs/adr/` |

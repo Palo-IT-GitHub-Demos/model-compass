@@ -154,6 +154,9 @@ methodology.
 
 ### Added
 
+- `docs/presentation-model-compass.md` shows the two Model Compass slides (what
+  is measured, how a model is recommended), updated to methodology 0.8.0, with
+  the PowerPoint source in `docs/assets/model-compass/`.
 - The *Prompts & responses* page filters the quality attempts by model (several
   at once), use case, prompt, result (*not perfect* lists every attempt below
   5 / 5), content or format rows and text, and compares the models side by side
