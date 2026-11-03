@@ -101,7 +101,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
 - Content correctness and output-format compliance are scored as separate
   dimensions. Never let a formatting violation lower a content score: an
   exact-answer item scores its final answer, and a use case's quality score
-  averages content rows only, with `format_compliance_rate` beside it
+  averages content rows only, with `format_compliance_rate` beside it. Where
+  the exact output is the construct (`instruction_following` and JSON items), a
+  correct answer recovered from extra text scores `RECOVERED_ANSWER_SCORE` (3)
 - Structured checks give partial credit (`1 + 4 × share correct` for JSON
   fields and passed code tests); an empty response scores 1 on content and on
   format when the prompt has a format contract; a completion without any

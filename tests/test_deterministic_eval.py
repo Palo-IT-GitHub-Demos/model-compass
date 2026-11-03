@@ -6,6 +6,7 @@ import pytest
 
 from src.evaluators.deterministic_eval import (
     CHECKS,
+    RECOVERED_ANSWER_SCORE,
     ExactAnswerCheck,
     ExactFormatCheck,
     JsonValidityCheck,
@@ -114,6 +115,25 @@ class TestJsonValidityCheck:
         assert result.score == 1
         assert result.format_score is None
 
+    def test_correct_json_after_working_gets_partial_credit(self) -> None:
+        response = 'Replaying the log:\n1. lamp = 3 [step 1]\n8. undo step 6\n\n```json\n{"lamp": 7, "stand": 1}\n```'
+        result = JsonValidityCheck().run(
+            "", response, {"expected_json": {"lamp": 7, "stand": 1}, "strict_output": True}
+        )
+        assert (result.passed, result.score, result.format_score) == (False, RECOVERED_ANSWER_SCORE, 1)
+
+    def test_json_after_working_scales_its_partial_credit_to_the_recovered_cap(self) -> None:
+        result = JsonValidityCheck().run(
+            "", 'Counting: {"lamp": 7, "stand": 2}', {"expected_json": {"lamp": 7, "stand": 1}, "strict_output": True}
+        )
+        assert result.score == 2.0
+
+    def test_text_whose_only_brackets_hold_another_json_type_scores_one(self) -> None:
+        result = JsonValidityCheck().run(
+            "", "Undo step [6] first.", {"expected_json": {"lamp": 7}, "strict_output": True}
+        )
+        assert result.score == 1
+
 
 class TestPythonSyntaxCheck:
     def test_valid_function_passes(self) -> None:
@@ -200,6 +220,20 @@ class TestExactFormatCheck:
     def test_exact_format_instruction_still_rejects_extra_text(self) -> None:
         result = ExactFormatCheck().run("", "Sure: READY:5", {"accepted_answers": ["READY:5"]})
         assert (result.passed, result.score) == (False, 1)
+
+    def test_exact_format_gives_partial_credit_to_a_correct_final_line_after_working(self) -> None:
+        result = ExactFormatCheck().run(
+            "",
+            "Vowels: i, e, i, e = 4. Removing them leaves p-p-l-n.\n\n**ppln-4**",
+            {"accepted_answers": ["ppln-4"], "strict_output": True},
+        )
+        assert (result.passed, result.score, result.format_score) == (False, RECOVERED_ANSWER_SCORE, 1)
+
+    def test_exact_format_does_not_credit_a_wrong_final_line_after_working(self) -> None:
+        result = ExactFormatCheck().run(
+            "", "Vowels removed.\n\nppln-3", {"accepted_answers": ["ppln-4"], "strict_output": True}
+        )
+        assert result.score == 1
 
     def test_wrong_numeric_value_does_not_imply_format_failure(self) -> None:
         result = ExactFormatCheck().run("", "READY:4", {"accepted_answers": ["READY:5"], "strict_output": True})

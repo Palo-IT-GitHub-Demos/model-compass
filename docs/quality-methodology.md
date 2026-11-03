@@ -461,7 +461,7 @@ modifié ou retiré est pris en compte au run suivant.
   permet de passer outre, et le rapport signale alors que le run n'est pas une
   preuve de référence.
 
-### Règles de notation introduites en 0.4.0, 0.5.0 et 0.6.0
+### Règles de notation introduites de 0.4.0 à 0.7.0
 
 - **Réponse finale.** Pour les items à réponse exacte (`exact_answer`,
   `factual_sanity`, `logical_reasoning`), le contenu est la réponse finale :
@@ -469,8 +469,14 @@ modifié ou retiré est pris en compte au run suivant.
   le dernier nombre de cette ligne quand la réponse attendue est numérique. Une
   bonne réponse qui montre son calcul garde son score de contenu ; seule la
   conformité de format échoue. La fusion réapplique cette règle aux réponses
-  brutes stockées, sans les modifier. Les items `instruction_following`, dont
-  la sortie exacte est le construit mesuré, restent stricts.
+  brutes stockées, sans les modifier.
+- **Bonne réponse hors contrat (0.7.0).** Pour les items `instruction_following`
+  et JSON, la sortie exacte fait partie de ce qui est mesuré : une bonne réponse
+  noyée dans du texte vaut **3** en contenu, et non 5 ni 1. C'est la dernière
+  ligne pour un item `instruction_following` (`… = 4.\n\nppln-4`), le dernier
+  objet ou tableau JSON de la réponse pour un item JSON, dont le crédit partiel
+  passe alors à `1 + 2 × part des champs corrects`. La conformité de format
+  échoue à part.
 - **Contenu seul par cas d'usage.** Le score de qualité d'un cas d'usage, qui
   décide de l'éligibilité, ne moyenne que les lignes de contenu ; la conformité
   de format est publiée à part (`format_compliance_rate`, colonne *Format

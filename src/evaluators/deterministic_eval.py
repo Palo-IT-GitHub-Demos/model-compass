@@ -117,6 +117,19 @@ class JsonValidityCheck:
         except json.JSONDecodeError as exc:
             if fmt:
                 fmt = {"format_score": 1, "format_reason": "Response is not syntactically valid JSON."}
+            expected_json = _get_context_value(evaluation, "expected_json")
+            embedded = _last_embedded_json(content, expected_json)
+            if embedded is not _NOT_FOUND:
+                share = json_agreement(embedded, expected_json) if expected_json is not None else 1.0
+                return CheckResult(
+                    passed=False,
+                    score=round(1.0 + (RECOVERED_ANSWER_SCORE - 1.0) * share, 2),
+                    reason=(
+                        "Extra text surrounds the JSON value; the last JSON value in the response gets "
+                        f"{share:.0%} of the expected fields or items right, scored at most {RECOVERED_ANSWER_SCORE}."
+                    ),
+                    **fmt,
+                )
             return CheckResult(
                 passed=False,
                 score=1,
@@ -276,8 +289,10 @@ class PythonExecutionCheck:
 class ExactFormatCheck:
     """Evaluate exact output when accepted answers are supplied.
 
-    Without reference answers, the response remains undecidable and is sent to
-    the blind judge panel. This preserves support for open-ended prompts.
+    The exact output is the construct here, so a correct final line after
+    extra text (shown working, a preamble) scores :data:`RECOVERED_ANSWER_SCORE`,
+    not 5. Without reference answers, the response remains undecidable and is
+    sent to the blind judge panel. This preserves support for open-ended prompts.
     """
 
     category = "instruction_following"
@@ -318,6 +333,13 @@ class ExactFormatCheck:
                     reason="Response matches an accepted answer.",
                     **fmt,
                 )
+            if final_answer_matches(response, accepted_answers):
+                return CheckResult(
+                    passed=False,
+                    score=RECOVERED_ANSWER_SCORE,
+                    reason="The final line is an accepted answer, but extra text breaks the exact-output instruction.",
+                    **fmt,
+                )
             return CheckResult(
                 passed=False,
                 score=1,
@@ -337,8 +359,8 @@ class ExactAnswerCheck(ExactFormatCheck):
     Content is the final answer: a correct answer that also shows its working,
     or wraps the value in markdown emphasis, keeps its content score and fails
     only output-format compliance. Exact-format instruction prompts
-    (:class:`ExactFormatCheck`) stay strict, since there the exact output is
-    the construct being measured.
+    (:class:`ExactFormatCheck`) cap that case at :data:`RECOVERED_ANSWER_SCORE`,
+    since there the exact output is the construct being measured.
     """
 
     category = "exact_answer"
@@ -395,6 +417,39 @@ def final_answer_matches(response: str, accepted_answers: list[str]) -> bool:
     if not answer:
         return False
     return _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}
+
+
+RECOVERED_ANSWER_SCORE = 3
+"""Content score of a correct answer that breaks the exact-output contract of a JSON or exact-format item.
+
+Better than a wrong answer (1), worse than following the contract (5): there
+the contract is part of what the item measures. Output-format compliance still
+fails separately.
+"""
+
+_NOT_FOUND = object()
+
+
+def _last_embedded_json(text: str, expected: object) -> object:
+    """Return the last top-level JSON value in *text*, of the expected root type when one is given.
+
+    Recovers the answer of a response that shows its working before the JSON
+    value; returns ``_NOT_FOUND`` when no such value parses.
+    """
+    decoder = json.JSONDecoder()
+    found: object = _NOT_FOUND
+    resume = 0
+    for match in re.finditer(r"[{\[]", text):
+        if match.start() < resume:
+            continue
+        try:
+            value, end = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        resume = end
+        if expected is None or isinstance(value, type(expected)):
+            found = value
+    return found
 
 
 def partial_credit(share: float) -> float:
