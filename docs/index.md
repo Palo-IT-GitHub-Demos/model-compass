@@ -7,8 +7,7 @@ les classe par cas d'usage générique pour aider un humain à répondre à
 différents appels d'offres.
 
 Le [scope détaillé](model-compass-scope.md) formalise les décisions prises, les
-limites et les seuils du catalogue, calibrés sur le run de référence 0.7.0
-sauf ceux des cas d'usage jugés.
+limites et les seuils du catalogue, calibrés sur le run de référence 0.7.0.
 
 ## Par où commencer
 

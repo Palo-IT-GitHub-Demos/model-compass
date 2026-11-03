@@ -27,6 +27,7 @@ results/quality_diagnostics/
 results/quality_analysis/
 results/verification/
 results/pilot/
+results/calibration/
 results/*.zip
 
 .mypy_cache/

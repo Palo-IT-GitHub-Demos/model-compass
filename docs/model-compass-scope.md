@@ -229,10 +229,41 @@ est exclu, quel que soit son prix. Avec cinq items par cas d'usage :
 Les modèles éligibles les plus bas sont à 4,20, soit exactement un item raté sur
 cinq ; aucun modèle ne tombe entre 3,75 et 4,0, où un seul essai ferait basculer
 l'éligibilité. Les seuils de 4,0 des cas d'usage à contrôle déterministe sont
-donc **calibrés** sans changement. Les seuils de 3,5 du résumé et de la
-communication concise séparent aussi les modèles sur ce run, mais reposent sur
-les juges : ils restent **provisoires** jusqu'à la relecture humaine d'environ 50
-réponses jugées prévue au [plan de livraison](plans/plan-livraison-v0.4.md).
+donc **calibrés** sans changement.
+
+**Relecture des réponses jugées.** Les seuils de 3,5 du résumé et de la
+communication concise reposent sur le panel de juges. Pour les calibrer, 50
+réponses jugées de ce run ont été relues et notées avec la même grille
+(critères et ancres de chaque item) : les 11 items jugés, les six modèles, avec
+plus de poids sur les désaccords entre juges et les notes intermédiaires. La
+relecture a été faite **à l'aveugle** (nom du modèle et notes des juges masqués)
+par **Claude (Anthropic), pas par un humain** : ce relecteur appartient à la même
+famille qu'un modèle évalué et qu'un des trois juges.
+
+| Mesure | Résultat |
+|---|---|
+| Notes identiques à la moyenne du panel | 27 / 50 |
+| Écart d'au plus 1 point | 48 / 50 |
+| Écart moyen (relecteur − panel) | +0,26 : le panel est un peu plus sévère |
+| Ordre des modèles sur l'échantillon | identique, sauf GPT-6 Luna et Gemini 3.8 Flash (0,04 point d'écart) |
+
+Les deux écarts de plus d'un point portent sur une réponse de 50 mots pour une
+limite de 45, que les trois juges notent 2 et le relecteur 4, et sur une réponse
+que deux juges trouvent imprécise sur « les réponses les plus lentes ». Chaque
+juge a ses angles morts, que la moyenne compense : le juge Google accepte une
+réponse qui promet un remboursement immédiat, interdit par les critères ; le juge
+OpenAI accepte des questions doubles là où une seule est demandée, mais il est
+le seul à relever qu'un résumé écrit que le marketing « a été déplacé » quand le
+texte dit qu'il a été prévenu. Le relecteur l'avait manqué et a corrigé ces
+trois notes après levée de l'aveugle. Même avec la sévérité plus faible du
+relecteur, Llama 3.3 70B reste sous 3,5 sur l'échantillon (3,0 en communication
+concise, 3,4 en résumé) et les cinq autres modèles restent au-dessus de 4,0.
+
+Les seuils de 3,5 sont donc **calibrés** sans changement, avec deux réserves :
+la relecture n'est pas humaine, et l'exclusion de Llama 3.3 70B en résumé
+(3,16 pour le panel, 3,4 pour le relecteur) tient à une marge faible. Le détail
+des 50 notes est conservé localement dans
+`results/calibration/judged_review_20261103_143403.csv`.
 Un run n'est comparable à cette référence que si ses identifiants sont identiques
 (voir [la méthodologie qualité](quality-methodology.md)).
 
