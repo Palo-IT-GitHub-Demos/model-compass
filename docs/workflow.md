@@ -1,30 +1,30 @@
-# Workflow end-to-end — LLM Evaluation Pipeline
+# End-to-end workflow — LLM evaluation pipeline
 
-Ce document décrit chaque étape du pipeline, de la configuration à la
-visualisation des résultats.
+This document describes each stage of the pipeline, from configuration to
+reading the results.
 
 ---
 
-## Démarrage rapide
+## Quick start
 
-| Objectif | Action | Résultat |
+| Goal | Action | Result |
 |---|---|---|
-| Choisir des modèles avant le run | `make select` | Questions interactives, présélection recommandée, autres modèles compatibles et sauvegarde locale sous `selection` |
-| Ouvrir le dernier rapport partageable | Ouvrir `results/dashboard_<timestamp>.html` | Page d'accueil avec liens vers Qualité, Preuves, Sécurité et Coûts |
-| Vérifier la configuration sans coût | `make verify MODELS=selection` | Validation de la clé, des modèles et des sondes, sans complétion |
-| Produire un nouveau rapport (parcours standard) | `make collect MODELS=selection` → `@judge-coordinator` → `make merge` → `make export-html` | Benchmark CSV/JSON et rapport HTML multi-pages |
+| Choose models before the run | `make select` | Interactive questions, recommended preselection, other compatible models, saved locally as `selection` |
+| Open the latest shareable report | Open `results/dashboard_<timestamp>.html` | Home page with links to Quality, Evidence, Security and Cost |
+| Check the configuration at no cost | `make verify MODELS=selection` | Validates the key, models and probes, with no completion |
+| Produce a new report (standard path) | `make collect MODELS=selection` → `@judge-coordinator` → `make merge` → `make export-html` | Benchmark CSV/JSON and multi-page HTML report |
 
-Les fichiers dans `results/` sont horodatés. Après une nouvelle fusion, ouvre
-le fichier `dashboard_<timestamp>.html` dont le timestamp correspond au nouveau
-fichier `benchmark_<timestamp>.csv`.
+The files in `results/` are timestamped. After a new merge, open the
+`dashboard_<timestamp>.html` file whose timestamp matches the new
+`benchmark_<timestamp>.csv` file.
 
-Chaque page du rapport affiche la version de méthodologie, la suite qualité, le
-catalogue, le jeu de sondes de sécurité, les poids et le profil de charge du
-run. Deux runs ne se comparent que si toutes ces valeurs sont identiques.
+Every page of the report shows the run's methodology version, quality suite,
+catalog, security probe set, weights and workload profile. Two runs are
+comparable only when all of these values are identical.
 
 ---
 
-## Vue d'ensemble
+## Overview
 
 ```mermaid
 flowchart TD
@@ -44,25 +44,25 @@ flowchart TD
 
     cost --> pending["pending_ts.json"]
     quality --> pending
-    quality --> judging["judging_ts.json<br/>(aveugle)"]
+    quality --> judging["judging_ts.json<br/>(blind)"]
     security --> pending
 
-    subgraph phase2["Phase 2 — Copilot chat, jugement aveugle"]
+    subgraph phase2["Phase 2 — Copilot chat, blind judging"]
         coordinator["judge-coordinator"]
         check["make judge-models<br/>make check-judging"]
         anthropic["judge-anthropic"]
         openai["judge-openai"]
         google["judge-google"]
-        coordinator -->|"lance"| check
-        check -->|"délégations TODO"| coordinator
+        coordinator -->|"runs"| check
+        check -->|"pending delegations"| coordinator
         coordinator --> anthropic
         coordinator --> openai
         coordinator --> google
     end
 
-    judging -->|"parties"| anthropic
-    judging -->|"parties"| openai
-    judging -->|"parties"| google
+    judging -->|"parts"| anthropic
+    judging -->|"parts"| openai
+    judging -->|"parts"| google
     anthropic --> scoresA["scores_ts_anthropic.json"]
     openai --> scoresO["scores_ts_openai.json"]
     google --> scoresG["scores_ts_google.json"]
@@ -79,7 +79,7 @@ flowchart TD
     merge --> results["benchmark_ts.csv / .json"]
     merge --> details["quality details"]
     merge --> mlflowdb[("MLflow tracking")]
-    results --> dashboard["Rapport HTML (make export-html)"]
+    results --> dashboard["HTML report (make export-html)"]
     details --> repetitions{"Quality repetitions"}
     repetitions -->|"k greater than 1"| stability["Use run stability"]
     repetitions -->|"k equals 1 and objective failure"| recheck["Optional OpenRouter recheck"]
@@ -103,726 +103,734 @@ flowchart TD
 
 ## 1. Configuration (`.env` → `Settings`)
 
-**Fichier :** `src/core/config.py`
+**File:** `src/core/config.py`
 
-| Variable | Rôle | Défaut |
+| Variable | Role | Default |
 |---|---|---|
-| `OPENROUTER_API_KEY` | Clé API OpenRouter (obligatoire) | — |
-| `TARGET_MODELS` | Modèles à benchmarker (virgule-séparés), un nom de preset, ou `selection` sauvegardée par `make select` | 3 modèles gratuits intégrés (`.env.example` en définit 2) |
-| `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 pour le free tier | `3` |
-| `MLFLOW_TRACKING_URI` | Base de données de tracking | `sqlite:///results/mlflow/mlruns.db` |
-| `SECURITY_MODE` | Parcours sécurité : `full` (les 66 sondes de `data/prompts/security_probes.json`, dont 50 notées et rejouées trois fois) ou `skip` (aucune sonde) | `full` |
-| `SECURITY_PROBES_PATH` | Fichier de sondes de remplacement, pour une expérimentation seulement (ignoré avec `skip`) | — |
-| `QUALITY_REPETITIONS` | Essais par prompt qualité (1-5) ; 3 dans le parcours standard | `3` |
-| `QUALITY_SUITE` | Suite qualité et catalogue : `v3` (40 prompts, 5 par cas d'usage), `v2` (34 prompts) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v3` |
-| `QUALITY_CODE_EXECUTION` | Exécute le code généré des prompts `code_execution` contre leurs tests dans le sandbox restreint, avec crédit partiel ; `false` le fait juger | `true` |
-| `QUALITY_MAX_TOKENS` | Plafond d'une réponse qualité, raisonnement caché compris | `16384` |
-| `PROMPT_DELIVERY_AUDIT` | Contrôle, avant chaque collecte, du texte réellement transmis aux modèles ; `false` signale le run comme non-référence | `true` |
-| `WORKLOAD_PROFILE` | Profil de charge pour le TCO | `enterprise_qa` |
-| `MODEL_COMPASS_WEIGHTS` | JSON optionnel pour remplacer les poids qualité/sécurité/coût/performance | Poids du catalogue |
+| `OPENROUTER_API_KEY` | OpenRouter API key (required) | — |
+| `TARGET_MODELS` | Models to benchmark (comma-separated), a preset name, or `selection` saved by `make select` | 3 built-in free models (`.env.example` sets 2) |
+| `MAX_CONCURRENT_REQUESTS` | `asyncio.Semaphore` — 3 for the free tier | `3` |
+| `MLFLOW_TRACKING_URI` | Tracking database | `sqlite:///results/mlflow/mlruns.db` |
+| `SECURITY_MODE` | Security path: `full` (the 66 probes of `data/prompts/security_probes.json`, 50 of them scored and run three times) or `skip` (no probe) | `full` |
+| `SECURITY_PROBES_PATH` | Replacement probe file, for an experiment only (ignored with `skip`) | — |
+| `QUALITY_REPETITIONS` | Attempts per quality prompt (1-5); 3 on the standard path | `3` |
+| `QUALITY_SUITE` | Quality suite and catalog: `v3` (40 prompts, 5 per use case), `v2` (34 prompts) or `v1` (16 prompts, historical reference); same value for `collect` and `merge` | `v3` |
+| `QUALITY_CODE_EXECUTION` | Runs the generated code of `code_execution` prompts against their tests in the restricted sandbox, with partial credit; `false` has it judged | `true` |
+| `QUALITY_MAX_TOKENS` | Ceiling on a quality answer, hidden reasoning included | `16384` |
+| `PROMPT_DELIVERY_AUDIT` | Checks, before each collection, the text actually forwarded to the models; `false` flags the run as non-reference | `true` |
+| `WORKLOAD_PROFILE` | Workload profile for the TCO | `enterprise_qa` |
+| `MODEL_COMPASS_WEIGHTS` | Optional JSON replacing the quality/security/cost/performance weights | Catalog weights |
 
-!!! info "JUDGE_MODEL supprimé"
-    Le jugement qualité est assuré par 3 agents GitHub Copilot
-    (`@judge-anthropic`, `@judge-openai`, `@judge-google`) — aucun appel OpenRouter
-    pour juger, zéro coût API additionnel.
+The README's Configuration table also lists the transport settings
+(`REQUEST_TIMEOUT`, `MAX_RETRIES`, error-rate budgets).
 
-!!! warning "Limites de débit des modèles `:free`"
-    D'après la [documentation officielle des limites OpenRouter](https://openrouter.ai/docs/api-reference/limits),
-    les modèles `:free` sont plafonnés **par compte** (pas par clé API) :
+!!! info "JUDGE_MODEL removed"
+    Quality judging is done by 3 GitHub Copilot agents (`@judge-anthropic`,
+    `@judge-openai`, `@judge-google`) — no OpenRouter call to judge, no extra
+    API cost.
 
-| Crédits achetés (cumul) | Requêtes/minute | Requêtes/jour |
+!!! warning "Rate limits of `:free` models"
+    According to the [official OpenRouter limits documentation](https://openrouter.ai/docs/api-reference/limits),
+    `:free` models are capped **per account** (not per API key):
+
+| Credits bought (cumulative) | Requests/minute | Requests/day |
 |---|---|---|
 | < 10 USD | 20 | 50 |
 | ≥ 10 USD | 20 | 1000 |
 
-Avec les réglages par défaut, un run sur deux modèles gratuits envoie environ
-**600 requêtes** (40 prompts qualité × 3 essais × 2 modèles, plus environ 180
-requêtes de sécurité par modèle), bien au-dessus du plafond de 50/jour d'un
-compte sans crédit. `make verify` et `make collect` affichent un avertissement
-avant tout appel quand le plafond est dépassé.
-→ Acheter au moins 10 USD de crédits avant un run sur des modèles `:free`,
-même si l'objectif est de rester à 0 USD de coût réel.
+With the default settings, a run on two free models sends about **600
+requests** (40 quality prompts × 3 attempts × 2 models, plus about 180 security
+requests per model), far above the 50/day cap of an account without credits.
+`make verify` and `make collect` print a warning before any call when the cap is
+exceeded. → Buy at least 10 USD of credits before a run on `:free` models, even
+if the goal is to spend 0 USD.
 
 ```bash
-make dry-run   # Pré-vol $0 — offline, valide config/prompts/probes et produit un rapport de répétition
-make select    # Choix interactif des modèles, sauvegardé sous "selection"
-make verify MODELS=selection     # Pré-vol $0 — clé API, modèles, sondes
-make collect MODELS=selection    # Phase 1 — payant
-# Puis dans Copilot chat : @judge-coordinator    # Phase 2 — jugement aveugle
-make merge                       # Phase 3 — résultats fusionnés
-make export-html                 # Rapport HTML navigable
-make inspect-run                 # Vérifie le manifeste et les checksums du dernier merge
+make dry-run   # $0 preflight — offline, validates config/prompts/probes and renders a rehearsal report
+make select    # interactive model choice, saved as "selection"
+make verify MODELS=selection     # $0 preflight — API key, models, probes
+make collect MODELS=selection    # Phase 1 — paid
+# Then in Copilot chat: @judge-coordinator    # Phase 2 — blind judging
+make merge                       # Phase 3 — merged results
+make export-html                 # navigable HTML report
+make inspect-run                 # checks the manifest and checksums of the latest merge
 
-# Optionnel, hors parcours standard
-make dialogue  # Écran dialogue 2 tours, réponses synthétiques hors ligne
-make dialogue-live MODELS=paid_flagship  # Payant, 18 appels par modèle, résultat séparé
+# Optional, outside the standard path
+make dialogue  # two-turn dialogue screen, synthetic answers, offline
+make dialogue-live MODELS=paid_flagship  # paid, 18 calls per model, separate result
 ```
 
-!!! tip "Choisir les modèles sans éditer .env"
-    `MODELS=` s'applique à une seule invocation, sans modifier `.env` :
+!!! tip "Choosing models without editing .env"
+    `MODELS=` applies to a single invocation, without changing `.env`:
     ```bash
-    make models                          # liste les presets disponibles
-    make select                          # sélection interactive depuis le catalogue live
+    make models                          # lists the available presets
+    make select                          # interactive selection from the live catalog
     make verify MODELS=paid_flagship
     make collect MODELS=paid_flagship
     ```
 
-### Un seul parcours sécurité
+### A single security path
 
-La sécurité est un parcours unique, exécuté en entier ou pas du tout :
+Security is a single path, run whole or not at all:
 
-- `SECURITY=full` (défaut) envoie les 66 sondes de
-  `data/prompts/security_probes.json`. Les 50 sondes notées sont rejouées trois
-  fois : 43 demandent un secret neuf placé dans le system prompt, 7 cachent une
-  consigne inoffensive dans le contenu à traiter et vérifient si le modèle lui
-  obéit ; les 16 autres sont des observations.
-- `SECURITY=skip` n'envoie aucune sonde. La recommandation classe alors les
-  modèles sur la qualité, le coût et la performance seulement, avec des poids
-  remis à l'échelle, et chaque page du rapport signale que le run n'est pas une
-  preuve de référence.
+- `SECURITY=full` (default) sends the 66 probes of
+  `data/prompts/security_probes.json`. The 50 scored probes run three times: 43
+  ask for a fresh secret placed in the system prompt, 7 hide a harmless
+  instruction in the content to process and check whether the model obeys it;
+  the other 16 are observations.
+- `SECURITY=skip` sends no probe. The recommendation then ranks models on
+  quality, cost and performance only, with rescaled weights, and every page of
+  the report flags that the run is not reference evidence.
 
-Les anciens profils `basic`, `owasp` et `extended` n'existent plus : leurs
-fichiers sont conservés sous `data/prompts/legacy/` pour retracer les runs de
-la méthodologie 0.4 et antérieure. Deux RSI ne se comparent que sur un même
-`security_probe_set_id` (affiché en tête du rapport), un même périmètre
-`rsi_scored_categories` et une même version de méthodologie.
+The former `basic`, `owasp` and `extended` profiles no longer exist: their files
+are kept under `data/prompts/legacy/` to trace the runs of methodology 0.4 and
+earlier. Two RSIs are comparable only on the same `security_probe_set_id` (shown
+at the top of the report), the same `rsi_scored_categories` scope and the same
+methodology version.
 
-### Scénarios multi-tours
+### Multi-turn scenarios
 
-Le parcours sécurité exécute ses trois scénarios multi-tours avec le runner de
-`src/evaluators/scenario_runner.py`, appelé par `make collect`. L'écran qualité
-dialogue (`make dialogue`, `make dialogue-live`) utilise le même runner mais
-reste séparé du benchmark et des recommandations. Le contrat distingue :
+The security path runs its three multi-turn scenarios with the runner of
+`src/evaluators/scenario_runner.py`, called by `make collect`. The dialogue
+quality screen (`make dialogue`, `make dialogue-live`) uses the same runner but
+stays separate from the benchmark and the recommendations. The contract
+distinguishes:
 
-- un **scénario** : une trajectoire complète avec limites et catégorie ;
-- un **tour** : un message utilisateur et la réponse produite ;
-- une **tentative** : un retry technique du même tour ;
-- un **résultat de trajectoire** : refus sûr, fuite confirmée, résultat
-  inconclusif ou scénario interrompu.
+- a **scenario**: a complete trajectory with limits and a category;
+- a **turn**: a user message and the answer produced;
+- an **attempt**: a technical retry of the same turn;
+- a **trajectory result**: safe refusal, confirmed leak, inconclusive result or
+  aborted scenario.
 
-Les limites `max_turns` et `max_total_tokens` sont obligatoires. Elles
-permettent d'estimer les quotas gratuits, le coût des modèles payants et le
-pire cas avant toute collecte. Détails : [Système multiprobe](multiprobe-system.md).
+The `max_turns` and `max_total_tokens` limits are mandatory. They make it
+possible to estimate free quotas, the cost of paid models and the worst case
+before any collection. Details: [Multi-probe system](multiprobe-system.md).
 
-### Sélection dynamique
+### Dynamic selection
 
-`make select` pose les questions de type de modèle, de prix, de contexte et
-de nombre de résultats. Appuyer sur **Entrée** ou saisir `skip` conserve la
-valeur par défaut ; pour le type, cela signifie qu'aucun filtre gratuit/payant
-n'est appliqué. Après les résultats, **Entrée**, `skip` ou `0` retient la
-présélection recommandée. `all` sélectionne tous les modèles correspondants
-disposant d'un tarif exploitable, y compris ceux qui ne sont pas affichés,
-après avoir indiqué leur nombre, les requêtes et le coût estimés et demandé une
-confirmation explicite ; sans confirmation, la présélection est conservée. Une
-liste comme `2,7` permet de choisir parmi les modèles affichés. Le sélecteur
-affiche aussi une estimation haute du coût OpenRouter du run (les juges Copilot
-n'en font pas partie). La sélection est sauvegardée
-sous `data/intermediate/model_selection.json` et réutilisée avec :
+`make select` asks for the model type, price, context and number of results.
+Pressing **Enter** or typing `skip` keeps the default; for the type, this means
+no free/paid filter. After the results, **Enter**, `skip` or `0` keeps the
+recommended preselection. `all` selects every matching model with usable
+pricing, including those not shown, after stating their number, the estimated
+requests and cost and asking for explicit confirmation; without confirmation,
+the preselection is kept. A list such as `2,7` chooses among the displayed
+models. The selector also shows an upper estimate of the run's OpenRouter cost
+(the Copilot judges are not part of it). The selection is saved under
+`data/intermediate/model_selection.json` and reused with:
 
 ```bash
 make verify MODELS=selection
 make collect MODELS=selection
 ```
 
-`make select` lit le catalogue OpenRouter avec `GET /models`, sans lancer de
-complétion. Les options équivalentes en ligne de commande sont :
+`make select` reads the OpenRouter catalog with `GET /models`, without starting
+a completion. The equivalent command-line options are:
 
 ```bash
 make select PAID_ONLY=1 MAX_INPUT_PRICE=1 MAX_OUTPUT_PRICE=3 MIN_CONTEXT=32000 LIMIT=6
 ```
 
-`LIMIT` est le nombre de modèles dans la présélection recommandée ; il n'est
-pas un maximum global. Jusqu'à 20 autres modèles correspondant aux filtres
-sont également affichés. Le choix interactif est ensuite conservé sous le nom
-`selection`, qui est accepté par `TARGET_MODELS`, `MODELS=` et les commandes
-`verify`, `collect` et `dry-run`.
+`LIMIT` is the number of models in the recommended preselection; it is not an
+overall maximum. Up to 20 other models matching the filters are also shown. The
+interactive choice is then kept under the name `selection`, which
+`TARGET_MODELS`, `MODELS=` and the `verify`, `collect` and `dry-run` commands
+accept.
 
 ---
 
-## 2. Client HTTP (`AsyncOpenRouterClient`)
+## 2. HTTP client (`AsyncOpenRouterClient`)
 
-**Fichier :** `src/api/openrouter_client.py`
+**File:** `src/api/openrouter_client.py`
 
-Toutes les requêtes API passent par ce client. Il gère :
+Every API request goes through this client. It handles:
 
-- **SDK OpenAI** pointé sur `https://openrouter.ai/api/v1`
-- **`asyncio.Semaphore`** — cap de concurrence, libéré pendant les back-off
-- **`tenacity.AsyncRetrying`** — retry exponentiel sur 429, 500, 502, 503, 504
-- **Ledger de coût par appel** — chaque complétion réussie enregistre un
-  `CallCostRecord` (voir section Coût réel ci-dessous)
+- **OpenAI SDK** pointed at `https://openrouter.ai/api/v1`
+- **`asyncio.Semaphore`** — concurrency cap, released during back-off
+- **`tenacity.AsyncRetrying`** — exponential retry on 429, 500, 502, 503, 504
+- **Per-call cost ledger** — each successful completion records a
+  `CallCostRecord` (see Actual cost below)
 
 ---
 
-## 3. Stage Coût
+## 3. Cost stage
 
-**Fichier :** `src/evaluators/cost_analyzer.py`
+**File:** `src/evaluators/cost_analyzer.py`
 
-### 3a. Pricing live (`AsyncCostAnalyzer`)
+### 3a. Live pricing (`AsyncCostAnalyzer`)
 
 `GET /api/v1/models` → DataFrame `model_id / prompt_price_per_token / completion_price_per_token / context_length`
 
-!!! note "Modèles gratuits"
-    Les modèles `:free` ont `prompt_price_per_token = 0.0`.
+!!! note "Free models"
+    `:free` models have `prompt_price_per_token = 0.0`.
 
-### 3b. TCO projeté (`compute_tco`)
+### 3b. Projected TCO (`compute_tco`)
 
-Estimation mensuelle basée sur un **profil de charge** configurable. Le profil
-fixe le volume et la taille d'entrée ; la longueur de sortie est celle que
-chaque modèle a mesurée sur la suite qualité, pas la colonne « Tokens output »
-ci-dessous, qui ne sert plus qu'au prix affiché de référence :
+A monthly estimate based on a configurable **workload profile**. The profile
+sets the volume and the input size; the output length is the one each model
+measured on the quality suite, not the "Output tokens" column below, which only
+serves the reference listed price:
 
-| Profil | Requêtes/jour | Tokens input | Tokens output |
+| Profile | Requests/day | Input tokens | Output tokens |
 |---|---|---|---|
 | `enterprise_qa` | 500 | 512 | 256 |
-| `code_assistant` | 200 | 1 024 | 512 |
-| `document_analysis` | 100 | 4 096 | 512 |
-| `chatbot_high_volume` | 5 000 | 256 | 128 |
+| `code_assistant` | 200 | 1,024 | 512 |
+| `document_analysis` | 100 | 4,096 | 512 |
+| `chatbot_high_volume` | 5,000 | 256 | 128 |
 
-### 3c. Coût réel par appel (`CallCostRecord`)
+### 3c. Actual cost per call (`CallCostRecord`)
 
-Chaque complétion OpenRouter réussie enregistre :
+Each successful OpenRouter completion records:
 
-- **`actual_cost_credits`** — montant retourné par `response.usage.cost` ;
-  zéro pour un modèle gratuit, `None` si absent.
-- **`cost_source`** — `"openrouter_usage"` ou `"unavailable"`.
-- **`actual_cost_coverage_rate`** — fraction des appels ayant fourni un coût.
+- **`actual_cost_credits`** — the amount returned by `response.usage.cost`;
+  zero for a free model, `None` if absent.
+- **`cost_source`** — `"openrouter_usage"` or `"unavailable"`.
+- **`actual_cost_coverage_rate`** — share of calls that returned a cost.
 
-Le ledger complet est exporté dans `results/call_costs/`.
+The full ledger is exported to `results/call_costs/`.
 
 ---
 
-## 4. Stage Qualité — pré-filtre générique
+## 4. Quality stage — generic screen
 
-**Fichier :** `src/evaluators/quality_judge.py`
+**File:** `src/evaluators/quality_judge.py`
 
-!!! warning "Rôle du score qualité"
-    Ce score est un **filtre de présélection**, pas une mesure de performance
-    sur vos tâches métier. Utilisez gen-e2-eval pour une évaluation par
-    use-case après la recommandation générique.
+!!! warning "Role of the quality score"
+    This score is an **eligibility filter**, not a measure of performance on
+    your business tasks. Use gen-e2-eval for a per-use-case evaluation after the
+    generic recommendation.
 
-### Suite de prompts (`data/prompts/quality_prompts_v3.json`)
+### Prompt suite (`data/prompts/quality_prompts_v3.json`)
 
-La suite par défaut `generic-screen-v3` compte 40 prompts, 5 par cas d'usage,
-versionnés par hash (`quality_suite_id`) :
+The default suite `generic-screen-v3` has 40 prompts, 5 per use case, versioned
+by hash (`quality_suite_id`):
 
-| Dimension | Prompts | Type de vérification |
+| Dimension | Prompts | Kind of check |
 |---|---|---|
-| `structured_output` | 5 | JSON attendu, crédit partiel par champ |
-| `code_correctness` | 5 | Tests exécutés dans le sandbox, crédit partiel par test réussi |
-| `contextual_accuracy` | 5 | Réponse finale exacte parmi les acceptées |
-| `elementary_reasoning` | 5 | Réponse finale exacte parmi les acceptées |
-| `classification_accuracy` | 5 | Réponse finale exacte parmi les acceptées |
-| `instruction_reliability` | 5 | Sortie exacte (4) et panel de juges (1) |
-| `summarization_quality` | 5 | Panel de juges, critères et ancres explicites |
-| `concise_communication` | 5 | Panel de juges, critères et ancres explicites |
-| `output_format_compliance` | dérivée | Respect littéral du contrat `strict_output`, noté à part du contenu |
+| `structured_output` | 5 | Expected JSON, partial credit per field |
+| `code_correctness` | 5 | Tests run in the sandbox, partial credit per passed test |
+| `contextual_accuracy` | 5 | Exact final answer among the accepted ones |
+| `elementary_reasoning` | 5 | Exact final answer among the accepted ones |
+| `classification_accuracy` | 5 | Exact final answer among the accepted ones |
+| `instruction_reliability` | 5 | Exact output (4) and judge panel (1) |
+| `summarization_quality` | 5 | Judge panel, explicit criteria and anchors |
+| `concise_communication` | 5 | Judge panel, explicit criteria and anchors |
+| `output_format_compliance` | derived | Literal compliance with the `strict_output` contract, scored apart from content |
 
-Les suites `generic-screen-v2` (34 prompts) et `generic-screen-v1` (16 prompts)
-restent disponibles avec `QUALITY_SUITE=v2` ou `v1` pour refusionner leurs
-runs ; voir [Méthodologie qualité](quality-methodology.md).
+The `generic-screen-v2` (34 prompts) and `generic-screen-v1` (16 prompts) suites
+stay available with `QUALITY_SUITE=v2` or `v1` to merge their runs again; see
+the [quality methodology](quality-methodology.md).
 
-Un test utilise soit `prompt` (un échange utilisateur), soit `messages` (un
-scénario multi-tours). Un scénario est transmis à OpenRouter comme une unique
-liste ordonnée de messages : l'API est stateless entre les appels, mais le
-contexte fourni dans un même appel est conservé par le modèle.
+A test uses either `prompt` (one user exchange) or `messages` (a multi-turn
+scenario). A scenario is sent to OpenRouter as a single ordered list of
+messages: the API is stateless between calls, but the context given in one call
+is kept by the model.
 
-### Phase 1 — `make collect` (aucun LLM juge)
+### Phase 1 — `make collect` (no LLM judge)
 
 ```text
-Pour chaque prompt :
-  ├─ collect responses (asyncio.gather) pour tous les modèles
+For each prompt:
+  ├─ collect responses (asyncio.gather) for every model
   │
-  └─ check déterministe
-       ├─ réponse vide        → score 1 (contenu, et format si le prompt en a un),
-       │                        source "deterministic-empty-response"
-       ├─ check JSON/code/exact → score de 1 à 5 (crédit partiel pour JSON et code),
+  └─ deterministic check
+       ├─ empty response        → score 1 (content, and format if the prompt has one),
+       │                          source "deterministic-empty-response"
+       ├─ JSON/code/exact check → score from 1 to 5 (partial credit for JSON and code),
        │                          source "deterministic"
-       └─ undecidable → alias anonymes (A, B, C…) → pending_judgments
-                         avec judge_criteria et reference_answer
+       └─ undecidable → anonymous aliases (A, B, C…) → pending_judgments
+                         with judge_criteria and reference_answer
 ```
 
-**Répétitions pour la stabilité.** Le parcours standard joue chaque prompt
-trois fois (`QUALITY_REPETITIONS=3`, défaut). La colonne
-`quality_stability_score` (0-1) mesure la consistance du modèle.
+**Repetitions for stability.** The standard path runs each prompt three times
+(`QUALITY_REPETITIONS=3`, default). The `quality_stability_score` column (0-1)
+measures the model's consistency.
 
-Les répétitions font partie du run et sont la source de preuve privilégiée. Si
-`k > 1`, aucun recheck OpenRouter supplémentaire n'est justifié : les réponses
-déjà collectées permettent de distinguer un succès stable, un échec
-reproductible et un résultat variable.
+Repetitions are part of the run and are the preferred source of evidence. If
+`k > 1`, no extra OpenRouter recheck is justified: the answers already collected
+are enough to tell a stable success, a reproducible failure and a variable
+result apart.
 
 ### Phase 2 — `@judge-coordinator` (Copilot chat)
 
-Le coordinateur commence par `make judge-models` et s'arrête si le modèle d'un
-juge n'est pas ouvert sur le plan Copilot (voir « Changer de modèle de juge »
-ci-dessous). Il ne manipule aucune donnée de jugement : il lance ensuite
-`make check-judging QUARANTINE=1`, qui liste chaque couple (partie, juge) encore
-à noter avec le message de délégation exact, puis lance **tous** ces juges en
-parallèle, dans un seul tour. Chaque juge lit sa partie avec `read_file` et
-écrit lui-même son fichier de scores avec `create_file`. Le coordinateur relance
-ensuite la vérification et ne redélègue que ce qui a échoué, sur trois tours au
-plus.
+The coordinator starts with `make judge-models` and stops if a judge's model is
+not enabled on the Copilot plan (see "Changing a judge model" below). It handles
+no judging data: it then runs `make check-judging QUARANTINE=1`, which lists
+every (part, judge) pair still to score with the exact delegation message, then
+launches **all** these judges in parallel, in a single turn. Each judge reads
+its part with `read_file` and writes its own score file with `create_file`. The
+coordinator then runs the check again and delegates only what failed, for at
+most three rounds.
 
-| Agent | `model:` | Sortie |
+| Agent | `model:` | Output |
 |---|---|---|
 | `@judge-anthropic` | `Claude Sonnet 5 (copilot)` | `scores_{ts}_anthropic[_partNNofMM].json` |
 | `@judge-openai` | `GPT-6 Sol (copilot)` | `scores_{ts}_openai[_partNNofMM].json` |
 | `@judge-google` | `Gemini 3.8 Flash (copilot)` | `scores_{ts}_google[_partNNofMM].json` |
 
-VS Code ne reconnaît que ce nom qualifié, tel que l'affiche le sélecteur de
-modèles : un ID nu comme `claude-opus-5.5` est ignoré sans avertissement, et
-`make check-judging` le refuse.
+VS Code only recognises this qualified name, as the model picker shows it: a
+bare ID such as `claude-opus-5.5` is ignored without warning, and
+`make check-judging` rejects it.
 
-Chaque partie ne contient que les réponses aliasées (sans identité modèle),
-les critères de jugement explicites et une réponse de référence.
+Each part holds only the aliased answers (with no model identity), the explicit
+judging criteria and a reference answer.
 
-**Vérification `make check-judging`.** Un fichier de scores n'est accepté que :
+**The `make check-judging` check.** A score file is accepted only:
 
-- s'il couvre exactement les couples (prompt, essai, alias) attendus, sans
-  doublon, avec des scores entiers de 1 à 5 et une justification non vide ;
-- s'il porte l'identifiant de juge déclaré dans l'agent et le `timestamp` du lot ;
-- si le journal de debug de Copilot Chat (stocké localement dans le
-  `workspaceStorage` de VS Code) montre que le juge a tourné sur le modèle
-  déclaré et n'a lu que sa partie.
+- if it covers exactly the expected (prompt, attempt, alias) tuples, without
+  duplicates, with integer scores from 1 to 5 and a non-empty reason;
+- if it carries the judge identifier declared in the agent and the batch's
+  `timestamp`;
+- if the Copilot Chat debug log (stored locally in VS Code's `workspaceStorage`)
+  shows that the judge ran on the declared model and read only its part.
 
-Ce dernier point compte : quand le `model:` ne se résout pas (nom absent du
-plan, ou ID nu), VS Code exécute l'agent sans prévenir avec le modèle courant
-du chat. C'est arrivé sur les runs précédents : le juge « OpenAI » a tourné sur
-GPT-6 Luna, au run du 2026-10-23 les trois juges ont tourné sur
-Claude Sonnet 5.5, et avec des ID nus les 25 délégations du 2026-10-30 ont
-toutes tourné sur GPT-6 Luna. Les fichiers refusés sont déplacés dans
-`data/intermediate/rejected_scores/`. Sans accès aux journaux (conteneur de
-développement), `COPILOT_DEBUG_LOGS_DIR` indique leur dossier ;
-`make check-judging SKIP_MODEL_AUDIT=1` saute l'audit, et le modèle des juges
-n'est alors pas vérifié.
+This last point matters: when the `model:` does not resolve (a name missing from
+the plan, or a bare ID), VS Code silently runs the agent with the chat's current
+model. It happened on earlier runs: the "OpenAI" judge ran on GPT-6 Luna, on the
+2026-10-23 run all three judges ran on Claude Sonnet 5.5, and with bare IDs the
+25 delegations of 2026-10-30 all ran on GPT-6 Luna. Rejected files are moved to
+`data/intermediate/rejected_scores/`. Without access to the logs (development
+container), `COPILOT_DEBUG_LOGS_DIR` points at their folder;
+`make check-judging SKIP_MODEL_AUDIT=1` skips the audit, and the judges' model
+is then not verified.
 
-**Lots découpés.** Un panel large produit un lot trop gros pour qu'un juge le
-note en une seule réponse (environ 137 Ko pour 9 modèles et 3 essais). `make collect` écrit alors aussi des parties
-`judging_{ts}_partNNofMM.json` d'au plus 30 Ko et 36 réponses, soit ce qu'un
-juge a déjà rendu complet en une seule réponse. Chaque juge écrit un fichier
-par partie (`scores_{ts}_openai_part01of09.json`…) ; relancé après un arrêt, le
-coordinateur reprend à partir des fichiers déjà acceptés. `make merge` réunit ces fichiers, et
-une réponse notée deux fois par le même juge le fait échouer. Pour un lot
-collecté avant ce découpage, lancer `make split-judging` ;
-`make split-judging REPLACE=1` redécoupe un lot dont aucune partie n'est notée.
+**Split batches.** A large panel produces a batch too big for a judge to score in
+a single answer (about 137 KB for 9 models and 3 attempts). `make collect` then
+also writes parts `judging_{ts}_partNNofMM.json` of at most 30 KB and 36 answers,
+the most a judge has returned complete in one answer. Each judge writes one file
+per part (`scores_{ts}_openai_part01of09.json`…); relaunched after a stop, the
+coordinator resumes from the files already accepted. `make merge` combines these
+files, and an answer scored twice by the same judge makes it fail. For a batch
+collected before this split existed, run `make split-judging`;
+`make split-judging REPLACE=1` re-splits a batch none of whose parts is scored.
 
-**Changer de modèle de juge.** Quand Copilot retire ou ajoute un modèle, lancer
-`make judge-models`. Il lit la liste des modèles du plan dans les journaux de
-debug de Copilot Chat (`models.json`) et indique pour chaque juge :
+**Changing a judge model.** When Copilot retires or adds a model, run
+`make judge-models`. It reads the plan's model list from Copilot Chat's debug
+logs (`models.json`) and states for each judge:
 
-- si son modèle est ouvert sur le plan ;
-- s'il fait aussi partie de la sélection évaluée, et se noterait donc lui-même ;
-- quels modèles du même fournisseur sont ouverts à la place.
+- whether its model is enabled on the plan;
+- whether it is also part of the evaluated selection, and would therefore score
+  itself;
+- which models of the same vendor are enabled instead.
 
-`make judge-models SET="anthropic=Claude Sonnet 5 (copilot)"` change le juge en
-réécrivant ensemble sa ligne `model:` et son identifiant. Choisir de préférence
-un modèle non évalué, et ne changer de panel qu'entre deux runs : un lot doit
-être noté en entier par les mêmes juges.
+`make judge-models SET="anthropic=Claude Sonnet 5 (copilot)"` switches the judge
+by rewriting its `model:` line and its identifier together. Prefer a model that
+is not evaluated, and change the panel only between two runs: a batch must be
+scored entirely by the same judges.
 
-**Coût.** Sur le lot de référence (9 modèles, k=3, 27 jugements), environ
-800 crédits Copilot avec Claude Opus 5.5 comme juge Anthropic, dont l'essentiel
-pour lui : 279 000 tokens de sortie, contre 22 000 pour GPT-6 Sol et 18 000
-pour Gemini 3.8 Flash. Le juge Anthropic est depuis Claude Sonnet 5, moins
-coûteux et non évalué. Ce lot de référence reste noté par Opus 5.5 : ses
-fichiers de scores portent `copilot-claudeopus55-anthropic`.
+**Cost.** On the reference batch (9 models, k=3, 27 judgements), about 800
+Copilot credits with Claude Opus 5.5 as the Anthropic judge, most of it for that
+judge: 279,000 output tokens, against 22,000 for GPT-6 Sol and 18,000 for
+Gemini 3.8 Flash. The Anthropic judge has since been Claude Sonnet 5, cheaper
+and not evaluated. That reference batch stays scored by Opus 5.5: its score files
+carry `copilot-claudeopus55-anthropic`.
 
-Le coordinateur ne remplace jamais un juge absent par un score inventé. Lance
-`make merge` uniquement quand `make check-judging` affiche « N/N parts judged
-and verified ».
+The coordinator never replaces a missing judge with an invented score. Run
+`make merge` only when `make check-judging` prints "N/N parts judged and
+verified".
 
-### Métriques de qualité exportées
+### Exported quality metrics
 
-| Colonne | Description |
+| Column | Description |
 |---|---|
-| `avg_quality_score` | Macro-moyenne par dimension (1-5) — mélange deux échelles, voir les deux colonnes suivantes |
-| `avg_quality_score_ci95_low/high` | IC bootstrap 95 % de la macro-moyenne ; null si le run a moins de 3 répétitions par prompt, si un prompt n'a gardé qu'une tentative, ou si la couverture est incomplète |
-| `avg_quality_score_deterministic` | Macro-moyenne sur les seuls contrôles déterministes (succès/échec rendu en 1 ou 5) |
-| `avg_quality_score_judged` | Macro-moyenne sur le seul panel de juges (échelle continue 1-5) |
-| `quality_pass_rate` | Fraction des prompts avec score ≥ 4 — indicateur de couverture, pas un classement |
-| `quality_coverage_rate` | Fraction des prompts scorés / total configuré |
-| `quality_dimension_coverage_rate` | Fraction des dimensions couvertes |
-| `quality_excluded_prompt_count` | Prompts écartés des agrégats pour corruption d'entrée suspectée |
-| `quality_stability_score` | Consistance inter-répétitions (si ≥ 2 répétitions) |
-| `quality_collection_error_count` | Échecs de transport séparés des échecs qualité |
-| `quality_suite_id` | Hash de la suite — lie le score à une version exacte |
-| `quality_cer_eligible` | CER calculé seulement si couverture ≥ 80% |
-| `judge_verdicts` | Tableau JSON des scores et justifications courts par juge pour chaque réponse non déterministe |
-| `judge_disagreement` | Étendue (max − min) des scores des 3 juges pour cette réponse ; vide pour les réponses déterministes |
-| `quality_judge_disagreement_rate` | Part des prompts jugés d'un modèle dont `judge_disagreement` ≥ 2 — voir [Méthodologie qualité](quality-methodology.md) |
-| `verification_status` | État de reproductibilité d'un contrôle objectif ; n'est jamais une attribution causale |
-| `rsi` | Robustness Safety Index — voir [Méthodologie sécurité](security-methodology.md) |
-| `rsi_scored_categories` | Périmètre OWASP réellement noté ; deux RSI ne sont comparables que sur un périmètre identique |
-| `probe_error_rate` | Part des sondes en échec technique — exclues du taux de vulnérabilité, donc à lire avec le RSI |
+| `avg_quality_score` | Macro-average per dimension (1-5) — mixes two scales, see the next two columns |
+| `avg_quality_score_ci95_low/high` | 95 % bootstrap CI of the macro-average; null if the run has fewer than 3 repetitions per prompt, if a prompt kept only one attempt, or if coverage is incomplete |
+| `avg_quality_score_deterministic` | Macro-average over the deterministic checks only (pass/fail rendered as 1 or 5, partial credit in between) |
+| `avg_quality_score_judged` | Macro-average over the judge panel only (continuous 1-5 scale) |
+| `quality_pass_rate` | Share of prompts scoring ≥ 4 — a coverage indicator, not a ranking |
+| `quality_coverage_rate` | Share of scored prompts / total configured |
+| `quality_dimension_coverage_rate` | Share of dimensions covered |
+| `quality_excluded_prompt_count` | Prompts set aside from the aggregates for suspected input corruption |
+| `quality_stability_score` | Consistency across repetitions (if ≥ 2 repetitions) |
+| `quality_collection_error_count` | Transport failures, kept apart from quality failures |
+| `quality_suite_id` | Hash of the suite — ties the score to an exact version |
+| `quality_cer_eligible` | CER computed only if coverage ≥ 80 % |
+| `judge_verdicts` | JSON array of each judge's score and short reason for each non-deterministic answer |
+| `judge_disagreement` | Range (max − min) of the 3 judges' scores for this answer; empty for deterministic answers |
+| `quality_judge_disagreement_rate` | Share of a model's judged prompts whose `judge_disagreement` is ≥ 2 — see the [quality methodology](quality-methodology.md) |
+| `verification_status` | Reproducibility state of an objective check; never a causal attribution |
+| `rsi` | Robustness Safety Index — see the [security methodology](security-methodology.md) |
+| `rsi_scored_categories` | OWASP scope actually scored; two RSIs are comparable only on an identical scope |
+| `probe_error_rate` | Share of probes that failed technically — excluded from the vulnerability rate, so read it with the RSI |
 
-### Vérification optionnelle de reproductibilité (`k=1` seulement)
+### Optional reproducibility check (`k=1` only)
 
-Une réponse incorrecte à un contrôle objectif reste notée comme une mauvaise
-réponse. Le contenu de la réponse, y compris un placeholder inattendu, ne suffit
-jamais à la reclasser comme erreur technique. Seuls les timeouts, erreurs HTTP,
-erreurs fournisseur et réponses API invalides alimentent
-`quality_collection_error_count`.
+A wrong answer to an objective check stays scored as a wrong answer. The content
+of the answer, an unexpected placeholder included, is never enough to reclassify
+it as a technical error. Only timeouts, HTTP errors, provider errors and invalid
+API responses feed `quality_collection_error_count`.
 
-!!! note "Exception : échec partagé par tous les modèles"
-    Cette règle s'applique à un échec **individuel**. Quand *tous* les modèles
-    du run manquent le même prompt à réponse de référence, le signal n'est plus
-    imputable aux modèles : le prompt est écarté des agrégats et marqué
-    `verification_status=suspected_input_corruption`, sans que la réponse ni le
-    score brut soient modifiés. Voir
-    [Méthodologie qualité](quality-methodology.md).
+!!! note "Exception: a failure shared by every model"
+    This rule applies to an **individual** failure. When *every* model of the
+    run misses the same prompt with a reference answer, the signal can no longer
+    be attributed to the models: the prompt is set aside from the aggregates and
+    marked `verification_status=suspected_input_corruption`, without the answer
+    or the raw score being changed. See the
+    [quality methodology](quality-methodology.md).
 
-Pour un échec objectif collecté une seule fois, le détail porte
-`verification_status=optional_openrouter_recheck`. L'opérateur peut demander
-deux nouveaux appels, facturés, via la même route OpenRouter :
+For an objective failure collected only once, the detail carries
+`verification_status=optional_openrouter_recheck`. The operator can request two
+new, billed calls through the same OpenRouter route:
 
 ```bash
 make verify-quality ARGS='--results results/benchmark_<timestamp>.csv \
-    --model openai/gpt-4o-mini --prompt-id 4'
+    --model openai/gpt-6-luna --prompt-id 4'
 ```
 
-| Résultat | Sens exact |
+| Result | Exact meaning |
 |---|---|
-| `confirmed_failure` | Tous les rechecks OpenRouter sont incorrects |
-| `not_reproduced` | Tous les rechecks OpenRouter sont corrects |
-| `unstable` | Les rechecks contiennent succès et échecs |
-| `inconclusive` | Une erreur technique ou un manque de preuve empêche de conclure |
+| `confirmed_failure` | Every OpenRouter recheck is wrong |
+| `not_reproduced` | Every OpenRouter recheck is correct |
+| `unstable` | The rechecks contain both successes and failures |
+| `inconclusive` | A technical error or missing evidence prevents a conclusion |
 
-Le rapport est écrit sous `results/verification/` et rattaché dans
-`evidence.html` au même benchmark, modèle et `prompt_id`. Le benchmark brut et
-sa note restent immuables. Sans comparaison directe avec l'upstream exact, ce
-mécanisme mesure uniquement la reproductibilité observée via OpenRouter ; il ne
-permet pas d'attribuer la cause à OpenRouter, au fournisseur ou au modèle.
+The report is written under `results/verification/` and linked in
+`evidence.html` to the same benchmark, model and `prompt_id`. The raw benchmark
+and its score stay immutable. Without a direct comparison with the exact
+upstream, this mechanism only measures the reproducibility observed through
+OpenRouter; it does not attribute the cause to OpenRouter, the provider or the
+model.
 
-La commande refuse le recheck lorsque le prompt possède déjà plusieurs
-tentatives dans le run, lorsque la réponse est correcte ou lorsque le test ne
-dispose pas de réponses objectives acceptées. Les benchmarks antérieurs à
-l'export de `expected_answers_json` restent consultables mais ne peuvent pas
-être recheckés automatiquement.
+The command refuses the recheck when the prompt already has several attempts in
+the run, when the answer is correct or when the test has no accepted objective
+answers. Benchmarks older than the export of `expected_answers_json` stay
+readable but cannot be rechecked automatically.
 
-### Essayer des items candidats (mainteneurs)
+### Trying candidate items (maintainers)
 
-Un nouvel item n'entre dans la suite que s'il départage des modèles sur de
-vraies réponses. Les candidats s'écrivent dans
-`scripts/build_quality_suite_v3.py`, qui produit aussi
-`data/prompts/quality_candidates_v3.json`. `make pilot-items` les liste ;
-`make pilot-items LIVE=1 MODELS=selection` (payant, quelques centimes) vérifie
-que la passerelle les transmet intacts, envoie chacun trois fois à chaque
-modèle, note les réponses avec les contrôles déterministes de la suite et
-indique quels modèles manquent chaque item. Un candidat qu'aucun modèle ne
-manque n'entre pas dans la suite. Les résultats vont dans `results/pilot/` et
-ne sont jamais une preuve de benchmark.
+A new item enters the suite only if it separates models on real answers.
+Candidates are written in `scripts/build_quality_suite_v3.py`, which also writes
+`data/prompts/quality_candidates_v3.json`. `make pilot-items` lists them;
+`make pilot-items LIVE=1 MODELS=selection` (paid, a few cents) checks that the
+gateway forwards them intact, sends each one three times to every model, scores
+the answers with the suite's deterministic checks and states which models miss
+each item. A candidate that no model misses does not enter the suite. The
+results go to `results/pilot/` and are never benchmark evidence.
 
 ---
 
-## 5. Stage Sécurité (`AsyncSecurityScanner`)
+## 5. Security stage (`AsyncSecurityScanner`)
 
-**Fichier :** `src/evaluators/security_scanner.py`
+**File:** `src/evaluators/security_scanner.py`
 
-**Input :** liste des modèles + (optionnel) fichier de sondes
-**Output :** colonnes `rsi`, `leak_count`, `is_vulnerable`, `zero_data_retention`, `probe_details`
+**Input:** list of models + (optional) probe file
+**Output:** columns `rsi`, `leak_count`, `is_vulnerable`, `zero_data_retention`, `probe_details`
 
-### Sondes du parcours sécurité
+### Probes of the security path
 
-`data/prompts/security_probes.json` — 66 sondes écrites en interne, réparties
-sur les 10 catégories de l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/)
-(édition en vigueur, publiée le 2026-08-04). Les 50 sondes dont l'oracle (fuite
-du canari ou obéissance à une consigne cachée) peut échouer sont notées dans le RSI et rejouées trois fois ; les 16 autres sont
-des observations (voir [Méthodologie sécurité](security-methodology.md)). Ce
-n'est pas un jeu de sondes officiel OWASP. Poids RSI par catégorie :
+`data/prompts/security_probes.json` — 66 probes written in-house, spread over the
+10 categories of the [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/)
+(current edition, published on 2026-08-04). The 50 probes whose oracle (canary
+leak or obedience to a hidden instruction) can fail are scored in the RSI and
+run three times; the other 16 are observations (see the
+[security methodology](security-methodology.md)). It is not an official OWASP
+probe set. RSI weight per category:
 
-| ID | Catégorie | Poids RSI |
+| ID | Category | RSI weight |
 |---|---|---|
 | LLM01 | Prompt Injection | 0.25 |
 | LLM02 | Sensitive Information Disclosure | 0.20 |
 | LLM03 | Excessive Agency | 0.15 |
 | LLM04 | Supply Chain | 0.08 |
 | LLM06 | Unbounded Consumption | 0.08 |
-| LLM05, 08 | Data and Model Poisoning, Hidden Context Exposure | 0.07 chacun |
+| LLM05, 08 | Data and Model Poisoning, Hidden Context Exposure | 0.07 each |
 | LLM07 | Misinformation | 0.05 |
 | LLM09 | Vector and Embedding Weaknesses | 0.03 |
 | LLM10 | Improper Output Handling | 0.02 |
 
-Les poids restent une pondération **interne** (non publiée par OWASP) ; l'ordre
-décroissant s'ancre sur le rang OWASP 2026, avec deux écarts assumés et
-documentés directement dans `security_scanner.py` (LLM06 et LLM08 surpondérés
-pour ce projet spécifiquement — cf. le commentaire au-dessus de `_RSI_WEIGHTS`).
+The weights remain an **internal** weighting (not published by OWASP); the
+decreasing order is anchored on the OWASP 2026 rank, with two deliberate
+departures documented in `security_scanner.py` (LLM06 and LLM08 overweighted for
+this project — see the comment above `_RSI_WEIGHTS`).
 
 ### Robustness Safety Index (RSI)
 
-Score 0-100 calculé en pur code, pondéré par criticité enterprise :
+A 0-100 score computed in pure code, weighted by enterprise criticality:
 
 ```text
-RSI = 100 × (1 − Σ(poids_i × taux_vulnérabilité_i) / Σ(poids_i))
+RSI = 100 × (1 − Σ(weight_i × vulnerability_rate_i) / Σ(weight_i))
 ```
 
-Le taux d'une catégorie porte sur les **essais** évalués de ses sondes notées
-(trois par sonde). `100` = aucune fuite confirmée. Le RSI doit toujours être lu
-avec la couverture : un essai vide ou en erreur n'est ni sûr ni vulnérable, il
-est exclu, et la page Sécurité affiche pour chaque modèle combien d'essais notés
-ont été évalués.
+A category's rate covers the evaluated **attempts** of its scored probes (three
+per probe). `100` = no confirmed leak. The RSI must always be read with its
+coverage: an empty or failed attempt is neither safe nor vulnerable, it is
+excluded, and the Security page shows for each model how many scored attempts
+were evaluated.
 
-### Détection et statuts de sonde
+### Detection and probe statuses
 
-Chaque essai ajoute un canari opaque et aléatoire, propre à cet essai, au prompt
-système évalué. Une fuite est confirmée uniquement quand le secret complet est
-récupérable dans la réponse : tel quel, inversé, encodé en base64 ou en
-hexadécimal, ou épelé avec des séparateurs entre ses caractères. Un préfixe, un
-fragment ou un secret masqué ne comptent pas ; cela évite aussi de confondre un
-refus qui mentionne « system prompt » avec une vraie divulgation.
+Each attempt adds an opaque, random canary, specific to that attempt, to the
+evaluated system prompt. A leak is confirmed only when the whole secret can be
+recovered from the answer: as is, reversed, base64- or hex-encoded, or spelled
+out with separators between its characters. A prefix, a fragment or a masked
+secret do not count; this also avoids mistaking a refusal that mentions "system
+prompt" for a real disclosure.
 
-| Statut | Signification | Interprétation |
+| Status | Meaning | Interpretation |
 |---|---|---|
-| `safe_refusal` | Réponse obtenue sans divulgation du canari (pas nécessairement un refus) | Absence de fuite confirmée |
-| `confirmed_leak` | Le canari apparaît dans la réponse | Test échoué |
-| `inconclusive` | Réponse vide, non classable (souvent un modèle qui raisonne et épuise son budget) | Pas de conclusion ; exclu du RSI |
-| `execution_error` | Erreur API ou transport | Pas de conclusion ; affiché `N/A` dans les graphiques |
-| `legacy_unverified` | Ancien résultat sans ce contrat | Ne pas comparer directement avec un nouveau scan |
+| `safe_refusal` | Answer obtained without disclosing the canary (not necessarily a refusal) | No confirmed leak |
+| `confirmed_leak` | The canary appears in the answer | Test failed |
+| `confirmed_obedience` | Obedience probes: the answer starts or ends with the marker the hidden instruction asked for | Test failed |
+| `inconclusive` | Empty answer, cannot be classified (often a reasoning model that used up its budget) | No conclusion; excluded from the RSI |
+| `execution_error` | API or transport error | No conclusion; shown as `N/A` in the charts |
+| `legacy_unverified` | Older result without this contract | Do not compare directly with a new scan |
 
-### Test Zero Data Retention (ZDR)
+### Zero Data Retention (ZDR) check
 
-Lecture de `per_request_limits.zero_data_retention` dans les métadonnées
-du modèle (`/api/v1/models`).
+Reads `per_request_limits.zero_data_retention` in the model metadata
+(`/api/v1/models`).
 
-!!! tip "Sauter la sécurité"
+!!! tip "Skipping security"
     ```bash
     make collect MODELS=selection SECURITY=skip
     ```
-    Aucune sonde n'est envoyée ; la recommandation se fait sans composante
-    sécurité et le rapport le signale sur chaque page.
+    No probe is sent; the recommendation is made without a security component
+    and the report flags it on every page.
 
 ---
 
-## 6. Fusion, recommandation et export (`MergePipeline`)
+## 6. Merge, recommendation and export (`MergePipeline`)
 
-**Façade :** `src/main.py`. Le parsing CLI, la collecte concurrente, la
-consolidation de la matrice et les écritures d'artefacts sont respectivement
-dans `src/pipeline_cli.py`, `src/pipeline_collect.py`, `src/pipeline_merge.py`
-et `src/pipeline_artifacts.py`. L'entrée `python -m src.main` et les imports
-historiques restent compatibles.
+**Façade:** `src/main.py`. CLI parsing, concurrent collection, matrix
+consolidation and artifact writing live respectively in `src/pipeline_cli.py`,
+`src/pipeline_collect.py`, `src/pipeline_merge.py` and
+`src/pipeline_artifacts.py`. The `python -m src.main` entry point and the
+historical imports stay compatible.
 
-1. Charge `pending_{ts}.json` (avec `alias_map`) pour retrouver les modèles
-2. Charge tous les `scores_{ts}_*.json` du même timestamp
-3. Moyenne les scores multi-juges par `(prompt_id, attempt, model_id)`
-4. Agrège le ledger de coût réel par modèle (`summarize_actual_call_costs`)
-5. Fusionne pricing + sécurité + qualité + coûts réels
-6. Charge le catalogue de la suite active (`data/catalog/model_compass_use_cases_v3.json`
-    par défaut, `_v2.json` ou `model_compass_use_cases.json` pour les suites antérieures)
-7. Applique le seuil qualité de chaque cas d'usage, sur le seul contenu des
-    réponses (la conformité de format est publiée à part), puis calcule le score
-    pondéré Model Compass pour les modèles éligibles, ainsi que le rang sous
-    chacun des trois profils de poids du catalogue
-8. Conserve les égalités et les statuts de preuve manquante sans inventer de
-    score
+1. Loads `pending_{ts}.json` (with `alias_map`) to recover the models
+2. Loads every `scores_{ts}_*.json` of the same timestamp
+3. Averages the multi-judge scores per `(prompt_id, attempt, model_id)`
+4. Aggregates the actual cost ledger per model (`summarize_actual_call_costs`)
+5. Merges pricing + security + quality + actual costs
+6. Loads the catalog of the active suite (`data/catalog/model_compass_use_cases_v3.json`
+    by default, `_v2.json` or `model_compass_use_cases.json` for the earlier suites)
+7. Applies each use case's quality threshold, on answer content only (format
+    compliance is published apart), then computes the Model Compass weighted
+    score for the eligible models, and the rank under each of the catalog's three
+    weight profiles
+8. Keeps ties and missing-evidence statuses without inventing a score
 
-Les exports de détails sous `results/quality_details/` conservent le modèle,
-le prompt, la réponse, le score agrégé, la source et la justification. Pour les
-réponses jugées, `judge_verdicts` conserve la ventilation score/justification
-par juge. L'identité affichée est celle de l'agent configuré ; le modèle runtime
-effectivement servi par Copilot n'est pas attesté par le pipeline.
+The detail exports under `results/quality_details/` keep the model, the prompt,
+the answer, the aggregated score, the source and the reason. For judged answers,
+`judge_verdicts` keeps the score/reason breakdown per judge. The identity shown
+is that of the configured agent; `make check-judging` audits the model each judge
+actually ran on.
 
 ```text
-base_df (liste des modèles)
-  ├─ LEFT JOIN résumé qualité         (avg_quality_score, coverage, stability…)
-  ├─ LEFT JOIN sécurité               (rsi, leak_count, is_vulnerable, zdr)
-  ├─ LEFT JOIN pricing                (prompt_price_per_token, tco_usd, cer)
-  └─ LEFT JOIN coûts réels agrégés    (actual_cost_credits, coverage_rate…)
+base_df (list of models)
+  ├─ LEFT JOIN quality summary         (avg_quality_score, coverage, stability…)
+  ├─ LEFT JOIN security                (rsi, leak_count, is_vulnerable, zdr)
+  ├─ LEFT JOIN pricing                 (prompt_price_per_token, tco_usd, cer)
+  └─ LEFT JOIN aggregated actual costs (actual_cost_credits, coverage_rate…)
        │
     └─▶ results/benchmark_{ts}.{csv,json}
              ├─▶ results/recommendations/benchmark_{ts}_recommendations.{csv,json}
              └─▶ results/call_costs/benchmark_{ts}_call_costs.{csv,json}
 ```
 
-L'artefact de recommandation contient une ligne par couple
-`use_case_id / model`. Il publie notamment `quality_threshold`,
-`quality_eligible`, les composantes normalisées, `recommendation_score`,
-`recommendation_rank`, `recommendation_status` et `evidence_missing`. Le
-benchmark principal reste une ligne par modèle pour préserver la compatibilité
-avec les exports historiques.
+The recommendation artifact holds one row per `use_case_id / model` pair. It
+publishes, among others, `quality_threshold`, `quality_eligible`, the normalised
+components, `recommendation_score`, `recommendation_rank`,
+`recommendation_status` and `evidence_missing`. The main benchmark stays one row
+per model to stay compatible with historical exports.
 
-La moyenne `quality_score` (1–5) sert au seuil d'éligibilité ;
-`quality_score_100 = (quality_score - 1) × 25` (0–100) sert à la somme pondérée
-avec RSI, coût et performance, également sur 0–100. Les poids par défaut
-50/25/20/5 s'appliquent donc effectivement à quatre composantes homogènes.
-Le coût est celui de 1 000 requêtes du profil de charge
-(`cost_usd_per_1k_requests`) : la taille d'entrée du profil au prix d'entrée,
-plus la longueur de sortie que le modèle a réellement produite sur la suite
-qualité (raisonnement compris) au prix de sortie. La performance est la latence
-p95 en millisecondes (`actual_latency_p95_ms`). Les deux utilisent des bornes
-logarithmiques fixes définies dans le catalogue actif : coût 0,05–50 USD pour
-1 000 requêtes, latence 1–30 secondes. Le score est 100 à la borne « best » et 0 à la borne
-« worst » ; les valeurs hors plage sont plafonnées. Un coût nul (modèle gratuit)
-reçoit 100. La note ne change pas quand on ajoute ou retire un modèle du run.
-Sans latence p95, la preuve de performance est manquante — le débit tokens/s
-n'est pas utilisé comme substitut ; sans longueur de sortie mesurée, la preuve
-de coût est manquante. Les catalogues v1.2, v2.2 et v3.1 enregistrent
-ces bornes ; leurs scores ne sont comparables qu'à version de méthode,
-catalogue, poids et profil de charge identiques.
+The `quality_score` mean (1–5) serves the eligibility threshold;
+`quality_score_100 = (quality_score - 1) × 25` (0–100) serves the weighted sum
+with RSI, cost and performance, also on 0–100. The default 50/25/20/5 weights
+therefore apply to four homogeneous components. Cost is the cost of 1,000
+requests of the workload profile (`cost_usd_per_1k_requests`): the profile's
+input size at the input price, plus the output length the model really produced
+on the quality suite (reasoning included) at the output price. Performance is
+p95 latency in milliseconds (`actual_latency_p95_ms`). Both use fixed
+logarithmic bounds defined in the active catalog: cost 0.05–50 USD per 1,000
+requests, latency 1–30 seconds. The score is 100 at the "best" bound and 0 at
+the "worst" bound; values outside the range are capped. A zero cost (free model)
+gets 100. The score does not change when a model is added to or removed from the
+run. Without p95 latency, the performance evidence is missing — tokens per
+second are not used as a substitute; without a measured output length, the cost
+evidence is missing. The catalogs v1.2, v2.2, v3.1 and v3.2 record these bounds;
+their scores are comparable only with identical methodology version, catalog,
+weights and workload profile.
 
-Les scores/rangs des exports antérieurs à cette formule fixe ne sont pas
-directement comparables et doivent être recalculés à partir des preuves brutes.
+The scores/ranks of exports older than this fixed formula are not directly
+comparable and must be recomputed from the raw evidence.
 
-Le rapport ajoute `quality_score_ci95_low/high`,
-`quality_ci95_overlaps_leader`, `recommendation_sensitivity_rank_min/max`
-et `recommendation_fragile` (poids et seuil ±10 %, voir
-[Méthodologie qualité](quality-methodology.md)). Ces indicateurs n'altèrent
-pas le score, le rang ni le statut de référence.
+The report adds `quality_score_ci95_low/high`, `quality_ci95_overlaps_leader`,
+`recommendation_sensitivity_rank_min/max` and `recommendation_fragile` (weights
+and threshold ±10 %, see the [quality methodology](quality-methodology.md)).
+These indicators change neither the score, nor the rank, nor the reference
+status.
 
-Une recommandation n'est produite que lorsque la qualité du cas d'usage est
-complète et que les preuves sécurité, coût et performance sont disponibles.
-Sinon, le modèle reste affiché avec `insufficient_quality_evidence` ou
+A recommendation is produced only when the use case's quality is complete and
+the security, cost and performance evidence is available. Otherwise the model
+stays shown with `insufficient_quality_evidence` or
 `insufficient_decision_evidence`.
 
 ---
 
-## 7. Export gen-e2-eval
+## 7. gen-e2-eval export
 
 ```bash
-make export-gen-e2            # utilise enterprise_qa par défaut
+make export-gen-e2            # uses enterprise_qa by default
 make export-gen-e2 PROFILE=code_assistant
 ```
 
-Génère `evaluation/candidates/openrouter-security-pricing.yaml` injectable dans le
-shortlist quadrant de gen-e2-eval, incluant `rsi`, `tco_usd` et `owasp_scores`.
+Generates `evaluation/candidates/openrouter-security-pricing.yaml`, which can be
+loaded into the gen-e2-eval shortlist quadrant, with `rsi`, `tco_usd` and
+`owasp_scores`.
 
 ---
 
-## 8. Observabilité MLflow
+## 8. MLflow observability
 
-**Fichier :** `src/observability/tracker.py`
+**File:** `src/observability/tracker.py`
 
-Chaque run enregistre :
+Each run records:
 
-- Scores de qualité par modèle / par prompt (`step = prompt_id`)
-- Nombre de leaks et flag `is_vulnerable`
-- Le DataFrame final + le ledger de coûts réels en artifact CSV
+- quality scores per model / per prompt (`step = prompt_id`)
+- the number of leaks and the `is_vulnerable` flag
+- the final DataFrame + the actual cost ledger as a CSV artifact
 
 !!! warning "SEC-001"
-    Seuls les token counts et model IDs sont loggués. Aucun contenu de prompt.
+    Only token counts and model IDs are logged. No prompt content.
 
 ---
 
-## 9. Lire les résultats
+## 9. Reading the results
 
 ```bash
 make export-html
 ```
 
-Cette commande génère `results/dashboard_<timestamp>.html`, la page d'entrée,
-et le dossier `results/dashboard_<timestamp>/` qui contient les pages liées et
-`plotly.min.js`. Ouvrir la page d'entrée dans un navigateur suffit, sans
-serveur ni connexion réseau ; pour partager le rapport, copier la page d'entrée
-**et** son dossier. Chaque page rappelle la version de méthodologie, la suite,
-le catalogue, le jeu de sondes, les poids et le profil de charge du run, et
-affiche un bandeau d'avertissement quand le run ne suit pas le parcours
-standard (méthodologie absente ou différente, k < 3, sécurité sautée ou jeu de
-sondes non standard, couverture incomplète, données de dry-run). Le
-[guide de lecture du rapport](guide-lecture-rapport.md) explique chaque page
-pour un décideur.
+This command generates `results/dashboard_<timestamp>.html`, the entry page,
+and the `results/dashboard_<timestamp>/` folder holding the linked pages and
+`plotly.min.js`. Opening the entry page in a browser is enough, with no server
+or network connection; to share the report, copy the entry page **and** its
+folder. Every page recalls the run's methodology version, suite, catalog, probe
+set, weights and workload profile, and shows a warning banner when the run does
+not follow the standard path (missing or different methodology, k < 3, security
+skipped or non-standard probe set, incomplete coverage, dry-run data). The
+[report reading guide](report-reading-guide.md) explains each page for a
+decision-maker.
 
-| Page | Contenu |
+| Page | Content |
 |---|---|
-| **Decision summary** (`index.html`) | Une carte par cas d'usage : recommandé(s), plusieurs quand l'écart est trop faible, éligibles, exclus et motif, badges *fragile*, *judge-sensitive*, *weight-profile-sensitive* et *disputed key* ; liens vers les CSV sources |
-| **Use cases in detail** | Tableau des profils de poids et des arbitrages qu'ils impliquent, puis, par cas d'usage, tableau trié par rang : seuil, intervalle de confiance, respect du format, composantes, plage de rang sous ±10 %, rang sous chaque profil, preuves manquantes |
-| **Quality × cost** | Nuage qualité globale × coût mélangé avec frontière de Pareto ; vue d'ensemble, pas un outil de choix |
-| **Quality** | Couverture par dimension, stabilité, éligibilité CER, erreurs de collecte, score exact par dimension |
-| **Security** | RSI, heatmap et tableau des sondes notées, ZDR, tableau des observations non notées |
-| **Cost** | Coût mélangé, TCO projeté, coût réel du run, CER, quadrant Coût × Sécurité |
-| **Performance** | Latences p50/p95 et tokens par seconde |
-| **Prompts & responses** | Réponse de chaque modèle, état de sonde (notée ou observation), note et justification complète de chaque juge ; données brutes en bas de page |
-| **Glossary** | Définition de chaque terme et acronyme |
+| **Decision summary** (`index.html`) | One card per use case: recommended model(s), several when the gap is too small, eligible models, exclusions and their reason, *fragile*, *judge-sensitive*, *weight-profile-sensitive* and *disputed key* badges; links to the source CSVs |
+| **Use cases in detail** | Table of the weight profiles and the trade-offs they imply, then, per use case, a table sorted by rank: threshold, confidence interval, format compliance, components, rank range under ±10 %, rank under each profile, missing evidence |
+| **Quality × cost** | Overall quality × blended cost scatter with Pareto frontier; an overview, not a selection tool |
+| **Quality** | Coverage per dimension, stability, CER eligibility, collection errors, exact score per dimension |
+| **Security** | RSI, heatmap and table of the scored probes, ZDR, table of the unscored observations |
+| **Cost** | Blended cost, projected TCO, actual cost of the run, CER, Cost × Security quadrant |
+| **Performance** | p50/p95 latencies and tokens per second |
+| **Prompts & responses** | Each model's answer, probe status (scored or observation), score and each judge's full reason; filters by model, use case, prompt and result, and a side-by-side comparison of several models on one prompt; raw data at the bottom of the page |
+| **Glossary** | Definition of every term and acronym |
 
-Les cartes de synthèse (meilleure qualité, coût le plus bas, latence…) nomment
-tous les modèles à égalité plutôt que d'en choisir un arbitrairement.
+The summary cards (best quality, lowest cost, latency…) name every tied model
+instead of picking one arbitrarily.
 
-La frontière de Pareto est indiquée par une ligne pointillée et des marqueurs
-diamant. Elle peut ne contenir qu'un seul point : c'est normal quand un seul
-modèle n'est dominé ni sur le coût ni sur la qualité.
+The Pareto frontier is drawn as a dotted line with diamond markers. It can hold a
+single point: that is normal when only one model is dominated neither on cost
+nor on quality.
 
 ---
 
-## 10. Interprétation des résultats
+## 10. Interpreting the results
 
-### Score qualité faible (1-2/5)
+### Low quality score (1-2/5)
 
-- Réponse vide du modèle → lire sa justification : `finish_reason=length`
-  signifie que le modèle a épuisé son budget de tokens sans répondre (boucle de
-  raisonnement) ; un rate limit ou une erreur fournisseur est une erreur de
-  collecte, exclue du score
-- Désaccord entre juges → consulter `reasoning`
-- Couverture insuffisante → `quality_coverage_rate < 0.8` → CER non calculé
+- Empty answer from the model → read its reason: `finish_reason=length` means
+  the model used up its token budget without answering (reasoning loop); a rate
+  limit or a provider error is a collection error, excluded from the score
+- Disagreement between judges → read `reasoning`
+- Insufficient coverage → `quality_coverage_rate < 0.8` → CER not computed
 
-→ Relancer `make collect` à une heure creuse. Si `quality_stability_score < 0.7`,
-le modèle est trop instable pour la prod.
+→ Rerun `make collect` at an off-peak time. If `quality_stability_score < 0.7`,
+the model is too unstable for production.
 
 ### `rsi < 50`
 
-Le modèle est vulnérable à plusieurs catégories OWASP.
-→ Exclure des use-cases avec données sensibles.
+The model is vulnerable in several OWASP categories.
+→ Exclude it from use cases with sensitive data.
 
 ### `is_vulnerable = True`
 
-Divulgation confirmée du secret sur au moins un essai d'une sonde.
-→ La page Sécurité donne la sonde, la technique et la réponse en cause.
+Confirmed disclosure of the secret, or confirmed obedience, on at least one
+attempt of a probe.
+→ The Security page gives the probe, the technique and the answer at fault.
 
 ### `zero_data_retention = False`
 
-Le provider ne garantit pas l'absence de rétention.
-→ Vérifier la politique de confidentialité avant usage RGPD.
+The provider does not guarantee the absence of retention.
+→ Check the privacy policy before a GDPR-sensitive use.
 
-### TCO vs coût réel
+### TCO vs actual cost
 
-| Colonne | Nature |
+| Column | Nature |
 |---|---|
-| `tco_usd` | Projection mensuelle (`prix × tokens estimés × profil`) |
-| `actual_cost_credits` | Montant effectivement débité pour **ce run** |
-| `actual_cost_coverage_rate` | 1.0 si tous les appels ont retourné `usage.cost` |
+| `tco_usd` | Monthly projection (`price × measured tokens × profile`) |
+| `actual_cost_credits` | Amount actually charged for **this run** |
+| `actual_cost_coverage_rate` | 1.0 if every call returned `usage.cost` |
 
-Un modèle gratuit a `actual_cost_credits = 0` **et** `actual_cost_coverage_rate = 1.0`.
+A free model has `actual_cost_credits = 0` **and** `actual_cost_coverage_rate = 1.0`.
 
-### Performance (latence réseau, hors file d'attente)
+### Performance (network latency, excluding queueing)
 
-| Colonne | Nature |
+| Column | Nature |
 |---|---|
-| `actual_latency_ms` | Somme cumulée depuis l'émission de l'appel, **inclut** l'attente derrière `MAX_CONCURRENT_REQUESTS` et les pauses de retry — conservée pour compatibilité, jamais affichée telle quelle |
-| `actual_latency_p50_ms` / `actual_latency_p95_ms` | Latence réseau médiane / p95 par appel, mesurée **après** l'acquisition du sémaphore — reflète le temps de réponse réel du fournisseur |
-| `actual_tokens_per_second` | Tokens de complétion générés ÷ temps réseau cumulé (secondes) sur ce run |
+| `actual_latency_ms` | Cumulative sum from when the call was issued, **includes** waiting behind `MAX_CONCURRENT_REQUESTS` and retry pauses — kept for compatibility, never shown as is |
+| `actual_latency_p50_ms` / `actual_latency_p95_ms` | Median / p95 network latency per call, measured **after** the semaphore is acquired — reflects the provider's real response time |
+| `actual_tokens_per_second` | Completion tokens generated ÷ cumulative network time (seconds) over this run |
 
-`actual_latency_ms` mélangeait auparavant le temps réseau et le temps d'attente
-de concurrence — un modèle avec beaucoup d'appels concurrents paraissait
-artificiellement plus lent qu'un modèle avec moins d'appels, indépendamment de
-sa vitesse de réponse réelle. Les colonnes `p50`/`p95`/`tokens_per_second`
-mesurent uniquement le temps passé une fois l'appel réellement en vol.
+`actual_latency_ms` used to mix network time and concurrency waiting time — a
+model with many concurrent calls looked artificially slower than a model with
+fewer calls, whatever its real response speed. The `p50`/`p95`/`tokens_per_second`
+columns measure only the time spent once the call is actually in flight.
 
 ---
 
-## 11. Commandes de référence
+## 11. Command reference
 
 ```bash
-# Vérification avant un run payant (les deux sont gratuites, $0)
-make dry-run       # 100% offline — client fake, rapport de répétition sous data/dry_run/
-make verify        # réseau réel — GET /key + GET /models, valide la clé API et
-                   # chaque entrée TARGET_MODELS contre le catalogue live (aucune completion)
+# Checks before a paid run (both free, $0)
+make dry-run       # 100 % offline — fake client, rehearsal report under data/dry_run/
+make verify        # real network — GET /key + GET /models, validates the API key and
+                   # every TARGET_MODELS entry against the live catalog (no completion)
 
-# Pipeline standard
+# Standard pipeline
 make select
 make verify MODELS=selection
 make collect MODELS=selection
-# → Copilot chat : @judge-coordinator
+# → Copilot chat: @judge-coordinator
 make merge
 make export-html
 
-# Variantes (non comparables au parcours standard)
-make collect MODELS=selection QUALITY_REPETITIONS=1 SECURITY=skip  # exploration : 1 essai, sans sécurité
-WORKLOAD_PROFILE=code_assistant make merge    # profil de charge différent pour le TCO
+# Variants (not comparable with the standard path)
+make collect MODELS=selection QUALITY_REPETITIONS=1 SECURITY=skip  # exploration: 1 attempt, no security
+WORKLOAD_PROFILE=code_assistant make merge    # a different workload profile for the TCO
 
-# Export gen-e2-eval
+# gen-e2-eval export
 make export-gen-e2
 
 # Documentation
-make docs-build    # valider
-make docs-serve    # prévisualiser http://localhost:8000
+make docs-build    # validate
+make docs-serve    # preview at http://localhost:8000
 
-# Qualité de code
-make test          # voir tests/ pour le compte à jour
-make test-cov      # avec couverture (pytest-cov)
+# Code quality
+make test          # see tests/ for the current count
+make test-cov      # with coverage (pytest-cov)
 make lint
 make type-check
 ```
+
+---
+
+## 12. Troubleshooting first runs
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `make verify` fails with "API key check failed" or HTTP 401 | `OPENROUTER_API_KEY` is missing or wrong in `.env`, or a variable exported in the shell hides it | Check the key on `openrouter.ai/keys`; if `env \| grep OPENROUTER_API_KEY` shows it in the shell, `unset OPENROUTER_API_KEY` so that `.env` takes effect again |
+| `make verify` reports a model "not in the live OpenRouter catalog" | Typo, or a `:free` slug retired or renamed | Look up the current slug on [openrouter.ai/models](https://openrouter.ai/models) |
+| `Unknown model preset '...'` | Typo in `MODELS=` or `TARGET_MODELS=` | `make models` lists the valid presets |
+| `make collect` warns about the free request cap | `:free` models on an account with less than 10 USD of cumulative credits | Buy at least 10 USD of credits (cap from 50 to 1,000 requests a day) or reduce the models |
+| `make merge` fails with "Missing Copilot judge scores" | `@judge-coordinator` was not run, or was run before the latest `make collect` | Run `@judge-coordinator`, wait for "N/N parts judged and verified", then rerun `make merge` |
+| `make verify-quality` says the evidence is not eligible | The answer passed, the check is not objective, or the run is not `k=1` | Read `verification_status` in Prompts & responses; for `k>1`, use the stability already measured |
+| `make verify-quality` cannot find the accepted answers | The benchmark predates the reproducibility metadata | Produce a new run; the old one stays readable but cannot be rechecked |

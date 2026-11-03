@@ -748,4 +748,4 @@ def test_the_probe_review_table_matches_the_probe_set() -> None:
         cells = [cell.strip() for cell in row.strip("|").split("|")]
         assert cells[1] == probe["category_id"]
         assert cells[2] == probe["technique"]
-        assert cells[3] == ("oui" if probe_is_scored(probe) else "non"), probe["name"]
+        assert cells[3] == ("yes" if probe_is_scored(probe) else "no"), probe["name"]

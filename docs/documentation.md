@@ -1,30 +1,34 @@
-# Maintenir la documentation
+# Maintaining the documentation
 
-Source de vérité par section :
+The living documentation is written in English. The pages under "Project
+history" and "Benchmark research" are dated records and keep their original
+language.
 
-| Section | Source | Mise à jour |
+Source of truth by section:
+
+| Section | Source | Update |
 |---|---|---|
-| Workflow (`workflow.md`) | Écrite à la main | À chaque changement de comportement du pipeline |
-| Référence API (`reference/api.md`) | Docstrings dans `src/` et `dashboard/` | Automatique — `mkdocstrings` régénère au build |
-| ADR (`adr/`) | Écrite à la main, un fichier par décision | À chaque décision d'architecture significative |
-| Plans (`plans/`) | Écrite à la main | À la création ou à la clôture d'un plan d'implémentation |
+| Workflow (`workflow.md`) | Written by hand | On every change of pipeline behaviour |
+| API reference (`reference/api.md`) | Docstrings in `src/` and `dashboard/` | Automatic — `mkdocstrings` regenerates it at build time |
+| ADR (`adr/`) | Written by hand, one file per decision | On every significant architecture decision |
+| Plans (`plans/`) | Written by hand | When an implementation plan is created or closed |
 
-## Avant de committer un changement de documentation
+## Before committing a documentation change
 
 ```bash
-make docs-build   # validation stricte (liens, navigation, mkdocstrings)
-make docs-serve   # aperçu local avec rechargement à chaud
+make docs-build   # strict validation (links, navigation, mkdocstrings)
+make docs-serve   # local preview with live reload
 ```
 
-`make docs-build --strict` échoue si :
+`make docs-build` (strict mode) fails when:
 
-- un lien interne pointe vers une page absente ou hors de `nav` (voir `mkdocs.yml`) ;
-- un module référencé par une directive `::: chemin.du.module` n'est pas importable ;
-- mkdocs détecte un avertissement (warnings-as-errors en mode strict).
+- an internal link points to a missing page or to a page outside `nav` (see `mkdocs.yml`);
+- a module referenced by a `::: module.path` directive cannot be imported;
+- mkdocs reports a warning (warnings are errors in strict mode).
 
-## Ajouter un module à la référence API
+## Adding a module to the API reference
 
-1. Ajouter le module dans `docs/reference/api.md` avec une directive `::: chemin.du.module`.
-2. Le module doit être importable sans effet de bord au niveau module (pas de
-   lecture de fichiers ni d'appel réseau à l'import).
-3. Lancer `make docs-build` pour valider avant de committer.
+1. Add the module to `docs/reference/api.md` with a `::: module.path` directive.
+2. The module must import without module-level side effects (no file reads and
+   no network calls at import time).
+3. Run `make docs-build` to validate before committing.

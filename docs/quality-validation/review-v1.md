@@ -1,39 +1,37 @@
-# Revue de validation de la suite qualité v1
+# Validation review of quality suite v1
 
-## Métadonnées
+## Metadata
 
-- **Date** : 2026-08-25
-- **Portée** : auto-revue réalisée par l'auteur des prompts lors de la
-  formalisation de la [méthodologie qualité](../quality-methodology.md),
-  complétée par un jugement IA sur le contenu des prompts eux-mêmes (et pas
-  seulement sur les réponses des modèles évalués). Aucune revue par une
-  tierce personne externe au projet n'est planifiée ; ce choix est assumé
-  pour un outil de screening interne.
+- **Date**: 2026-08-25
+- **Scope**: self-review by the author of the prompts while writing the
+  [quality methodology](../quality-methodology.md), complemented by an AI
+  judgement of the prompts themselves (not only of the evaluated models'
+  answers). No review by a third party outside the project is planned; this is
+  an accepted choice for an internal screening tool.
 
-## Objectif
+## Goal
 
-Documenter la revue initiale de la suite de prompts de qualité (16 prompts,
-6 dimensions, 13 corrections déterministes + 3 jugements à l'aveugle) utilisée
-pour le screening de modèles.
+Record the initial review of the quality prompt suite (16 prompts, 6
+dimensions, 13 deterministic checks + 3 blind judgements) used to screen
+models.
 
-## Résumé
+## Summary
 
-- la suite cible des capacités de base pertinentes pour un pré-sélectionnement ;
-- elle ne prétend pas mesurer la qualité métier complète ;
-- elle doit être interprétée comme un signal de shortlist.
+- the suite targets basic capabilities relevant to a preselection;
+- it does not claim to measure full business quality;
+- it must be read as a shortlist signal.
 
-## Critères de revue
+## Review criteria
 
-- le prompt est compréhensible ;
-- la réponse attendue est clairement définie ;
-- le prompt est provider-neutral ;
-- la capacité testée est utile au screening.
+- the prompt is understandable;
+- the expected answer is clearly defined;
+- the prompt is provider-neutral;
+- the tested capability is useful for screening.
 
 ## Verdict
 
-La suite peut être utilisée comme outil de screening générique tant qu'elle est
-interprétée dans ses limites (voir la section 3 de
-[quality-methodology.md](../quality-methodology.md)). Complément prévu : faire
-juger la suite de prompts elle-même par une IA, en plus de la relecture directe
-par l'auteur, pour croiser les regards sans dépendre d'une revue humaine
-externe.
+The suite can be used as a generic screening tool as long as it is read within
+its limits (see section 3 of [quality-methodology.md](../quality-methodology.md)).
+Planned complement: have an AI judge the prompt suite itself, in addition to the
+author's direct review, to cross-check without depending on an external human
+review.

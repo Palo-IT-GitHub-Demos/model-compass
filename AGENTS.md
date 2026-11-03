@@ -151,7 +151,7 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   sidecar outcome recomputed without each model's own-provider judge
   (`*_without_affiliated_judge`, `affiliated_judge_changes_outcome`) and the
   report flags a use case as judge-sensitive when it differs — see
-  `docs/quality-methodology.md` "Fiabilité et biais du panel de juges"
+  `docs/quality-methodology.md` "Judge panel reliability and bias"
 - `judge_disagreement` / `quality_judge_disagreement_rate` surface inter-judge
   disagreement instead of silently averaging over it. Keep the mean rather
   than a median: with exactly 3 judges a median just picks the middle one
@@ -249,6 +249,9 @@ must be checked in the static HTML export (`make export-html`).
 
 ## Documentation Maintenance
 
+- Write the README, the CHANGELOG and the living `docs/` pages in English; the
+  ADRs and the pages under "Project history" and "Benchmark research" are dated
+  records and keep their original language
 - Update `CHANGELOG.md` under `[Unreleased]` for every user-visible feature,
   behavioral change, bug fix, deprecation, or operational command, in the same
   change (`.github/instructions/changelog.instructions.md`); CI fails a pull
