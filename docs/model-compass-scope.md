@@ -209,11 +209,34 @@ est exclu, quel que soit son prix. Avec cinq items par cas d'usage :
   « critère partiel », ce qui laisse de la place à la sévérité variable des juges
   sur des critères en partie subjectifs.
 
-Ces seuils restent `draft`. Ils passent à `calibrated` après un run de
-référence de la suite v3 et une relecture humaine d'environ 50 réponses jugées
-(voir le [plan de livraison](plans/plan-livraison-v0.4.md)).
+**Calibration sur le run de référence 0.7.0.** Le run du 3 novembre 2026
+(`results/benchmark_20261103_143403`) est la référence de la méthodologie 0.7.0 :
+`quality_suite_id` `generic-screen-v3-be713fff517f`, catalogue `v3.2`,
+`security_probe_set_id` `full-fafdd3e07f92`, poids par défaut, profil
+`enterprise_qa`, six modèles. Les seuils y séparent les modèles sans ambiguïté :
 
-Les catalogues `model-compass-use-cases-v1.2`, `v2.2` et `v3.1` fixent les
+| Cas d'usage | Seuil | Plus bas éligible | Meilleur exclu |
+|---|---:|---|---|
+| Extraction structurée | 4,0 | 4,20 (Claude Sonnet 5.5) | 2,23 (Llama 3.3 70B) |
+| Code court | 4,0 | 4,44 (GPT-6 Luna) | 3,74 (Llama 3.3 70B) |
+| Question-réponse avec contexte | 4,0 | 4,73 (GPT-6 Luna) | 1,27 (Llama 3.3 70B) |
+| Raisonnement borné | 4,0 | 4,20 (Claude Sonnet 5.5) | 3,40 (Llama 3.3 70B) |
+| Classification et routage | 4,0 | 4,20 (Claude Sonnet 5.5) | 3,13 (Llama 3.3 70B) |
+| Résumé | 3,5 | 4,60 (Gemini 3.8 Flash) | 3,16 (Llama 3.3 70B) |
+| Communication concise | 3,5 | 4,09 (Claude Sonnet 5.5) | 3,40 (Llama 3.3 70B) |
+| Suivi d'instruction | 4,0 | 4,36 (GPT-6 Luna) | 3,27 (Claude Sonnet 5.5) |
+
+Les modèles éligibles les plus bas sont à 4,20, soit exactement un item raté sur
+cinq ; aucun modèle ne tombe entre 3,75 et 4,0, où un seul essai ferait basculer
+l'éligibilité. Les seuils de 4,0 des cas d'usage à contrôle déterministe sont
+donc **calibrés** sans changement. Les seuils de 3,5 du résumé et de la
+communication concise séparent aussi les modèles sur ce run, mais reposent sur
+les juges : ils restent **provisoires** jusqu'à la relecture humaine d'environ 50
+réponses jugées prévue au [plan de livraison](plans/plan-livraison-v0.4.md).
+Un run n'est comparable à cette référence que si ses identifiants sont identiques
+(voir [la méthodologie qualité](quality-methodology.md)).
+
+Les catalogues `model-compass-use-cases-v1.2`, `v2.2`, `v3.1` et `v3.2` fixent les
 bornes du calcul : 0,05–50 USD pour 1 000 requêtes du profil et 1–30
 secondes pour la latence p95. Le coût d'une requête est la taille d'entrée du
 profil au prix d'entrée, plus la longueur de sortie que le modèle a réellement

@@ -1688,8 +1688,10 @@ catalog = json.loads((ROOT / "data/catalog/model_compass_use_cases_v2.json").rea
 names = {use_case["id"]: use_case for use_case in catalog["use_cases"]}
 catalog["catalog_version"] = "model-compass-use-cases-v3.2"
 catalog["description"] = (
-    "Use-case catalog for the generic-screen-v3 suite: five items per generic use case. Thresholds stay draft "
-    "until calibrated on a reference run; weights and profiles are justified in docs/model-compass-scope.md. "
+    "Use-case catalog for the generic-screen-v3 suite: five items per generic use case. The deterministic "
+    "thresholds (4.0) are calibrated on the methodology 0.7.0 reference run of 3 November 2026; the judged ones "
+    "(3.5) await a human review of judged answers. Weights and profiles are justified in "
+    "docs/model-compass-scope.md. "
     "Recommendation component scores use the fixed logarithmic anchors below."
 )
 catalog["weight_profiles"] = {

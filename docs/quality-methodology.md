@@ -411,10 +411,12 @@ de code doit passer ses propres tests dans le sandbox avant toute écriture. Ce
 script est la source de la suite et de son catalogue : un item se modifie là, pas
 dans le JSON, et un test échoue si les fichiers versionnés s'en écartent.
 
-Les difficultés restent des hypothèses d'auteur (`difficulty_status = draft`)
-jusqu'au premier run de référence de la v3 : l'analyse des items
-(`results/quality_analysis/`) dira lesquels sont saturés, au plancher ou
-contestés.
+Le champ `difficulty_status` des items reste `draft` : le modifier changerait
+l'empreinte `quality_suite_id` et rendrait le run de référence 0.7.0
+incomparable aux suivants. La difficulté réelle est celle que mesure l'analyse
+des items de ce run (`results/quality_analysis/benchmark_20261103_143403_item_analysis.csv`) :
+3 items sur 40 réussis par les six modèles, 16 ratés seulement par Llama 3.3 70B,
+21 qui départagent les modèles de tête.
 
 ### Items durcis (méthodologie 0.6.0)
 
@@ -670,8 +672,8 @@ pour cette alerte, pas une fausse stabilité. Depuis 0.7.0, tout modèle classé
 qu'au moins un scénario met premier (`recommendation_sensitivity_rank_min = 1`)
 est `recommended` à côté du premier, avec son rang inchangé : un écart que
 ±10 % sur un poids renverse n'est pas une décision. Cette analyse locale ne remplace
-ni la calibration humaine des seuils provisoires ni un test de toutes les
-combinaisons de poids.
+ni la relecture humaine des réponses jugées qui calibrera les seuils de 3,5, ni
+un test de toutes les combinaisons de poids.
 
 Pour `k=1`, une mauvaise réponse objective porte
 `verification_status=optional_openrouter_recheck`. Une commande manuelle peut
