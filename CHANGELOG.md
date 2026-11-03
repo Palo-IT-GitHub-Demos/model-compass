@@ -13,10 +13,27 @@ profiles. Scores, RSI values and ranks are not comparable with `0.4.0` runs, and
 command is now `make collect MODELS=selection`: its defaults are the reference
 methodology.
 
+### Changed — methodology 0.8.0
+
+- An exact answer is also read where the response commits to it when its last
+  line does not: the first line holding only an accepted answer (`**11:25**`
+  then the working), unless the last line ends on a different bare answer, and
+  an accepted answer the last line introduces with `=`, `:` or "the answer is"
+  (`3/5 * 2/4 = 3/10`). A value met in between never counts, so a response that
+  considers the right value and settles on another one still fails. On the
+  reference run this changes 8 answers: Claude Sonnet 5.5 reaches 5.0 in
+  reasoning, Llama 3.3 70B 4.2 (now eligible) and 1.8 in contextual QA. Every
+  answer accepted in 0.7.0 stays accepted.
+- `make merge` accepts a pending file from an earlier methodology listed in
+  `MERGEABLE_COLLECTIONS`, for a release whose changes all apply at merge to the
+  stored raw responses. 0.8.0 lists 0.7.0, so the reference run collected on
+  3 November is merged again as `benchmark_20261103_154602` without a new
+  collection; its manifest records `collected_methodology_version`.
+
 ### Changed — methodology 0.7.0
 
-- The run of 3 November 2026 (`benchmark_20261103_143403`) is the methodology
-  0.7.0 reference. The deterministic thresholds (4.0) are calibrated on it,
+- The run of 3 November 2026 (`benchmark_20261103_143403`, merged again in 0.8.0)
+  is the reference. The deterministic thresholds (4.0) are calibrated on it,
   unchanged: the lowest eligible models sit at 4.20, one failed item out of
   five, and no model falls between 3.75 and 4.0. The judged thresholds (3.5)
   are calibrated by a blind review of 50 judged answers, scored by Claude and

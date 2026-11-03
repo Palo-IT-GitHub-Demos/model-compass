@@ -89,7 +89,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   changed the scoring rules. Set it to the upcoming release number in the same
   change as anything that can alter the scores, eligibility or ranks of an
   identical run, and record it in `CHANGELOG.md`. Merge refuses a pending file
-  from another methodology version
+  from another methodology version, except one listed in
+  `MERGEABLE_COLLECTIONS`: only for a release whose changes all apply at merge
+  to the stored raw responses, so that collecting again would change nothing
 - Runs are comparable only when `methodology_version`, `quality_suite_id`,
   `catalog_version`, `security_probe_set_id`, decision weights and workload
   profile all match; every HTML report page shows them through

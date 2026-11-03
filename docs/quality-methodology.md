@@ -412,11 +412,11 @@ script est la source de la suite et de son catalogue : un item se modifie là, p
 dans le JSON, et un test échoue si les fichiers versionnés s'en écartent.
 
 Le champ `difficulty_status` des items reste `draft` : le modifier changerait
-l'empreinte `quality_suite_id` et rendrait le run de référence 0.7.0
+l'empreinte `quality_suite_id` et rendrait le run de référence
 incomparable aux suivants. La difficulté réelle est celle que mesure l'analyse
-des items de ce run (`results/quality_analysis/benchmark_20261103_143403_item_analysis.csv`) :
-3 items sur 40 réussis par les six modèles, 16 ratés seulement par Llama 3.3 70B,
-21 qui départagent les modèles de tête.
+des items de ce run (`results/quality_analysis/benchmark_20261103_154602_item_analysis.csv`,
+fusion 0.8.0) : 6 items sur 40 réussis par les six modèles, 14 ratés seulement
+par Llama 3.3 70B, 20 qui départagent les modèles de tête.
 
 ### Items durcis (méthodologie 0.6.0)
 
@@ -498,8 +498,15 @@ modifié ou retiré est pris en compte au run suivant.
   la dernière ligne non vide, sans emphase Markdown ni étiquette « Answer: », et
   le dernier nombre de cette ligne quand la réponse attendue est numérique. Une
   bonne réponse qui montre son calcul garde son score de contenu ; seule la
-  conformité de format échoue. La fusion réapplique cette règle aux réponses
-  brutes stockées, sans les modifier.
+  conformité de format échoue. Depuis 0.8.0, deux autres positions engagent la
+  réponse quand la dernière ligne ne la donne pas : la **première ligne** si
+  elle ne contient que la réponse (`**11:25**` puis l'explication), sauf si la
+  dernière ligne se termine sur une autre réponse de même forme ; et une réponse
+  que la **dernière ligne** introduit par `=`, `:` ou « the answer is »
+  (`3/5 * 2/4 = 3/10`, « the correct answer would be NOT STATED, as… »). Une
+  valeur rencontrée entre les deux ne compte jamais : une réponse qui envisage
+  la bonne valeur puis en retient une autre échoue. La fusion réapplique cette
+  règle aux réponses brutes stockées, sans les modifier.
 - **Bonne réponse hors contrat (0.7.0).** Pour les items `instruction_following`
   et JSON, la sortie exacte fait partie de ce qui est mesuré : une bonne réponse
   noyée dans du texte vaut **3** en contenu, et non 5 ni 1. C'est la dernière
