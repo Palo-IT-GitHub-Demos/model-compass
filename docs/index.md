@@ -1,128 +1,124 @@
 # Model Compass
 
-Pipeline de **recommandation technique, comparative et reproductible** des
-modèles disponibles sur OpenRouter. Model Compass compare les modèles sur des
-critères transverses de qualité, sécurité, coût du modèle et performance, puis
-les classe par cas d'usage générique pour aider un humain à répondre à
-différents appels d'offres.
+A **technical, comparative and reproducible recommendation** pipeline for the
+models available on OpenRouter. Model Compass compares models on cross-cutting
+criteria of quality, security, model cost and performance, then ranks them for
+each generic use case to help a human answer different calls for tender.
 
-Le [scope détaillé](model-compass-scope.md) formalise les décisions prises, les
-limites et les seuils du catalogue, calibrés sur le run de référence 0.7.0.
+The [detailed scope](model-compass-scope.md) sets out the decisions taken, the
+limits and the catalog thresholds, calibrated on the 0.8.0 reference run.
 
-## Par où commencer
+## Where to start
 
-Le parcours standard tient en sept étapes, détaillées dans le Quick Start du
-`README.md` et dans le [workflow](workflow.md) :
+The standard path takes seven steps, detailed in the Quick Start of
+`README.md` and in the [workflow](workflow.md):
 
 ```bash
-make select                                                         # choix des modèles, $0
-make verify MODELS=selection    # clé et modèles, $0
-make collect MODELS=selection   # seule étape payante
-# Copilot Chat : @judge-coordinator                                 # jugement aveugle
-make merge && make export-html                                      # résultats et rapport
+make select                     # choose the models, $0
+make verify MODELS=selection    # key and models, $0
+make collect MODELS=selection   # the only paid step
+# Copilot Chat: @judge-coordinator   # blind judging
+make merge && make export-html  # results and report
 ```
 
-Chaque rapport affiche sa version de méthodologie (la release qui a fixé les
-règles de calcul, actuellement `0.3.0`), sa suite qualité, son catalogue, son
-jeu de sondes, ses poids et son profil de charge. Deux runs ne se comparent que
-si toutes ces valeurs sont identiques.
+Every report shows its methodology version (the release that set the scoring
+rules, currently `0.8.0`), its quality suite, catalog, probe set, weights and
+workload profile. Two runs are comparable only when all of these values are
+identical.
 
-## Quatre dimensions de mesure
+## Four measurement axes
 
-| Axe | Ce que ça mesure | Sortie clé |
+| Axis | What it measures | Key output |
 | --- | --- | --- |
-| **Qualité** | 40 prompts versionnés (suite `generic-screen-v3`, 5 par cas d'usage), 8 dimensions + conformité de format notée à part, crédit partiel pour le JSON et le code testé dans le sandbox, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 essais | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
-| **Sécurité** | Un seul parcours de 66 sondes internes (50 notées, rejouées trois fois, dont 8 injections indirectes, 7 sondes d'obéissance à une consigne cachée et 3 scénarios multi-tours), exécuté en entier ou sauté, aligné sur l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
-| **Coût** | Tarif OpenRouter × taille d'entrée du profil + longueur de sortie mesurée du modèle → coût pour 1 000 requêtes et TCO mensuel projeté + coût réel par appel (`response.usage.cost`) | `cost_usd_per_1k_requests`, `tco_usd`, `actual_cost_credits`, `cer` |
-| **Performance** | Latence P50/P95 et tokens/seconde mesurés après acquisition du semaphore | `actual_latency_p50_ms`, `actual_latency_p95_ms`, `actual_tokens_per_second` |
-| **Recommandation** | Catalogue versionné, seuil qualité par cas d'usage et score pondéré configurable | `results/recommendations/` |
+| **Quality** | 40 versioned prompts (suite `generic-screen-v3`, 5 per use case), 8 dimensions + format compliance scored apart, partial credit for JSON and for code tested in the sandbox, macro-averaged 1–5 score, coverage, stability and 95 % CI from 3 attempts | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
+| **Security** | A single path of 66 internal probes (50 scored and run three times, including 8 indirect injections, 7 probes of obedience to a hidden instruction and 3 multi-turn scenarios), run whole or skipped, aligned with the [OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), RSI score 0–100 (internal weighting, not published by OWASP — see `_RSI_WEIGHTS` in `security_scanner.py`), ZDR check | `rsi`, `leak_count`, `zero_data_retention` |
+| **Cost** | OpenRouter price × input size of the profile + the model's measured output length → cost per 1,000 requests and projected monthly TCO + actual cost per call (`response.usage.cost`) | `cost_usd_per_1k_requests`, `tco_usd`, `actual_cost_credits`, `cer` |
+| **Performance** | P50/P95 latency and tokens per second, measured after the semaphore is acquired | `actual_latency_p50_ms`, `actual_latency_p95_ms`, `actual_tokens_per_second` |
+| **Recommendation** | Versioned catalog, quality threshold per use case and configurable weighted score | `results/recommendations/` |
 
-## Voir les résultats
+## Seeing the results
 
-| Besoin | Action |
+| Need | Action |
 | --- | --- |
-| Consulter le dernier rapport partageable | Ouvrir `results/dashboard_<timestamp>.html` ; sa navigation mène aux pages Qualité, Preuves, Sécurité et Coûts. |
-| Générer le rapport HTML du dernier benchmark fusionné | Lancer `make export-html`. |
-| Comprendre le rapport avant de décider | Lire le [guide de lecture du rapport](guide-lecture-rapport.md). |
-| Choisir les modèles avant un run | Lancer `make select`, répondre aux filtres, puis utiliser `MODELS=selection`. |
+| Read the latest shareable report | Open `results/dashboard_<timestamp>.html`; its navigation leads to the Quality, Evidence, Security and Cost pages. |
+| Build the HTML report of the latest merged benchmark | Run `make export-html`. |
+| Understand the report before deciding | Read the [report reading guide](report-reading-guide.md). |
+| Choose the models before a run | Run `make select`, answer the filters, then use `MODELS=selection`. |
 
-Le [workflow du pipeline](workflow.md) indique les commandes dans l'ordre,
-depuis la vérification gratuite jusqu'au rapport final.
+The [pipeline workflow](workflow.md) gives the commands in order, from the free
+check to the final report.
 
-## Parcours recommandés
+## Suggested paths
 
-- **Exécuter une évaluation** : suivre le [workflow du pipeline](workflow.md),
-  de la configuration au tableau de bord.
-- **Défendre ou auditer le score qualité** : consulter la
-  [méthodologie qualité](quality-methodology.md) — provenance des prompts,
-  couverture, validation et comparaison avec `gen-e2-eval`.
-- **Comprendre le code** : consulter la [référence API Python](reference/api.md),
-  générée directement depuis les docstrings du projet.
-- **Comprendre les décisions** : lire les [Architecture Decision Records](adr/0001-architecture-initiale.md).
-- **Contribuer** : suivre le [guide de contribution](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/.github/CONTRIBUTING.md).
+- **Run an evaluation**: follow the [pipeline workflow](workflow.md), from
+  configuration to the report.
+- **Defend or audit the quality score**: read the
+  [quality methodology](quality-methodology.md) — prompt provenance, coverage,
+  validation and comparison with `gen-e2-eval`.
+- **Understand the code**: read the [Python API reference](reference/api.md),
+  generated directly from the project's docstrings.
+- **Understand the decisions**: read the [Architecture Decision Records](adr/0001-architecture-initiale.md).
+- **Contribute**: follow the [contribution guide](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/.github/CONTRIBUTING.md).
 
-## Positionnement par rapport à gen-e2-eval
+## Positioning against gen-e2-eval
 
-Les deux projets répondent à des questions différentes et ne produisent pas
-le même type de décision :
+The two projects answer different questions and do not produce the same kind of
+decision:
 
 ```text
-Model Compass                gen-e2-eval
-──────────────────────────   ────────────────────────────────
-Tous les modèles évalués     Modèles testés sur les tâches métier
+Model Compass                    gen-e2-eval
+──────────────────────────────   ────────────────────────────────
+All evaluated models             Models tested on business tasks
 
-Question : « quel modèle      Question : « réussit-il
-est pertinent par cas ? »    mes tâches métier ? »
+Question: "which model is        Question: "does it pass
+relevant for each use case?"     my business tasks?"
 
-→ recommandation technique    → acceptation métier
+→ technical recommendation       → business acceptance
 ```
 
-L'export `make export-gen-e2` génère un YAML injectable dans le registry
-quadrant de gen-e2-eval avec les colonnes sécurité et TCO.
+The `make export-gen-e2` export writes a YAML file that can be loaded into the
+gen-e2-eval quadrant registry, with the security and TCO columns.
 
-### Périmètre et règle de décision
+### Scope and decision rule
 
-Model Compass inclut :
+Model Compass includes:
 
-- la comparaison à grande échelle de modèles accessibles via OpenRouter ;
-- un screen de qualité générique, provider-neutral et versionné ;
-- les mesures de coût, de latence et de sécurité ;
-- la production d'un classement et d'un ou plusieurs modèles recommandés par
-  cas d'usage générique ;
-- un rapport de preuves sous `results/recommendations/`.
+- large-scale comparison of models available through OpenRouter;
+- a generic, provider-neutral and versioned quality screen;
+- cost, latency and security measurements;
+- a ranking and one or more recommended models per generic use case;
+- an evidence report under `results/recommendations/`.
 
-Model Compass n'inclut pas :
+Model Compass does not include:
 
-- la validation d'un workflow métier ou d'une golden dataset client ;
-- la mesure de la réussite fonctionnelle sur un use case ;
-- l'analyse automatique d'un appel d'offres ou l'extraction de ses exigences ;
-- la recommandation finale d'adoption pour une application ;
-- le remplacement de l'évaluation métier dans `gen-e2-eval`.
+- validation of a business workflow or of a client golden dataset;
+- measuring functional success on a use case;
+- automatic analysis of a call for tender or extraction of its requirements;
+- the final adoption recommendation for an application;
+- replacing the business evaluation in `gen-e2-eval`.
 
-La règle de décision est donc la suivante : tous les modèles restent visibles,
-le seuil qualité filtre l'éligibilité par cas d'usage, puis le score pondéré
-classe les modèles dont les preuves sont complètes. Les égalités sont
-conservées. Toute décision d'adoption reste humaine et peut être confirmée
-dans `gen-e2-eval` sur les tâches métier concernées.
+The decision rule is therefore: every model stays visible, the quality
+threshold filters eligibility per use case, then the weighted score ranks the
+models with complete evidence. Ties are kept. Any adoption decision remains
+human and can be confirmed in `gen-e2-eval` on the business tasks concerned.
 
-## Structure de la documentation
+## Documentation structure
 
-| Espace | Contenu | Source de vérité |
+| Space | Content | Source of truth |
 | --- | --- | --- |
-| Guide du pipeline | Exécution, entrées, sorties et interprétation | `docs/workflow.md` |
-| Scope Model Compass | Mission, logique de décision, limites et calibrations restantes | `docs/model-compass-scope.md` |
-| Présentation | Deux slides : ce qui est mesuré, comment un modèle est recommandé | `docs/assets/model-compass/model-compass-overview.pptx` |
-| Méthodologie qualité | Provenance des prompts, couverture, validation, comparaison `gen-e2-eval` | `docs/quality-methodology.md` |
-| Référence API | Classes, fonctions et signatures publiques | Docstrings dans `src/` et `dashboard/` |
-| ADR | Décisions d'architecture et compromis | `docs/adr/` |
-| Historique du projet | Briefs, audit, plans et recherche ayant mené à la méthodologie actuelle ; ne décrivent pas forcément l'état courant | `docs/plans/`, `docs/implementation-plans/`, `docs/research/` |
+| Pipeline guide | Running, inputs, outputs and interpretation | `docs/workflow.md` |
+| Model Compass scope | Mission, decision logic, limits and remaining calibrations | `docs/model-compass-scope.md` |
+| Presentation | Two slides: what is measured, how a model is recommended | `docs/assets/model-compass/model-compass-overview.pptx` |
+| Quality methodology | Prompt provenance, coverage, validation, `gen-e2-eval` comparison | `docs/quality-methodology.md` |
+| API reference | Public classes, functions and signatures | Docstrings in `src/` and `dashboard/` |
+| ADR | Architecture decisions and trade-offs (in French) | `docs/adr/` |
+| Project history | Briefs, audit, plans and research that led to the current methodology; they do not necessarily describe the current state and keep their original language (French) | `docs/plans/`, `docs/implementation-plans/`, `docs/research/` |
 
-## Documentation vivante
+## Living documentation
 
-La référence API est construite à la volée par `mkdocstrings` à partir du code
-courant. Une modification de docstring est visible au prochain build sans
-synchronisation manuelle.
+The API reference is built on the fly by `mkdocstrings` from the current code. A
+docstring change shows up at the next build without manual synchronisation.
 
-Chaque pull request qui modifie les documents ou les sources Python lance une
-validation stricte (`make docs-build --strict`). Après une fusion sur `main`,
-GitHub Actions reconstruit et publie le site sur GitHub Pages.
+Every pull request and every merge into `main` runs a strict build
+(`make docs-build`). The site is not published online: `make docs-serve` serves
+it locally.

@@ -1,78 +1,76 @@
-# Guide de lecture du rapport
+# Report reading guide
 
-Ce guide s'adresse à la personne qui doit choisir un ou plusieurs modèles pour
-un appel d'offres à partir du rapport HTML (`results/dashboard_<timestamp>.html`).
-Il ne demande aucune connaissance du pipeline. Les pages du rapport sont en
-anglais ; leurs titres sont cités tels quels ci-dessous.
+This guide is for the person who chooses one or more models for a call for
+tender from the HTML report (`results/dashboard_<timestamp>.html`). It needs no
+knowledge of the pipeline. The page titles of the report are quoted as they
+appear below.
 
-## Ce que le rapport répond, et ce qu'il ne répond pas
+## What the report answers, and what it does not
 
-Le rapport répond à : **« quels modèles sont techniquement pertinents pour ce
-type de cas d'usage générique, et avec quelle certitude ? »**
+The report answers: **"which models are technically relevant for this kind of
+generic use case, and how certain is that?"**
 
-Il ne répond pas à : « quel modèle adopter pour ce client ». Il ne connaît ni
-l'appel d'offres, ni les données du client, ni ses exigences de conformité
-(localisation des données, certification, SLA). Faire correspondre les cas
-d'usage génériques au dossier reste votre travail.
+It does not answer "which model should this client adopt". It knows neither the
+call for tender, nor the client's data, nor their compliance requirements (data
+location, certification, SLA). Matching the generic use cases to the tender
+remains your job.
 
-## 1. Vérifier d'abord le bandeau
+## 1. Check the banner first
 
-Un bandeau orange **« Not reference-grade evidence »** en haut de page signifie
-que le run ne suit pas le parcours standard : données simulées, ancienne
-méthodologie, moins de trois essais par prompt, sécurité sautée ou jeu de
-sondes non standard, ou couverture incomplète. Les chiffres restent lisibles,
-mais **ne fondez pas une recommandation sur ce run seul**. Si la sécurité a été
-sautée, les modèles sont classés sans elle : n'utilisez pas ce rapport pour un
-dossier où l'injection de prompt ou la divulgation de données compte.
+An orange **"Not reference-grade evidence"** banner at the top of the page means
+the run does not follow the standard path: simulated data, an older methodology,
+fewer than three attempts per prompt, security skipped or a non-standard probe
+set, or incomplete coverage. The figures stay readable, but **do not base a
+recommendation on this run alone**. If security was skipped, models are ranked
+without it: do not use this report for a tender where prompt injection or data
+disclosure matters.
 
-Une note bleue, sous le bandeau, signale une limite qui ne disqualifie pas le
-run : quelques réponses perdues sur une erreur technique, ou des sondes de
-sécurité restées sans réponse pour un modèle (son RSI repose alors sur moins
-d'essais ; la page `Security` les nomme).
+A blue note under the banner flags a limit that does not disqualify the run: a
+few answers lost to a technical error, or security probes left unanswered for a
+model (its RSI then rests on fewer attempts; the `Security` page names them).
 
-La ligne grise « Compare runs only when all of these match » liste la version
-de méthodologie, la suite de prompts, le catalogue, le jeu de sondes, les poids
-et le profil de charge. Deux rapports ne se comparent que si toutes ces valeurs
-sont identiques.
+The grey line "Compare runs only when all of these match" lists the methodology
+version, prompt suite, catalog, probe set, weights and workload profile. Two
+reports are comparable only when all of these values are identical.
 
-## 2. Lire la synthèse décisionnelle (`Decision summary`)
+## 2. Read the decision summary (`Decision summary`)
 
-Chaque carte correspond à un cas d'usage générique (extraction structurée,
-génération de code, synthèse, etc.) et indique, dans l'ordre :
+Each card is one generic use case (structured extraction, code generation,
+summarisation, and so on) and shows, in order:
 
-| Élément | Signification | Que faire |
+| Element | Meaning | What to do |
 | --- | --- | --- |
-| **Recommended** | Meilleur score de décision parmi les modèles qui franchissent le seuil qualité du cas d'usage avec des preuves complètes. Plusieurs noms (*too close to call*) = ex æquo exacts, ou modèles qu'une variation de 10 % d'un poids ou du seuil mettrait premiers, du meilleur score au moins bon. | Point de départ du choix ; entre plusieurs noms, trancher selon le dossier. |
-| Badge **fragile** | Le classement ou l'éligibilité change si un poids, ou le seuil, bouge de 10 %. | Considérer le modèle suivant comme une alternative sérieuse. |
-| Badge **judge-sensitive** | Sans le juge du même fournisseur que le modèle (par exemple le juge Claude pour un modèle Anthropic), le recommandé changerait ; la carte nomme l'alternative. | Traiter la recommandation comme non confirmée et comparer les deux modèles nommés. |
-| Badge **weight-profile-sensitive** | Le recommandé change selon le profil de poids (`quality-first`, `balanced`, `cost-sensitive`) ; la carte nomme le leader de chaque profil. | Retenir le leader du profil qui correspond au dossier : `quality-first` pour des réponses critiques, `cost-sensitive` pour un fort volume ou un budget serré, `balanced` sinon. |
-| Badge **same leader** | Le recommandé est le même sous les trois profils de poids. | La recommandation ne dépend pas de la pondération retenue. |
-| Badge **disputed key** | Sur un prompt du cas d'usage, la plupart des modèles donnent la même réponse, que le corrigé rejette. | Faire relire ce prompt avant de s'appuyer sur le classement. |
-| **Also eligible** | Franchit le seuil mais obtient un score plus bas. | Alternative si une contrainte exclut les premiers. |
-| **cannot be ranked (missing evidence)** | Qualité suffisante, mais il manque une mesure de sécurité, de coût ou de performance. | Ne pas retenir sans compléter la mesure. |
-| **Below the quality threshold** | Qualité insuffisante pour ce cas d'usage, quel que soit son prix. **borderline** : l'intervalle de confiance chevauche le seuil. | Ne pas retenir ; un modèle *borderline* peut mériter un test sur données client. |
-| **No model can be recommended** | Aucun modèle évalué ne convient à ce cas d'usage. | Élargir le panel de modèles ou revoir le besoin. |
+| **Recommended** | Best decision score among the models that pass the use case's quality threshold with complete evidence. Several names (*too close to call*) = exact ties, or models that a 10 % change of one weight or of the threshold would put first, from the best score down. | Starting point of the choice; between several names, decide on the tender's criteria. |
+| **fragile** badge | The ranking or the eligibility changes if one weight, or the threshold, moves by 10 %. | Treat the next model as a serious alternative. |
+| **judge-sensitive** badge | Without the judge from the model's own provider (for example the Claude judge for an Anthropic model), the recommended model would change; the card names the alternative. | Treat the recommendation as unconfirmed and compare the two named models. |
+| **weight-profile-sensitive** badge | The recommended model changes with the weight profile (`quality-first`, `balanced`, `cost-sensitive`); the card names the leader of each profile. | Keep the leader of the profile that fits the tender: `quality-first` for critical answers, `cost-sensitive` for high volume or a tight budget, `balanced` otherwise. |
+| **same leader** badge | The recommended model is the same under all three weight profiles. | The recommendation does not depend on the weighting. |
+| **disputed key** badge | On one prompt of the use case, most models give the same answer, which the answer key rejects. | Have that prompt reviewed before relying on the ranking. |
+| **Also eligible** | Passes the threshold but scores lower. | Alternative if a constraint rules out the leaders. |
+| **cannot be ranked (missing evidence)** | Quality is sufficient, but a security, cost or performance measurement is missing. | Do not select it without completing the measurement. |
+| **Below the quality threshold** | Quality too low for this use case, whatever its price. **borderline**: the confidence interval overlaps the threshold. | Do not select it; a *borderline* model may deserve a test on client data. |
+| **No model can be recommended** | No evaluated model fits this use case. | Widen the set of models or revisit the need. |
 
-## 3. Approfondir si nécessaire
+## 3. Go further when needed
 
-| Page | À consulter quand… |
+| Page | Open it when… |
 | --- | --- |
-| `Use cases in detail` | vous voulez le détail des composantes (qualité, sécurité, coût, performance), l'intervalle de confiance, la plage de rang sous ±10 %, le rang sous chaque profil de poids et la colonne *Format respected* (respect du format exigé, noté à part de la qualité). Le tableau *Weight profiles* traduit chaque profil en arbitrages concrets, par exemple « 1 point de qualité vaut un écart de prix de 75 fois ». |
-| `Security` | la sécurité est un critère fort du dossier. Le RSI ne mesure que la résistance à la divulgation d'un secret ; la colonne *Scored probes measured* indique sur combien d'essais il repose, et la section « Observations — not scored » liste ce qui n'est **pas** mesuré. |
-| `Cost` | vous devez chiffrer un budget : le TCO est une projection mensuelle pour un profil de charge, pas le coût du test. |
-| `Performance` | la latence compte pour l'usage visé (p95 = temps de réponse des cas lents). |
-| `Prompts & responses` | vous voulez lire les questions posées, les réponses et la justification de chaque juge. |
-| `Quality × cost` | vous voulez une vue d'ensemble. **Ne pas choisir depuis cette page** : elle ignore les seuils par cas d'usage et la sécurité. |
-| `Glossary` | un terme ou un acronyme n'est pas clair. |
+| `Use cases in detail` | you want the detail of the components (quality, security, cost, performance), the confidence interval, the rank range under ±10 %, the rank under each weight profile and the *Format respected* column (compliance with the required format, scored apart from quality). The *Weight profiles* table turns each profile into concrete trade-offs, for example "1 quality point is worth a 75-fold price gap". |
+| `Security` | security is a strong criterion of the tender. The RSI only measures resistance to disclosing a secret; the *Scored probes measured* column shows how many attempts it rests on, and the "Observations — not scored" section lists what is **not** measured. |
+| `Cost` | you need to budget: the TCO is a monthly projection for a workload profile, not the cost of the test. |
+| `Performance` | latency matters for the intended use (p95 = response time of the slow cases). |
+| `Prompts & responses` | you want to read the prompts, the answers and each judge's reasoning. Filters show one model's failed prompts, or several models side by side on one prompt. |
+| `Quality × cost` | you want an overview. **Do not choose from this page**: it ignores the per-use-case thresholds and security. |
+| `Glossary` | a term or an acronym is unclear. |
 
-## 4. Avant de décider
+## 4. Before deciding
 
-- Le bandeau d'avertissement est absent, ou ses raisons sont acceptables pour
-  l'usage visé.
-- Chaque cas d'usage du dossier a été rapproché d'une carte du rapport.
-- Une recommandation **fragile** ou *too close to call* a été départagée sur un
-  critère explicite du dossier.
-- Les exigences hors périmètre (conformité, hébergement, contrat) ont été
-  vérifiées à part.
-- Si un jeu de données propre au client existe, le choix final est confirmé avec
+- The warning banner is absent, or its reasons are acceptable for the intended
+  use.
+- Every use case of the tender has been matched to a card of the report.
+- A **fragile** or *too close to call* recommendation has been settled on an
+  explicit criterion of the tender.
+- Out-of-scope requirements (compliance, hosting, contract) have been checked
+  separately.
+- If a client-specific dataset exists, the final choice is confirmed with
   `gen-e2-eval`.

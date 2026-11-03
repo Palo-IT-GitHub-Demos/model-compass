@@ -1,36 +1,33 @@
-# Présentation Model Compass
+# Model Compass presentation
 
-Deux slides qui résument la méthodologie 0.8.0 : ce que Model Compass mesure, et
-comment il recommande un modèle par cas d'usage. Elles sont en anglais, comme le
-rapport, et marquées confidentielles PALO IT : ne pas les diffuser hors de
-l'organisation.
+Two slides that summarise methodology 0.8.0: what Model Compass measures, and
+how it recommends a model for each use case. They are marked PALO IT
+confidential: do not share them outside the organisation.
 
-[Télécharger le fichier PowerPoint](assets/model-compass/model-compass-overview.pptx)
-(les notes de l'orateur détaillent chaque slide).
+[Download the PowerPoint file](assets/model-compass/model-compass-overview.pptx)
+(the speaker notes detail each slide).
 
-## Ce que nous mesurons
+## What we measure
 
 ![Every model gets the same four measurements: quality, security, cost and speed](assets/model-compass/slide-1.png)
 
-Chaque modèle passe les mêmes 40 tâches génériques (5 par cas d'usage, 3 essais)
-et les mêmes 66 sondes de sécurité. Voir la
-[méthodologie qualité](quality-methodology.md) et la
-[méthodologie sécurité](security-methodology.md).
+Every model runs the same 40 generic tasks (5 per use case, 3 attempts) and the
+same 66 security probes. See the [quality methodology](quality-methodology.md)
+and the [security methodology](security-methodology.md).
 
-## Comment nous recommandons
+## How we recommend
 
 ![Quality is a gate, not a trade-off: gate, rank, stress-test](assets/model-compass/slide-2.png)
 
-La qualité est un seuil : un modèle sous le seuil d'un cas d'usage n'est jamais
-recommandé. Les modèles éligibles sont classés avec le profil *balanced*
-(50 / 25 / 20 / 5) ; les profils *quality-first* (70 / 20 / 7 / 3) et
-*cost-sensitive* (35 / 20 / 40 / 5) sont affichés à côté sans changer le rang
-publié. Les seuils sont calibrés sur le run de référence du 3 novembre 2026
-(voir [le périmètre](model-compass-scope.md)).
+Quality is a gate: a model below a use case's threshold is never recommended.
+Eligible models are ranked with the *balanced* profile (50 / 25 / 20 / 5); the
+*quality-first* (70 / 20 / 7 / 3) and *cost-sensitive* (35 / 20 / 40 / 5)
+profiles are shown beside it without changing the published rank. The
+thresholds are calibrated on the reference run of 3 November 2026 (see
+[the scope](model-compass-scope.md)).
 
-## Mettre les slides à jour
+## Updating the slides
 
-Le fichier source est `docs/assets/model-compass/model-compass-overview.pptx`.
-Après une modification, réexporter les deux images `slide-1.png` et
-`slide-2.png` (1600 pixels de large) depuis PowerPoint, pour que cette page reste
-fidèle au fichier.
+The source file is `docs/assets/model-compass/model-compass-overview.pptx`.
+After a change, export the two images `slide-1.png` and `slide-2.png` again
+(1600 pixels wide) from PowerPoint, so that this page stays true to the file.

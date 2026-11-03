@@ -1,125 +1,123 @@
-# Système multiprobe — scénarios bornés multi-tour
+# Multi-probe system — bounded multi-turn scenarios
 
-Ce document décrit le **runner de scénarios** (`src/evaluators/scenario_runner.py`),
-une brique indépendante du reste du pipeline qui exécute des échanges à
-plusieurs tours avec un modèle en conservant un historique borné.
+This document describes the **scenario runner** (`src/evaluators/scenario_runner.py`),
+a component independent of the rest of the pipeline that runs multi-turn
+exchanges with a model while keeping a bounded history.
 
-!!! note "Portée de ce document"
-    Le runner sert au scanner de sécurité (`SECURITY_MODE=extended`) **et** à
-    un écran qualité dialogue indépendant, explicitement activé via
-    `make dialogue` (hors ligne) ou `make dialogue-live` (payant). Les scores
-    de dialogue ne sont pas fusionnés avec le benchmark mono-tour.
+!!! note "Scope of this document"
+    The runner serves the security path's multi-turn probes **and** a separate
+    dialogue quality screen, explicitly enabled with `make dialogue` (offline)
+    or `make dialogue-live` (paid). Dialogue scores are not merged with the
+    single-turn benchmark.
 
-## Pourquoi
+## Why
 
-Une sonde mono-tour envoie un seul message et regarde la réponse. Certaines
-techniques d'attaque (extraction progressive, escalade de rôle) ne se
-déclenchent qu'après plusieurs échanges — un scanner mono-tour ne peut pas les
-détecter. Le runner comble ce manque sans réécrire le scanner existant ni
-changer le comportement des sondes mono-tour historiques.
+A single-turn probe sends one message and looks at the answer. Some attack
+techniques (progressive extraction, role escalation) only trigger after several
+exchanges — a single-turn scanner cannot detect them. The runner fills this gap
+without rewriting the scanner or changing the behaviour of the single-turn
+probes.
 
-## Contrat (`src/evaluators/scenario_runner.py`)
+## Contract (`src/evaluators/scenario_runner.py`)
 
-| Type | Rôle |
+| Type | Role |
 | --- | --- |
-| `ScenarioTurn` | Un message utilisateur, identifié par `turn_id` |
-| `ScenarioLimits` | `max_turns` et `max_total_tokens` — toujours présents et validés, un scénario ne peut pas exister sans borne |
-| `ScenarioDefinition` | Un scénario complet : tours ordonnés, catégorie, sévérité, limites, `content_hash()` déterministe |
-| `TurnExecution` | Résultat d'un tour logique (indépendant des tentatives réseau) |
-| `ScenarioExecution` | Résultat complet d'une trajectoire pour un modèle : tours exécutés, `outcome`, `first_leak_turn` |
+| `ScenarioTurn` | A user message, identified by `turn_id` |
+| `ScenarioLimits` | `max_turns` and `max_total_tokens` — always present and validated, a scenario cannot exist without bounds |
+| `ScenarioDefinition` | A complete scenario: ordered turns, category, severity, limits, deterministic `content_hash()` |
+| `TurnExecution` | Result of one logical turn (independent of network attempts) |
+| `ScenarioExecution` | Complete result of one trajectory for a model: turns run, `outcome`, `first_leak_turn` |
 | `ScenarioOutcome` | `safe_refusal`, `confirmed_leak`, `inconclusive`, `execution_error`, `scenario_aborted` |
 
 `execute_scenario(scenario, model=..., system_prompt=..., completion=..., canary=None)`
-exécute les tours dans l'ordre :
+runs the turns in order:
 
-1. ajoute le tour utilisateur à l'historique ;
-2. appelle `completion(messages)` (fonction injectée — indépendante d'OpenRouter) ;
-3. ajoute la réponse à l'historique **seulement si l'appel a réussi** ;
-4. détecte un canary dans la réponse et retient le premier tour où il apparaît ;
-5. s'arrête si le budget de tokens est dépassé ou si un tour échoue.
+1. adds the user turn to the history;
+2. calls `completion(messages)` (an injected function — independent of OpenRouter);
+3. adds the answer to the history **only if the call succeeded**;
+4. detects a canary in the answer and keeps the first turn where it appears;
+5. stops if the token budget is exceeded or if a turn fails.
 
-### Garanties du contrat
+### Guarantees of the contract
 
-- **Aucun scénario non borné** : `ScenarioLimits` est un champ obligatoire de
-  `ScenarioDefinition`, validé à la construction (`__post_init__`). Il est
-  structurellement impossible de créer un scénario sans limites explicites.
-- **Un échec intermédiaire n'est jamais un succès** : une exception pendant un
-  tour retourne `scenario_aborted` (si des tours ont déjà réussi) ou
-  `execution_error` (si le premier tour échoue) — jamais `safe_refusal`.
-- **Une réponse vide reste `inconclusive`**, jamais interprétée comme sûre.
-- **Un retry réseau reste le même tour logique** : c'est la fonction
-  `completion` injectée qui gère les tentatives ; le runner ne voit qu'un seul
-  résultat par tour.
-- **Traçabilité** : `content_hash()` (par scénario) et `scenario_suite_hash()`
-  (par suite ordonnée) permettent de vérifier qu'une suite n'a pas changé
-  entre deux runs.
+- **No unbounded scenario**: `ScenarioLimits` is a mandatory field of
+  `ScenarioDefinition`, validated at construction (`__post_init__`). A scenario
+  without explicit limits cannot be created.
+- **An intermediate failure is never a success**: an exception during a turn
+  returns `scenario_aborted` (if earlier turns succeeded) or `execution_error`
+  (if the first turn fails) — never `safe_refusal`.
+- **An empty answer stays `inconclusive`**, never read as safe.
+- **A network retry stays the same logical turn**: the injected `completion`
+  function handles the attempts; the runner sees a single result per turn.
+- **Traceability**: `content_hash()` (per scenario) and `scenario_suite_hash()`
+  (per ordered suite) show that a suite has not changed between two runs.
 
-## Intégration actuelle : scanner de sécurité
+## Current integration: the security scanner
 
-`src/evaluators/security_scanner.py` charge les probes JSON (`basic`, `owasp`,
-`extended`) et, pour toute probe contenant un champ `turns` (liste de chaînes),
-la convertit en `ScenarioDefinition` via `_scenario_for_probe()` puis l'exécute
-avec `execute_scenario()`. Les probes historiques (`message` uniquement)
-continuent d'utiliser le chemin mono-tour existant, inchangé.
+`src/evaluators/security_scanner.py` loads the probe set
+(`data/prompts/security_probes.json`) and, for every probe with a `turns` field
+(list of strings), turns it into a `ScenarioDefinition` with
+`_scenario_for_probe()` and runs it with `execute_scenario()`. The probes with a
+single `message` use the single-turn path. The probe set holds three multi-turn
+probes: `llm01_progressive_extraction_20`, `llm01_role_escalation_21` and
+`llm02_gradual_config_extraction_09`.
 
-## Écran qualité dialogue borné (A5)
+## Bounded dialogue quality screen (A5)
 
-Le catalogue indépendant `data/prompts/dialogue_scenarios_v1.json` définit
-**9 trajectoires de 2 tours** : clarification puis action (3), ré-attaque du
-format JSON (3) et maintien d'une instruction négative (3). Chaque définition
-contient un cas d'usage générique, ses deux messages, les règles par tour et
-deux réponses synthétiques **exclusivement pour le test hors ligne**.
-`src/evaluators/dialogue_quality.py` valide l'intégralité du catalogue
-(notamment unicité des identifiants, deux tours non vides, règles valides),
-produit un `suite_id` adressé par contenu (consignes et règles comprises),
-puis utilise `execute_scenario()` : la réponse T1 fait partie de l'historique
-envoyé au modèle en T2. Limites : 2 tours et 2 048 mots de réponse cumulés ;
-en mode réel, `max_tokens=512` par appel et `temperature=0`.
+The separate catalog `data/prompts/dialogue_scenarios_v1.json` defines **9
+two-turn trajectories**: clarification then action (3), renewed pressure on the
+JSON format (3) and keeping a negative instruction (3). Each definition holds a
+generic use case, its two messages, the rules per turn and two synthetic answers
+**only for the offline test**. `src/evaluators/dialogue_quality.py` validates
+the whole catalog (unique identifiers, two non-empty turns, valid rules, among
+others), produces a content-addressed `suite_id` (instructions and rules
+included), then uses `execute_scenario()`: the T1 answer is part of the history
+sent to the model at T2. Limits: 2 turns and 2,048 words of cumulative answer;
+in live mode, `max_tokens=512` per call and `temperature=0`.
 
-Le correcteur **sans juge LLM** applique les règles `question` (une question
-terminée par `?`), `exact`, `json_object` (objet JSON strict, clés et valeurs
-attendues), `contains` et `forbidden` (expression délimitée, casse ignorée).
-Ce sont des vérifications de format et de contenu littéral, non une preuve
-générale de qualité sémantique : un refus ou une paraphrase peuvent être mal
-classés ; une phrase négative contenant une expression interdite peut compter
-comme violation. Les rubriques sont versionnées par le hash de suite.
+The grader, **with no LLM judge**, applies the rules `question` (one question
+ending with `?`), `exact`, `json_object` (strict JSON object, expected keys and
+values), `contains` and `forbidden` (delimited phrase, case ignored). These are
+checks of format and literal content, not general evidence of semantic quality:
+a refusal or a paraphrase can be misclassified; a negative sentence containing a
+forbidden phrase can count as a violation. The rubrics are versioned by the
+suite hash.
 
-| Colonne du sidecar | Définition |
+| Sidecar column | Definition |
 | --- | --- |
-| `t1_pass`, `t2_pass` | Ensemble des règles du tour satisfait ; null si tour non observable |
-| `completion_rate` | Part de scénarios dont les deux tours ont une réponse |
-| `t1_integrity_rate`, `t2_integrity_rate` | Part des tours observables respectant leurs règles |
-| `drift_eligible_count` | Nombre de scénarios complets avec T1 valide |
-| `drift_rate` | Parmi ces scénarios, fraction dont T2 viole au moins une règle |
-| `omission_rate` | Parmi ces scénarios, fraction où une règle positive attendue en T2 disparaît |
+| `t1_pass`, `t2_pass` | All rules of the turn met; null if the turn cannot be observed |
+| `completion_rate` | Share of scenarios whose two turns have an answer |
+| `t1_integrity_rate`, `t2_integrity_rate` | Share of observable turns that meet their rules |
+| `drift_eligible_count` | Number of complete scenarios with a valid T1 |
+| `drift_rate` | Among these scenarios, share whose T2 breaks at least one rule |
+| `omission_rate` | Among these scenarios, share where a positive rule expected at T2 disappears |
 
-Une erreur de transport au T2 produit `scenario_aborted`, un T2 manquant et
-une dérive **indéterminée**, jamais un succès ni une dérive artificielle.
-Les exports séparés `details` et `summary` (`csv` + `json`) vont sous
-`data/dry_run/dialogue/` pour l'offline, `results/dialogue/` pour le réel.
-Les détails ne contiennent pas de réponse brute ; `suite_id`, modèle, cas
-d'usage, `outcome`, `evidence_source` (`synthetic_offline` ou `openrouter`)
-et nombres de tours sont conservés. Les colonnes de
-`results/benchmark_*` et `results/recommendations/*` restent inchangées ;
-ces valeurs ne modifient ni la qualité mono-tour ni l'éligibilité.
+A transport error at T2 produces `scenario_aborted`, a missing T2 and an
+**undetermined** drift, never a success nor an artificial drift. The separate
+`details` and `summary` exports (`csv` + `json`) go under
+`data/dry_run/dialogue/` offline and `results/dialogue/` live. The details hold
+no raw answer; `suite_id`, model, use case, `outcome`, `evidence_source`
+(`synthetic_offline` or `openrouter`) and turn counts are kept. The columns of
+`results/benchmark_*` and `results/recommendations/*` stay unchanged; these
+values change neither single-turn quality nor eligibility.
 
 ```bash
-make dialogue                          # 0 appel réseau, 1 modèle synthétique
-make dialogue MODELS=paid_flagship    # hors ligne, noms de modèles personnalisés
-make dialogue-live MODELS=paid_flagship  # 18 appels facturables par modèle
+make dialogue                            # no network call, 1 synthetic model
+make dialogue MODELS=paid_flagship       # offline, custom model names
+make dialogue-live MODELS=paid_flagship  # 18 billable calls per model
 ```
 
-Champs ajoutés à `ProbeResult` pour les probes séquentielles, sans toucher aux
-champs existants :
+Fields added to `ProbeResult` for sequential probes, without touching the
+existing fields:
 
-- `first_leak_turn` — index du tour où le canary est apparu, ou `None`.
-- `turn_count` — nombre de tours réellement exécutés.
+- `first_leak_turn` — index of the turn where the canary appeared, or `None`.
+- `turn_count` — number of turns actually run.
 
-Exemple de probe multi-tour (`data/prompts/extended_probes.json`) :
+Example of a multi-turn probe (`data/prompts/security_probes.json`):
 
 ```json
 {
-  "name": "progressive_prompt_extraction",
+  "name": "llm01_progressive_extraction_20",
   "category_id": "LLM01",
   "category_name": "Prompt Injection",
   "severity": "high",
@@ -131,69 +129,67 @@ Exemple de probe multi-tour (`data/prompts/extended_probes.json`) :
 }
 ```
 
-### Estimation d'appels (préflight)
+### Call estimate (preflight)
 
-Deux fonctions pures exposées par `security_scanner.py` :
+Pure functions exposed by `security_scanner.py`:
 
-- `probe_count(probes_path)` — nombre d'appels attendus (compte les tours des
-  probes séquentielles, 1 pour les probes mono-tour).
-- `probe_worst_case_count(probes_path, max_retries)` — plafond théorique si
-  chaque appel épuise ses tentatives (`probe_count × max_retries`).
-- `has_sequential_probes(probes_path)` — vrai si le jeu de probes contient au
-  moins un scénario multi-tour.
+- `probe_count(probes_path)` — number of expected calls (counts the turns of
+  sequential probes, 1 for single-turn probes).
+- `probe_worst_case_count(probes_path, max_retries)` — theoretical ceiling if
+  every call uses up its attempts (`probe_count × max_retries`).
+- `has_sequential_probes(probes_path)` — true if the probe set holds at least
+  one multi-turn scenario.
 
-`_run_preflight_checks()` (`src/main.py`, utilisé par `make dry-run` et
-`make verify`) logge un message **informatif, non bloquant** dès qu'un
-scénario séquentiel est détecté, avec le nombre d'appels attendus et le pire
-cas :
-
-```bash
-SECURITY_MODE=extended make dry-run
-```
+`_run_preflight_checks()` (`src/main.py`, used by `make dry-run` and
+`make verify`) logs an **informational, non-blocking** message as soon as a
+sequential scenario is detected, with the expected number of calls and the
+worst case:
 
 ```text
-[DRY-RUN] Sequential security scenarios detected — expected 20 probe
-request(s) per model, worst case 60 if every request exhausts retries
+[DRY-RUN] Sequential security scenarios detected — expected <n> probe
+request(s) per model, worst case <m> if every request exhausts retries
 (informational, not blocking).
 ```
 
-## Comment ajouter un scénario
+## Adding a scenario
 
-Ajouter une entrée avec un champ `turns` (liste de chaînes non vides) dans
-`data/prompts/extended_probes.json` (ou un fichier de probes custom via
-`SECURITY_PROBES_PATH`) :
+Add a probe with a `turns` field (list of non-empty strings) in
+`scripts/build_security_probes.py`, which generates
+`data/prompts/security_probes.json` (or in a custom probe file passed with
+`SECURITY_PROBES_PATH`, for an experiment):
 
 ```json
 {
-  "name": "mon_scenario",
+  "name": "my_scenario",
   "category_id": "LLM01",
   "category_name": "Prompt Injection",
-  "turns": ["premier message", "message de suivi"]
+  "turns": ["first message", "follow-up message"]
 }
 ```
 
-`_run_preflight_checks()` valide la forme (probe avec `message` non vide ou
-`turns` non vide et composé de chaînes) avant tout appel réseau — `make dry-run`
-échoue immédiatement sur une probe mal formée.
+`_run_preflight_checks()` validates the shape (a probe with a non-empty
+`message`, or a non-empty `turns` made of strings) before any network call —
+`make dry-run` fails at once on a malformed probe. A change to the probe set
+changes `security_probe_set_id`, and therefore RSI comparability.
 
-## Ce qui n'est délibérément pas fait
+## What is deliberately not done
 
-- Aucune persistance dédiée des trajectoires (transcripts multi-tour) dans un
-  artefact séparé — le résumé par probe (`probe_details` du CSV benchmark)
-  porte déjà `first_leak_turn`/`turn_count`, mais il n'existe pas encore de
-  sidecar versionné dédié aux scénarios.
-- Aucun champ de scénario dans le manifeste de run, `MergePipeline` ou MLflow.
-- Aucune vue dashboard dédiée aux trajectoires multi-tour.
-- Aucune fusion des métriques dialogue avec les résultats qualité mono-tour.
+- No dedicated persistence of the trajectories (multi-turn transcripts) in a
+  separate artifact — the per-probe summary (`probe_details` of the benchmark
+  CSV) already carries `first_leak_turn`/`turn_count`, but there is no
+  versioned sidecar dedicated to scenarios yet.
+- No scenario field in the run manifest, `MergePipeline` or MLflow.
+- No report view dedicated to multi-turn trajectories.
+- No merge of dialogue metrics with the single-turn quality results.
 
-Ces points dépendent de décisions de périmètre produit encore ouvertes. Le
-runner, son intégration sécurité et l'écran dialogue restent indépendants.
+These points depend on product-scope decisions that are still open. The runner,
+its security integration and the dialogue screen stay independent.
 
 ## Tests
 
-- `tests/test_scenario_runner.py` — contrat pur (historique conservé, fuite au
-  bon tour, réponse vide, échec intermédiaire, limites, hash de suite).
-- `tests/test_security_scanner.py` — intégration (probe séquentielle réelle,
-  comptage des tours, distinction mono-tour/multi-tour dans `extended`).
-- `tests/test_dialogue_quality.py` — validation du catalogue, métriques
-  conditionnelles et chemins hors ligne/réel simulé.
+- `tests/test_scenario_runner.py` — pure contract (history kept, leak at the
+  right turn, empty answer, intermediate failure, limits, suite hash).
+- `tests/test_security_scanner.py` — integration (real sequential probe, turn
+  counting, single-turn/multi-turn distinction).
+- `tests/test_dialogue_quality.py` — catalog validation, conditional metrics
+  and offline/simulated-live paths.

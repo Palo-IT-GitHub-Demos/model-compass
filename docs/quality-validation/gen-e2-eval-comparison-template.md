@@ -1,21 +1,21 @@
-# Template de comparaison avec gen-e2-eval
+# gen-e2-eval comparison template
 
-## Objectif
+## Goal
 
-Comparer les classements obtenus par Model Compass et par
-`gen-e2-eval` sur un même ensemble de modèles.
+Compare the rankings that Model Compass and `gen-e2-eval` give on the same set
+of models.
 
-## Méthode
+## Method
 
-1. sélectionner au moins 3 modèles ;
-2. exécuter la suite qualité ;
-3. exécuter la batterie métier de `gen-e2-eval` ;
-4. comparer les top 3 et les classements globaux ;
-5. noter les divergences et les hypothèses.
+1. select at least 3 models;
+2. run the quality suite;
+3. run the `gen-e2-eval` business test set;
+4. compare the top 3 and the overall rankings;
+5. record the differences and the assumptions.
 
-## Résultat attendu
+## Expected result
 
-- modèle(s) retenus par les deux approches ;
-- modèle(s) retenus par la seule suite qualité ;
-- modèle(s) retenus par la seule évaluation métier ;
-- observations sur les écarts.
+- model(s) kept by both approaches;
+- model(s) kept by the quality suite only;
+- model(s) kept by the business evaluation only;
+- observations on the differences.

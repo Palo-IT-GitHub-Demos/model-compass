@@ -1,381 +1,362 @@
-# Model Compass — scope et logique de décision
+# Model Compass — scope and decision logic
 
-Cette page formalise le changement de positionnement décidé les 8 et 9
-septembre 2026. Le dépôt ne se limite plus à produire un signal de screening
-avant une autre évaluation : il produit un rapport de recommandation technique
-générique, organisé par cas d'usage, pour aider un humain à répondre à des
-appels d'offres.
+This page sets out the change of positioning decided on 8 and 9 September
+2026. The repository no longer only produces a screening signal ahead of
+another evaluation: it produces a generic technical recommendation report,
+organised by use case, to help a human answer calls for tender.
 
 ## Mission
 
-**Model Compass** évalue les modèles LLM accessibles via OpenRouter sur un
-catalogue stable de cas d'usage génériques. Il mesure la qualité fonctionnelle,
-la sécurité, le coût du modèle et la performance, puis fournit pour chaque cas
-d'usage :
+**Model Compass** evaluates the LLMs available through OpenRouter on a stable
+catalog of generic use cases. It measures functional quality, security, model
+cost and performance, then gives for each use case:
 
-- une note détaillée pour chaque modèle évalué ;
-- un seuil minimal de qualité adapté au cas d'usage ;
-- un classement des modèles qui franchissent ce seuil ;
-- un ou plusieurs modèles recommandés ;
-- les preuves, limites et dimensions manquantes qui expliquent le résultat.
+- a detailed score for every evaluated model;
+- a minimum quality threshold suited to the use case;
+- a ranking of the models that pass this threshold;
+- one or more recommended models;
+- the evidence, limits and missing dimensions that explain the result.
 
-Le rapport est une **recommandation technique**. La sélection finale appartient
-à un humain qui connaît l'appel d'offres, son contexte et ses contraintes.
+The report is a **technical recommendation**. The final selection belongs to a
+human who knows the call for tender, its context and its constraints.
 
-## Principe de stabilité
+## Stability principle
 
-Le pipeline est volontairement générique et réutilisable :
+The pipeline is deliberately generic and reusable:
 
-- il ne reçoit pas le contenu d'un appel d'offres ;
-- il ne reçoit pas de critères propres à un client ;
-- il n'utilise pas de dataset client ou de données métier confidentielles ;
-- il utilise un catalogue versionné de cas d'usage et de prompts génériques ;
-- il produit le même type de rapport à chaque exécution ;
-- il peut évoluer entre deux versions du catalogue, mais ne doit pas être
-  reconfiguré pour chaque appel d'offres.
+- it does not receive the content of a call for tender;
+- it does not receive client-specific criteria;
+- it uses no client dataset or confidential business data;
+- it uses a versioned catalog of generic use cases and prompts;
+- it produces the same kind of report on every run;
+- it can change between two catalog versions, but must not be reconfigured for
+  each call for tender.
 
-L'humain fait ensuite correspondre les résultats génériques aux besoins du
-dossier qu'il connaît.
+The human then matches the generic results to the needs of the tender they
+know.
 
-## Catalogue actif
+## Active catalog
 
-Le catalogue par défaut est `data/catalog/model_compass_use_cases_v2.json`
-(`model-compass-use-cases-v2.1`, suite `generic-screen-v2`). Il relie les 34
-prompts qualité à huit cas d'usage :
+The default catalog is `data/catalog/model_compass_use_cases_v3.json`
+(`model-compass-use-cases-v3.2`, suite `generic-screen-v3`). It maps the 40
+quality prompts to eight use cases, five prompts each:
 
-| Cas d'usage | Prompts | Seuil |
+| Use case | Prompts | Threshold |
 | --- | ---: | ---: |
-| Structured extraction | 0-4 | 4,0 / 5 |
-| Code generation | 5-9 | 4,0 / 5 |
-| Contextual question answering | 10-14 | 4,0 / 5 |
-| Reasoning and analysis | 15-19 | 4,0 / 5 |
-| Classification and routing | 20-23 | 4,0 / 5 |
-| Summarization | 24-26 | 3,5 / 5 |
-| Concise communication | 27-29 | 3,5 / 5 |
-| Instruction following | 30-33 | 4,0 / 5 |
+| Structured extraction | 0-4 | 4.0 / 5 |
+| Code generation | 5-9 | 4.0 / 5 |
+| Contextual question answering | 10-14 | 4.0 / 5 |
+| Reasoning and analysis | 15-19 | 4.0 / 5 |
+| Classification and routing | 20-24 | 4.0 / 5 |
+| Summarization | 25-29 | 3.5 / 5 |
+| Concise communication | 30-34 | 3.5 / 5 |
+| Instruction following | 35-39 | 4.0 / 5 |
 
-### Catalogue v1 (référence historique)
+The thresholds are calibrated on the reference run (see
+[Why these thresholds](#why-these-thresholds)). Changing the catalog changes the
+benchmark version and must be visible in the results.
 
-Le catalogue `data/catalog/model_compass_use_cases.json`
-(`model-compass-use-cases-v1.1`) reste utilisé avec `QUALITY_SUITE=v1`. Il
-relie les 16 prompts de la suite v1 à six cas d'usage :
+### Earlier catalogs
 
-| Cas d'usage | Prompts | Seuil initial |
-| --- | ---: | ---: |
-| Structured extraction | 0-2 | 4,0 / 5 |
-| Code generation | 3 | 4,0 / 5 |
-| Factual question answering | 4-6 | 4,0 / 5 |
-| Reasoning and analysis | 7-9 | 4,0 / 5 |
-| Instruction following | 10-12, 15 | 4,0 / 5 |
-| Concise communication | 13-14 | 3,5 / 5 |
+The v2 catalog (`model_compass_use_cases_v2.json`, 34 prompts, eight use cases)
+and the v1 catalog (`model_compass_use_cases.json`, 16 prompts, six use cases)
+stay available with `QUALITY_SUITE=v2` or `v1`, only to merge again the runs
+collected with them. Their thresholds were provisional starting values.
 
-Ces seuils sont des **valeurs de démarrage provisoires**. Ils doivent être
-calibrés après la définition précise des catégories, des critères de réussite
-et de la difficulté des tâches. Modifier le catalogue change la version du
-benchmark et doit être visible dans les résultats.
+## Decision logic
 
-## Logique de décision
+The decision has two independent levels.
 
-La décision comporte deux niveaux indépendants.
+### 1. Quality eligibility
 
-### 1. Éligibilité qualité
-
-Pour chaque couple `cas d'usage / modèle`, les scores de **contenu** des prompts
-du catalogue sont moyennés par prompt. Les lignes de conformité de format
-(`output_format_compliance`) n'y entrent pas : elles sont publiées à part, dans
-la colonne `format_compliance_rate`, pour qu'une bonne réponse qui ne respecte
-pas le format « réponse seule » ne fasse jamais baisser la qualité du cas
-d'usage. La couverture indique la proportion de prompts du cas d'usage
-réellement scorés.
+For each `use case / model` pair, the **content** scores of the catalog's
+prompts are averaged per prompt. Format compliance rows
+(`output_format_compliance`) are left out: they are published apart, in the
+`format_compliance_rate` column, so that a correct answer that breaks the
+"answer only" format never lowers the use case's quality. Coverage gives the
+share of the use case's prompts actually scored.
 
 ```text
-qualité éligible =
-    qualité du cas d'usage >= seuil du cas d'usage
-    et couverture qualité = 100 %
+quality eligible =
+    use case quality >= use case threshold
+    and quality coverage = 100 %
 ```
 
-Un modèle sous le seuil n'est pas recommandé pour ce cas, même s'il est moins
-cher ou plus rapide. Tous les modèles restent toutefois visibles dans le
-rapport avec leur score et leur statut.
+A model below the threshold is not recommended for this use case, even if it is
+cheaper or faster. Every model nevertheless stays visible in the report with its
+score and status.
 
-### 2. Classement pondéré
+### 2. Weighted ranking
 
-Le score de décision utilise quatre composantes normalisées sur 0-100 :
+The decision score uses four components normalised to 0-100:
 
-| Composante | Poids par défaut | Source |
+| Component | Default weight | Source |
 | --- | ---: | --- |
-| Qualité fonctionnelle | 50 % | Score qualité du cas d'usage, échelle 1-5 normalisée |
-| Sécurité générique | 25 % | RSI, échelle 0-100 |
-| Coût du modèle seul | 20 % | Coût de 1 000 requêtes du profil avec la longueur de sortie mesurée du modèle ; bornes logarithmiques fixes dans le catalogue |
-| Performance | 5 % | Latence p95 ; bornes logarithmiques fixes dans le catalogue |
+| Functional quality | 50 % | Quality score of the use case, 1-5 scale normalised |
+| Generic security | 25 % | RSI, 0-100 scale |
+| Model-only cost | 20 % | Cost of 1,000 profile requests with the model's measured output length; fixed logarithmic anchors in the catalog |
+| Performance | 5 % | p95 latency; fixed logarithmic anchors in the catalog |
 
 ```text
-score_decision =
-    poids_qualité × qualité
-  + poids_sécurité × sécurité
-  + poids_coût × coût
-  + poids_performance × performance
+decision_score =
+    quality_weight × quality
+  + security_weight × security
+  + cost_weight × cost
+  + performance_weight × performance
 ```
 
-Les poids par défaut viennent du catalogue. Ils peuvent être remplacés sans
-modifier le code avec `MODEL_COMPASS_WEIGHTS`, par exemple :
+The default weights come from the catalog. `MODEL_COMPASS_WEIGHTS` replaces
+them without a code change, for example:
 
 ```bash
 MODEL_COMPASS_WEIGHTS='{"quality":0.60,"security":0.20,"cost":0.15,"performance":0.05}' make merge
 ```
 
-Les poids doivent être positifs et leur somme doit être égale à `1.0`. Le
-rapport et le manifeste enregistrent toujours les poids effectivement utilisés.
-Un run collecté avec `SECURITY=skip` met le poids sécurité à 0 et remet les
-trois autres à l'échelle (par défaut 0,67 / 0,27 / 0,07) ; le rapport le
-signale sur chaque page.
+Weights must be positive and sum to `1.0`. The report and the manifest always
+record the weights actually used. A run collected with `SECURITY=skip` sets the
+security weight to 0 and rescales the other three (0.67 / 0.27 / 0.07 by
+default); the report flags it on every page.
 
-### Pourquoi ces poids
+### Why these weights
 
-Un poids ne se justifie pas seul : ce qui compte est l'arbitrage qu'il impose
-entre deux composantes, sur les ancres fixes du catalogue. Un point de qualité
-sur l'échelle 1-5 vaut 25 points de la composante qualité. Le coût perd
-33,3 points par décade de coût (ancres 0,05–50 USD pour 1 000 requêtes, trois décades), la
-performance 67,7 points par décade de latence p95 (ancres 1–30 s), et la
-sécurité un point par point de RSI. `implied_tradeoffs`
-(`src/evaluators/recommendation.py`) calcule ces arbitrages ; le rapport les
-affiche dans la page *Use cases in detail*.
+A weight is not justified on its own: what matters is the trade-off it imposes
+between two components, on the catalog's fixed anchors. One quality point on the
+1-5 scale is worth 25 points of the quality component. Cost loses 33.3 points
+per decade of cost (anchors 0.05–50 USD per 1,000 requests, three decades),
+performance 67.7 points per decade of p95 latency (anchors 1–30 s), and security
+one point per RSI point. `implied_tradeoffs`
+(`src/evaluators/recommendation.py`) computes these trade-offs; the report shows
+them on the *Use cases in detail* page.
 
-| Profil | Qualité | Sécurité | Coût | Perf. | 1 point de qualité vaut | Un prix 10 fois plus bas vaut | Une fuite confirmée coûte |
+| Profile | Quality | Security | Cost | Perf. | 1 quality point is worth | A 10× lower price is worth | A confirmed leak costs |
 | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
-| `quality_first` | 70 % | 20 % | 7 % | 3 % | plus que tout écart de prix | 0,13 point | ≥ 0,4 point |
-| `balanced` (défaut) | 50 % | 25 % | 20 % | 5 % | un écart de prix de 75 fois | 0,53 point | ≥ 0,7 point |
-| `cost_sensitive` | 35 % | 20 % | 40 % | 5 % | un écart de prix de 4,5 fois | 1,52 point | ≥ 0,8 point |
+| `quality_first` | 70 % | 20 % | 7 % | 3 % | more than any price gap | 0.13 point | ≥ 0.4 point |
+| `balanced` (default) | 50 % | 25 % | 20 % | 5 % | a 75-fold price gap | 0.53 point | ≥ 0.7 point |
+| `cost_sensitive` | 35 % | 20 % | 40 % | 5 % | a 4.5-fold price gap | 1.52 points | ≥ 0.8 point |
 
-« Une fuite confirmée coûte » est un minimum : le RSI d'un modèle qui fuit est
-ramené sous 65, soit au moins 35 points de RSI perdus.
+"A confirmed leak costs" is a minimum: the RSI of a leaking model is brought
+below 65, so at least 35 RSI points are lost.
 
-**Le défaut `balanced` (50/25/20/5).**
+**The `balanced` default (50/25/20/5).**
 
-- **Qualité 50 %.** Un modèle d'un point meilleur l'emporte sur un modèle
-  75 fois moins cher ; pour un demi-point, l'écart de prix doit rester sous
-  9 fois. C'est l'ordre de grandeur qui sépare un modèle de pointe d'un modèle
-  économique : un demi-point d'écart justifie de payer le modèle de pointe, un
-  dixième de point non. Quand la qualité des modèles éligibles est à égalité
-  statistique, comme dans le run de référence 0.4.0, le coût décide, et c'est
-  voulu : à qualité indiscernable, payer plus n'a pas de justification
-  générique.
-- **Sécurité 25 %.** Une fuite confirmée coûte au moins 0,7 point de qualité,
-  soit l'équivalent d'un prix 20 fois plus élevé : un modèle qui divulgue son
-  contexte caché doit être nettement meilleur pour rester premier. La sécurité
-  reste compensatoire, car le RSI ne mesure qu'un périmètre étroit (la
-  divulgation d'un secret) ; un dossier où la sécurité est éliminatoire doit
-  l'appliquer comme critère d'exclusion, hors de l'outil.
-- **Coût 20 %.** Il départage les modèles de qualité proche sans pouvoir
-  racheter un écart de qualité réel : sur toute la plage des ancres (un facteur
-  1 000), il ne vaut que 1,6 point de qualité.
-- **Performance 5 %.** Une latence p95 dix fois plus élevée ne vaut que
-  0,27 point de qualité : le profil de charge par défaut (`enterprise_qa`)
-  traite des questions où quelques secondes n'invalident pas une réponse. Une
-  application interactive doit passer par un autre profil ou par
-  `MODEL_COMPASS_WEIGHTS`.
+- **Quality 50 %.** A model one point better beats a model 75 times cheaper;
+  for half a point, the price gap must stay below 9 times. That is the order of
+  magnitude between a frontier model and an economy model: half a point of
+  difference justifies paying for the frontier model, a tenth of a point does
+  not. When the eligible models are statistically tied on quality, as in the
+  0.4.0 reference run, cost decides, and that is intended: at indistinguishable
+  quality, paying more has no generic justification.
+- **Security 25 %.** A confirmed leak costs at least 0.7 quality points, the
+  equivalent of a 20 times higher price: a model that discloses its hidden
+  context must be clearly better to stay first. Security stays compensatory,
+  because the RSI only measures a narrow scope (disclosing a secret); a tender
+  where security is eliminatory must apply it as an exclusion criterion,
+  outside the tool.
+- **Cost 20 %.** It separates models of close quality without being able to buy
+  back a real quality gap: over the whole anchor range (a factor of 1,000), it
+  is worth only 1.6 quality points.
+- **Performance 5 %.** A ten times higher p95 latency is worth only 0.27
+  quality points: the default workload profile (`enterprise_qa`) handles
+  questions where a few seconds do not invalidate an answer. An interactive
+  application should use another profile or `MODEL_COMPASS_WEIGHTS`.
 
-**Les deux autres profils.**
+**The other two profiles.**
 
-- `quality_first` : sur toute la plage des ancres, le coût ne vaut que
-  0,4 point de qualité ; il ne départage que des modèles déjà proches. Pour des
-  réponses critiques (juridique, médical, décision engageante).
-- `cost_sensitive` : un point de qualité vaut un prix 4,5 fois plus bas. Pour
-  un fort volume ou un budget contraint, quand un modèle légèrement moins bon
-  mais beaucoup moins cher reste acceptable.
+- `quality_first`: over the whole anchor range, cost is worth only 0.4 quality
+  points; it only separates models that are already close. For critical answers
+  (legal, medical, binding decisions).
+- `cost_sensitive`: one quality point is worth a 4.5 times lower price. For high
+  volume or a tight budget, when a slightly weaker but much cheaper model is
+  still acceptable.
 
-Les profils ne changent jamais le rang publié, qui suit les poids du run. Ils
-montrent si la recommandation résiste au profil qui correspond à l'appel
-d'offres : une carte marquée *weight-profile-sensitive* nomme le leader de
-chaque profil, et l'humain retient celui du profil qui correspond au dossier.
-La plage de rang sous ±10 % (*fragile*) complète cette lecture pour de petites
-variations autour du profil retenu.
+The profiles never change the published rank, which follows the run's weights.
+They show whether the recommendation holds under the profile that fits the call
+for tender: a card marked *weight-profile-sensitive* names the leader of each
+profile, and the human keeps the one whose profile fits the tender. The rank
+range under ±10 % (*fragile*) completes this reading for small changes around
+the chosen profile.
 
-### Pourquoi ces seuils
+### Why these thresholds
 
-Le seuil d'un cas d'usage est **non compensatoire** : un modèle sous le seuil
-est exclu, quel que soit son prix. Avec cinq items par cas d'usage :
+A use case's threshold is **non-compensatory**: a model below it is excluded,
+whatever its price. With five items per use case:
 
-- **4,0 / 5 pour les cas d'usage à contrôle déterministe.** Un item réussi vaut
-  5, un échec 1, et le crédit partiel donne une valeur intermédiaire. Un échec
-  complet sur cinq donne (4 × 5 + 1) / 5 = 4,2 et reste éligible ; deux échecs
-  donnent 3,4 et excluent. Le seuil tolère donc une erreur sur cinq, pas deux.
-  Une bonne réponse hors contrat de format (3) sur deux items donne 4,2 :
-  éligible, mais sur trois items 3,8 exclut.
-- **3,5 / 5 pour la synthèse et la communication concise**, notées par les
-  juges sur une échelle graduée : 3 veut dire qu'un critère n'est que
-  partiellement rempli, 4 qu'il reste un défaut mineur hors critère. 3,5 exige
-  qu'en moyenne la réponse soit plus proche de « défaut mineur » que de
-  « critère partiel », ce qui laisse de la place à la sévérité variable des juges
-  sur des critères en partie subjectifs.
+- **4.0 / 5 for the use cases with a deterministic check.** A passed item is
+  worth 5, a failure 1, and partial credit gives a value in between. One full
+  failure out of five gives (4 × 5 + 1) / 5 = 4.2 and stays eligible; two
+  failures give 3.4 and exclude. The threshold therefore tolerates one error out
+  of five, not two. A correct answer outside the format contract (3) on two
+  items gives 4.2: eligible, but on three items 3.8 excludes.
+- **3.5 / 5 for summarization and concise communication**, scored by the judges
+  on a graded scale: 3 means a criterion is only partly met, 4 that a minor
+  defect outside the criteria remains. 3.5 requires the answer to be, on
+  average, closer to "minor defect" than to "partial criterion", which leaves
+  room for the varying severity of judges on partly subjective criteria.
 
-**Calibration sur le run de référence.** Le run collecté le 3 novembre 2026
-(`run_20261103_121614`) est la référence. Collecté en 0.7.0, il a été fusionné
-à nouveau en 0.8.0 (`results/benchmark_20261103_154602`) : la 0.8.0 ne change
-que la lecture des réponses exactes, appliquée à la fusion aux réponses brutes
-stockées, donc une nouvelle collecte aurait envoyé les mêmes requêtes. Le
-manifeste note les deux versions (`collected_methodology_version`). Identifiants :
-`quality_suite_id` `generic-screen-v3-be713fff517f`, catalogue `v3.2`,
-`security_probe_set_id` `full-fafdd3e07f92`, poids par défaut, profil
-`enterprise_qa`, six modèles. Les seuils y séparent les modèles sans ambiguïté :
+**Calibration on the reference run.** The run collected on 3 November 2026
+(`run_20261103_121614`) is the reference. Collected under 0.7.0, it was merged
+again under 0.8.0 (`results/benchmark_20261103_154602`): 0.8.0 only changes how
+exact answers are read, applied at merge to the stored raw responses, so a new
+collection would have sent the same requests. The manifest records both
+versions (`collected_methodology_version`). Identifiers: `quality_suite_id`
+`generic-screen-v3-be713fff517f`, catalog `v3.2`, `security_probe_set_id`
+`full-fafdd3e07f92`, default weights, profile `enterprise_qa`, six models. The
+thresholds separate the models without ambiguity:
 
-| Cas d'usage | Seuil | Plus bas éligible | Meilleur exclu |
+| Use case | Threshold | Lowest eligible | Best excluded |
 |---|---:|---|---|
-| Extraction structurée | 4,0 | 4,20 (Claude Sonnet 5.5) | 2,23 (Llama 3.3 70B) |
-| Code court | 4,0 | 4,44 (GPT-6 Luna) | 3,74 (Llama 3.3 70B) |
-| Question-réponse avec contexte | 4,0 | 4,73 (GPT-6 Luna) | 1,80 (Llama 3.3 70B) |
-| Raisonnement borné | 4,0 | 4,20 (Llama 3.3 70B) | aucun |
-| Classification et routage | 4,0 | 4,20 (Claude Sonnet 5.5) | 3,13 (Llama 3.3 70B) |
-| Résumé | 3,5 | 4,60 (Gemini 3.8 Flash) | 3,16 (Llama 3.3 70B) |
-| Communication concise | 3,5 | 4,09 (Claude Sonnet 5.5) | 3,40 (Llama 3.3 70B) |
-| Suivi d'instruction | 4,0 | 4,36 (GPT-6 Luna) | 3,27 (Claude Sonnet 5.5) |
+| Structured extraction | 4.0 | 4.20 (Claude Sonnet 5.5) | 2.23 (Llama 3.3 70B) |
+| Code generation | 4.0 | 4.44 (GPT-6 Luna) | 3.74 (Llama 3.3 70B) |
+| Contextual question answering | 4.0 | 4.73 (GPT-6 Luna) | 1.80 (Llama 3.3 70B) |
+| Reasoning and analysis | 4.0 | 4.20 (Llama 3.3 70B) | none |
+| Classification and routing | 4.0 | 4.20 (Claude Sonnet 5.5) | 3.13 (Llama 3.3 70B) |
+| Summarization | 3.5 | 4.60 (Gemini 3.8 Flash) | 3.16 (Llama 3.3 70B) |
+| Concise communication | 3.5 | 4.09 (Claude Sonnet 5.5) | 3.40 (Llama 3.3 70B) |
+| Instruction following | 4.0 | 4.36 (GPT-6 Luna) | 3.27 (Claude Sonnet 5.5) |
 
-Les modèles éligibles les plus bas sont à 4,20, soit exactement un item raté sur
-cinq ; aucun modèle ne tombe entre 3,75 et 4,0, où un seul essai ferait basculer
-l'éligibilité. Les seuils de 4,0 des cas d'usage à contrôle déterministe sont
-donc **calibrés** sans changement. En 0.7.0, Llama 3.3 70B était exclu du
-raisonnement à 3,40 parce que ses réponses justes `= 3/10` n'étaient pas lues ;
-il y est éligible en 0.8.0, à la limite d'une erreur sur cinq.
+The lowest eligible models are at 4.20, exactly one failed item out of five; no
+model falls between 3.75 and 4.0, where a single attempt would flip eligibility.
+The 4.0 thresholds of the deterministic use cases are therefore **calibrated**
+without change. Under 0.7.0, Llama 3.3 70B was excluded from reasoning at 3.40
+because its correct `= 3/10` answers were not read; under 0.8.0 it is eligible,
+at the limit of one error out of five.
 
-**Relecture des réponses jugées.** Les seuils de 3,5 du résumé et de la
-communication concise reposent sur le panel de juges. Pour les calibrer, 50
-réponses jugées de ce run ont été relues et notées avec la même grille
-(critères et ancres de chaque item) : les 11 items jugés, les six modèles, avec
-plus de poids sur les désaccords entre juges et les notes intermédiaires. La
-relecture a été faite **à l'aveugle** (nom du modèle et notes des juges masqués)
-par **Claude (Anthropic)**, puis **vérifiée et validée par un humain**, le
-mainteneur du projet, qui a relu les notes et leurs motifs. Le relecteur
-appartient à la même famille qu'un modèle évalué et qu'un des trois juges ; la
-validation humaine porte sur ses notes, elle ne remplace pas une notation
-humaine indépendante.
+**Review of the judged answers.** The 3.5 thresholds of summarization and
+concise communication rest on the judge panel. To calibrate them, 50 judged
+answers of this run were reviewed and scored with the same rubric (criteria and
+anchors of each item): the 11 judged items, the six models, with more weight on
+judge disagreements and intermediate scores. The review was done **blind**
+(model name and judge scores hidden) by **Claude (Anthropic)**, then **checked
+and approved by a human**, the project maintainer, who read the scores and their
+reasons. The reviewer belongs to the same family as one evaluated model and one
+of the three judges; the human approval covers its scores, it does not replace
+an independent human scoring.
 
-| Mesure | Résultat |
+| Measure | Result |
 |---|---|
-| Notes identiques à la moyenne du panel | 27 / 50 |
-| Écart d'au plus 1 point | 48 / 50 |
-| Écart moyen (relecteur − panel) | +0,26 : le panel est un peu plus sévère |
-| Ordre des modèles sur l'échantillon | identique, sauf GPT-6 Luna et Gemini 3.8 Flash (0,04 point d'écart) |
+| Scores equal to the panel mean | 27 / 50 |
+| Gap of at most 1 point | 48 / 50 |
+| Mean gap (reviewer − panel) | +0.26: the panel is slightly stricter |
+| Order of the models on the sample | identical, except GPT-6 Luna and Gemini 3.8 Flash (0.04 point apart) |
 
-Les deux écarts de plus d'un point portent sur une réponse de 50 mots pour une
-limite de 45, que les trois juges notent 2 et le relecteur 4, et sur une réponse
-que deux juges trouvent imprécise sur « les réponses les plus lentes ». Chaque
-juge a ses angles morts, que la moyenne compense : le juge Google accepte une
-réponse qui promet un remboursement immédiat, interdit par les critères ; le juge
-OpenAI accepte des questions doubles là où une seule est demandée, mais il est
-le seul à relever qu'un résumé écrit que le marketing « a été déplacé » quand le
-texte dit qu'il a été prévenu. Le relecteur l'avait manqué et a corrigé ces
-trois notes après levée de l'aveugle. Même avec la sévérité plus faible du
-relecteur, Llama 3.3 70B reste sous 3,5 sur l'échantillon (3,0 en communication
-concise, 3,4 en résumé) et les cinq autres modèles restent au-dessus de 4,0.
+The two gaps above one point concern a 50-word answer for a 45-word limit,
+which the three judges score 2 and the reviewer 4, and an answer that two
+judges find imprecise about "the slowest responses". Each judge has blind spots
+that the mean offsets: the Google judge accepts an answer that promises an
+immediate refund, which the criteria forbid; the OpenAI judge accepts double
+questions where a single one is asked, but it is the only one to notice that a
+summary says marketing "was moved" when the text says it was informed. The
+reviewer had missed it and corrected these three scores after unblinding. Even
+with the reviewer's lower severity, Llama 3.3 70B stays below 3.5 on the sample
+(3.0 in concise communication, 3.4 in summarization) and the other five models
+stay above 4.0.
 
-Les seuils de 3,5 sont donc **calibrés** sans changement, avec deux réserves :
-les notes viennent d'un relecteur IA validé par un humain, pas d'une notation
-humaine indépendante, et l'exclusion de Llama 3.3 70B en résumé (3,16 pour le
-panel, 3,4 pour le relecteur) tient à une marge faible. Le détail
-des 50 notes est conservé localement dans
+The 3.5 thresholds are therefore **calibrated** without change, with two
+caveats: the scores come from an AI reviewer approved by a human, not from an
+independent human scoring, and the exclusion of Llama 3.3 70B in summarization
+(3.16 for the panel, 3.4 for the reviewer) rests on a small margin. The detail
+of the 50 scores is kept locally in
 `results/calibration/judged_review_20261103_143403.csv`.
-Un run n'est comparable à cette référence que si ses identifiants sont identiques
-(voir [la méthodologie qualité](quality-methodology.md)).
+A run is comparable with this reference only when its identifiers are identical
+(see [the quality methodology](quality-methodology.md)).
 
-Les catalogues `model-compass-use-cases-v1.2`, `v2.2`, `v3.1` et `v3.2` fixent les
-bornes du calcul : 0,05–50 USD pour 1 000 requêtes du profil et 1–30
-secondes pour la latence p95. Le coût d'une requête est la taille d'entrée du
-profil au prix d'entrée, plus la longueur de sortie que le modèle a réellement
-produite sur la suite qualité au prix de sortie : le prix affiché seul ignore
-qu'un modèle peu cher au token peut en produire dix fois plus. Les anciennes
-ancres (0,10–100 USD par million de tokens) couvraient aussi trois décades, donc
-les arbitrages ci-dessus ne changent pas. En dessous de la borne meilleure le score est 100 ;
-au-dessus de la borne moins bonne il est 0 ; entre les deux l'échelle est
-logarithmique. Un coût nul (modèle gratuit) vaut 100. Ces scores ne sont pas
-recalculés relativement aux modèles du run. Si la latence p95 manque, la preuve
-de performance est absente ; le débit tokens/s ne la remplace pas.
+The catalogs `model-compass-use-cases-v1.2`, `v2.2`, `v3.1` and `v3.2` set the
+bounds of the computation: 0.05–50 USD per 1,000 profile requests and 1–30
+seconds for p95 latency. The cost of a request is the profile's input size at
+the input price, plus the output length the model really produced on the
+quality suite at the output price: the listed price alone ignores that a model
+cheap per token can produce ten times more of them. The former anchors
+(0.10–100 USD per million tokens) also covered three decades, so the trade-offs
+above do not change. Below the better bound the score is 100; above the worse
+bound it is 0; in between the scale is logarithmic. A zero cost (free model) is
+worth 100. These scores are not recomputed relative to the run's models. If p95
+latency is missing, the performance evidence is absent; tokens per second do not
+replace it.
 
-Si une composante manque, le modèle reste visible mais reçoit le statut
-`insufficient_decision_evidence` et aucun rang de recommandation. Le pipeline
-ne remplace pas silencieusement une preuve absente par une valeur favorable.
+If a component is missing, the model stays visible but gets the
+`insufficient_decision_evidence` status and no recommendation rank. The pipeline
+never silently replaces missing evidence with a favourable value.
 
-## Égalités et statuts
+## Ties and statuses
 
-Le classement utilise un rang dense. Il n'existe pas de règle artificielle de
-départage : plusieurs modèles ayant exactement le même score conservent le
-même rang et peuvent tous être `recommended`.
+The ranking uses a dense rank. There is no artificial tie-breaking rule: several
+models with exactly the same score keep the same rank and can all be
+`recommended`.
 
-Les statuts sont :
+The statuses are:
 
-- `recommended` : meilleur rang parmi les modèles éligibles et suffisamment
-  documentés, ou modèle classé qu'une variation de ±10 % d'un poids ou du seuil
-  mettrait premier (`recommendation_sensitivity_rank_min = 1`, rang inchangé) :
-  la carte affiche alors *Recommended (too close to call)* ;
-- `eligible` : dépasse le seuil et possède les preuves nécessaires, mais n'a
-  pas le meilleur rang ;
-- `below_quality_threshold` : qualité insuffisante pour ce cas d'usage ;
-- `insufficient_quality_evidence` : couverture ou score qualité manquant ;
-- `insufficient_decision_evidence` : qualité éligible, mais sécurité, coût ou
-  performance manquant.
+- `recommended`: best rank among the eligible and sufficiently documented
+  models, or a ranked model that a ±10 % change of one weight or of the
+  threshold would put first (`recommendation_sensitivity_rank_min = 1`, rank
+  unchanged): the card then shows *Recommended (too close to call)*;
+- `eligible`: passes the threshold and has the required evidence, but not the
+  best rank;
+- `below_quality_threshold`: quality too low for this use case;
+- `insufficient_quality_evidence`: quality coverage or score missing;
+- `insufficient_decision_evidence`: quality eligible, but security, cost or
+  performance missing.
 
-Le nombre de modèles évalués ou affichés n'est pas limité artificiellement.
+The number of evaluated or displayed models is not artificially limited.
 
-## Sécurité, conformité et coût
+## Security, compliance and cost
 
-La sécurité est générique et comparable entre les modèles : prompt injection,
-fuite de secrets, demandes dangereuses, respect des instructions et politiques
-de rétention disponibles via OpenRouter.
+Security is generic and comparable across models: prompt injection, secret
+disclosure, obedience to hidden instructions and the retention policies
+available through OpenRouter.
 
-Le pipeline ne décide pas automatiquement de la conformité à une exigence
-client comme la localisation des données, HDS, SecNumCloud, une certification
-particulière ou un SLA contractuel. Ces points sont vérifiés par l'humain.
+The pipeline does not decide automatically on compliance with a client
+requirement such as data location, HDS, SecNumCloud, a specific certification or
+a contractual SLA. A human checks these points.
 
-Le coût couvre uniquement le modèle : tokens d'entrée, tokens de sortie, TCO
-projeté et coût réel observé lorsque disponible. Il exclut l'infrastructure,
-le RAG, le stockage, l'orchestration, l'intégration, la supervision et la
-licence d'une solution complète.
+Cost covers the model only: input tokens, output tokens, projected TCO and the
+actual cost observed when available. It excludes infrastructure, RAG, storage,
+orchestration, integration, monitoring and the licence of a complete solution.
 
-## Artefacts et surfaces
+## Artifacts and surfaces
 
-Le benchmark résumé reste une ligne par modèle :
+The summary benchmark stays one row per model:
 
 ```text
 results/benchmark_<timestamp>.{csv,json}
 ```
 
-Le détail de recommandation est séparé pour conserver plusieurs lignes par
-modèle :
+The recommendation detail is kept apart to hold several rows per model:
 
 ```text
 results/recommendations/benchmark_<timestamp>_recommendations.{csv,json}
 ```
 
-Chaque ligne de cet artefact correspond à un couple `use_case_id / model` et
-contient le seuil, la couverture, les quatre composantes, le score pondéré, le
-rang, le statut et les preuves manquantes. Le rapport HTML (`make export-html`)
-affiche ce même artefact.
+Each row of this artifact is a `use_case_id / model` pair and holds the
+threshold, the coverage, the four components, the weighted score, the rank, the
+status and the missing evidence. The HTML report (`make export-html`) shows this
+same artifact.
 
-## Hors périmètre
+## Out of scope
 
-Model Compass ne réalise pas :
+Model Compass does not perform:
 
-- l'analyse automatique d'un DCE, CCTP ou cahier des charges ;
-- l'extraction d'exigences propres à un client ;
-- la personnalisation automatique des prompts pour un appel d'offres ;
-- l'évaluation sur des données confidentielles ou un workflow métier réel ;
-- la recommandation d'une architecture complète ;
-- le calcul du coût total d'une solution ;
-- la sélection automatique d'un fournisseur final ;
-- la certification réglementaire ;
-- la décision finale d'adoption ;
-- la génération automatique d'une réponse commerciale.
+- automatic analysis of tender documents or specifications;
+- extraction of client-specific requirements;
+- automatic customisation of the prompts for a call for tender;
+- evaluation on confidential data or a real business workflow;
+- recommendation of a complete architecture;
+- computing the total cost of a solution;
+- automatic selection of a final provider;
+- regulatory certification;
+- the final adoption decision;
+- automatic generation of a commercial response.
 
-## Travail méthodologique restant
+## Remaining methodological work
 
-Le contrat logiciel est en place, mais la méthodologie doit encore être
-renforcée :
+The thresholds of the eight use cases are calibrated on the 0.8.0 reference
+run. Still open:
 
-1. confirmer la liste des cas d'usage de la première version ;
-2. définir les critères de réussite propres à chaque cas ;
-3. calibrer les seuils sur des tâches représentatives ;
-4. vérifier la stabilité des catégories et des pondérations ;
-5. comparer les recommandations génériques à `gen-e2-eval` sur les mêmes
-   modèles, sans confondre les deux types de preuve.
+1. score the judged items independently by a human, beyond the approved AI
+   review;
+2. check that the thresholds and weights stay stable on the next runs and on
+   other sets of models;
+3. compare the generic recommendations with `gen-e2-eval` on the same models,
+   without mixing the two kinds of evidence.
 
-Les seuils et le catalogue ne doivent donc pas être présentés comme une
-certification de pertinence métier.
+The thresholds and the catalog must therefore not be presented as a
+certification of business relevance.
