@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `make models` gives the request count of the `free_general` preset under the
+  current defaults (about 600 requests), instead of the 78 of the retired v2
+  suite and basic probes.
+
+### Changed
+
+- The README is shorter: it keeps the overview, the latest release, the standard
+  path, the configuration and the development commands, and links to
+  `docs/workflow.md` for judging details, advanced options and troubleshooting.
+  It corrects the size of the v3 suite (40 prompts, five per use case) and the
+  request count of a free-model run. The README and the documentation home page
+  no longer claim that the site is published to GitHub Pages: CI only builds it.
+- The living documentation is in English: home page, workflow, report reading
+  guide (renamed `docs/report-reading-guide.md`), slides page, scope, quality,
+  security and multi-probe methodologies, and the documentation guide. The
+  translation also corrects stale passages: the scope and quality methodology
+  name v3 as the default catalog, the scored-probe counts per category match the
+  probe set, and the remaining methodological work reflects the calibrated
+  thresholds. ADRs and project history stay in French.
+
 ## [0.8.0] — 2026-11-03 — Calibrated reference run and settled suite
 
 Methodology `0.8.0`, through `0.5.0`, `0.6.0` and `0.7.0`: one security path

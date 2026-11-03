@@ -32,9 +32,9 @@ class ModelPreset:
 MODEL_PRESETS: dict[str, ModelPreset] = {
     "free_general": ModelPreset(
         description=(
-            "Two-model free-tier comparison (Google and Cohere). With the default v2 suite "
-            "and basic probes a run sends about 78 requests: above the 50/day cap of "
-            "accounts with less than 10 USD of credits."
+            "Two-model free-tier comparison (Google and Cohere). With the default settings "
+            "a run sends about 600 requests (2 x 120 quality calls + 2 x about 180 security "
+            "requests): above the 50/day cap of accounts with less than 10 USD of credits."
         ),
         models=(
             "google/gemma-4-31b-it:free",
