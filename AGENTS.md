@@ -18,7 +18,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   `scripts/export_dashboard_html.py`; operational scripts live in `scripts/`
 - `scripts/build_quality_suite_v3.py` and `scripts/build_security_probes.py` are
   the source of the v3 suite, its catalog and the probe set: change items there,
-  never in the JSON (`--check` and `tests/test_prompt_builders.py` catch drift)
+  never in the JSON (`--check` and `tests/test_prompt_builders.py` catch drift).
+  A new quality item is written there as a candidate and enters the suite only
+  after `make pilot-items LIVE=1` (paid) shows that it separates models
 - `src/main.py` remains the CLI and compatibility façade; `src/pipeline_cli.py`
   owns parsing/overrides, `src/pipeline_collect.py` concurrent collection and
   error budgets, `src/pipeline_merge.py` the benchmark matrix, and
@@ -47,8 +49,9 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   page, never breaks ties arbitrarily and ships Plotly locally to work offline
 - `QUALITY_SUITE` (`v3` default, `v2`, `v1`) selects the prompt suite and its
   catalog; `generic-screen-v1` must stay unchanged and collect/merge must use
-  the same suite. Quality items avoid names of people and places, addresses and
-  emails, which a filter upstream of the models may mask
+  the same suite. Quality items avoid names of people and places, addresses,
+  emails, and short codes or staff numbers (`T4`, `W1`, `7005`), which a filter
+  upstream of the models masks
 - Generated code is executed only with `QUALITY_CODE_EXECUTION=true` (the
   default of the standard path) and only through
   `src/evaluators/code_sandbox.py`; never run model output elsewhere
@@ -106,6 +109,8 @@ human and domain-specific, with `gen-e2-eval` used when a client dataset exists.
   averages content rows only, with `format_compliance_rate` beside it. Where
   the exact output is the construct (`instruction_following` and JSON items), a
   correct answer recovered from extra text scores `RECOVERED_ANSWER_SCORE` (3)
+- Only some strict-format items show an example of the expected output; keep
+  the others without one, so that the format still separates models
 - Structured checks give partial credit (`1 + 4 × share correct` for JSON
   fields and passed code tests); an empty response scores 1 on content and on
   format when the prompt has a format contract; a completion without any

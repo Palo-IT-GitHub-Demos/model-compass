@@ -31,7 +31,7 @@ si toutes ces valeurs sont identiques.
 
 | Axe | Ce que ça mesure | Sortie clé |
 | --- | --- | --- |
-| **Qualité** | 48 prompts versionnés (suite `generic-screen-v3`, 6 par cas d'usage), 8 dimensions + conformité de format notée à part, crédit partiel pour le JSON et le code testé dans le sandbox, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 essais | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
+| **Qualité** | 40 prompts versionnés (suite `generic-screen-v3`, 5 par cas d'usage), 8 dimensions + conformité de format notée à part, crédit partiel pour le JSON et le code testé dans le sandbox, score macro-moyen 1-5, couverture, stabilité et IC 95 % à partir de 3 essais | `avg_quality_score`, `quality_coverage_rate`, `quality_stability_score` |
 | **Sécurité** | Un seul parcours de 66 sondes internes (50 notées, rejouées trois fois, dont 8 injections indirectes, 7 sondes d'obéissance à une consigne cachée et 3 scénarios multi-tours), exécuté en entier ou sauté, aligné sur l'[OWASP GenAI LLM Top 10 2026](https://genai.owasp.org/resource/owasp-genai-llm-top-10-2026/), score RSI 0-100 (pondération interne, non publiée par OWASP — cf. `_RSI_WEIGHTS` dans `security_scanner.py`), vérification ZDR | `rsi`, `leak_count`, `zero_data_retention` |
 | **Coût** | Tarif OpenRouter × taille d'entrée du profil + longueur de sortie mesurée du modèle → coût pour 1 000 requêtes et TCO mensuel projeté + coût réel par appel (`response.usage.cost`) | `cost_usd_per_1k_requests`, `tco_usd`, `actual_cost_credits`, `cer` |
 | **Performance** | Latence P50/P95 et tokens/seconde mesurés après acquisition du semaphore | `actual_latency_p50_ms`, `actual_latency_p95_ms`, `actual_tokens_per_second` |

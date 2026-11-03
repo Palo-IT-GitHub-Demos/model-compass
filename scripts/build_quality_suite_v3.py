@@ -1,8 +1,9 @@
 """Build the generic-screen-v3 quality suite and its use-case catalog.
 
-This script is the source of ``data/prompts/quality_prompts_v3.json`` and
-``data/catalog/model_compass_use_cases_v3.json``: change an item here, never
-in the JSON. Kept v2 items are copied verbatim; every new item's expected value
+This script is the source of ``data/prompts/quality_prompts_v3.json``,
+``data/catalog/model_compass_use_cases_v3.json`` and the candidate items in
+``data/prompts/quality_candidates_v3.json``: change an item here, never in the
+JSON. Kept v2 items are copied verbatim; every new item's expected value
 is computed here, and every code item's reference solution must pass its own
 tests in the real sandbox before anything is written. Changing an item changes
 ``quality_suite_id`` and therefore run comparability.
@@ -19,6 +20,7 @@ import argparse
 import calendar
 import itertools
 import json
+import random
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -30,6 +32,7 @@ from src.evaluators.code_sandbox import find_policy_violation, run_python_tests 
 
 SUITE_PATH = ROOT / "data/prompts/quality_prompts_v3.json"
 CATALOG_PATH = ROOT / "data/catalog/model_compass_use_cases_v3.json"
+CANDIDATES_PATH = ROOT / "data/prompts/quality_candidates_v3.json"
 
 V2 = {
     item["item_id"]: item
@@ -1024,6 +1027,645 @@ items.append(
 )
 items.append(keep("instruction_following-04"))
 
+# ── Candidates (not in the suite) ────────────────────────────────────────────
+# Written for the use cases whose items no longer separate the models of the 3 November run, and piloted on
+# real models (scripts/pilot_quality_items.py) before any of them enters the suite: an item joins only if it
+# separates models. They target what did separate models on 3 November: a rule read literally against the
+# obvious reading, an edge case stated in the spec, a value the text does not give. Two JSON candidates show
+# an example of the expected output; the others do not.
+candidates: list[dict] = []
+candidates.append(
+    json_item(
+        "structured_extraction-12",
+        "null_for_unstated_values",
+        "hard",
+        "Extract the order details and return exactly one JSON object, with no markdown or extra text, with the keys "
+        "`order_id` (string), `quantity` (integer), `delivery_date` (YYYY-MM-DD) and `gift_wrap` (true or false). Use "
+        "null for any value the text does not state.\nText: 'Order 8812: please send 3 units as soon as possible. No "
+        "message card is needed.'",
+        {"order_id": "8812", "quantity": 3, "delivery_date": None, "gift_wrap": None},
+    )
+)
+SHIRT_MESSAGES = [
+    "I'd like 4 shirts in blue, size medium.",
+    "Make that 6 shirts.",
+    "Sorry, ignore my last message: keep the original quantity.",
+    "Colour change: navy instead of blue.",
+    "And size large, please.",
+    "Actually, ignore the size change.",
+]
+candidates.append(
+    json_item(
+        "structured_extraction-13",
+        "corrections_and_retractions",
+        "hard",
+        "Return exactly one JSON object, with no markdown or extra text, with the keys `quantity` (integer), `colour` "
+        "and `size`, giving the values the customer finally wants. Example of the expected format, with other "
+        'values: {"quantity": 1, "colour": "green", "size": "small"}\nMessages from the customer, in order:\n'
+        + "\n".join(f"{index}. {message}" for index, message in enumerate(SHIRT_MESSAGES, start=1)),
+        # Message 3 retracts message 2 and message 6 retracts message 5.
+        {"quantity": 4, "colour": "navy", "size": "medium"},
+    )
+)
+# Short codes such as T4 or W1 reach the models as [ADDRESS]: the tasks have word names.
+DURATIONS = [
+    ("setup", "1 h 30", 60 + 30),
+    ("review", "45 min + 1 h", 45 + 60),
+    ("testing", "half an hour", 30),
+    ("deploy", "1.25 h", 75),
+    ("training", "2 h minus 10 min", 120 - 10),
+    ("audit", "three quarters of an hour", 45),
+]
+candidates.append(
+    json_item(
+        "structured_extraction-14",
+        "duration_normalisation",
+        "medium",
+        "Return exactly one JSON object, with no markdown or extra text, mapping each task to its duration in minutes "
+        '(integer). Example of the expected format, with other values: {"planning": 15, "support": 240}\n'
+        "Tasks (task | duration):\n" + "\n".join(f"{task} | {text}" for task, text, _ in DURATIONS),
+        {task: minutes for task, _, minutes in DURATIONS},
+    )
+)
+PAYMENTS = [
+    ("P1", "250", "paid"),
+    ("P2", "100", "partially_refunded"),
+    ("P3", "99.99", "paid"),
+    ("P4", "250", "refunded"),
+    ("P5", "180", "paid"),
+    ("P6", "250", "partially_refunded"),
+    ("P7", "100", "paid"),
+    ("P8", "410", "cancelled"),
+    ("P9", "180", "paid"),
+    ("P10", "180", "paid"),
+]
+kept_payments = [
+    (payment, Fraction(amount))
+    for payment, amount, status in PAYMENTS
+    if status in {"paid", "partially_refunded"} and Fraction(amount) >= 100
+]
+candidates.append(
+    json_item(
+        "structured_extraction-15",
+        "filter_then_sort_with_tie_rule",
+        "hard",
+        "Return exactly one array in JSON format, with no markdown or extra text, listing the `id` (string) of every "
+        "payment whose status is paid or partially_refunded and whose amount is at least 100, sorted by amount from "
+        "highest to lowest, and by id in alphabetical order when amounts are equal.\nPayments (id | amount | status):\n"
+        + "\n".join(f"{payment} | {amount} | {status}" for payment, amount, status in PAYMENTS),
+        [payment for payment, _ in sorted(kept_payments, key=lambda pair: (-pair[1], pair[0]))],
+    )
+)
+PRICE_UPDATES = [
+    ("2026-03-02 14:00", "A-1", 12.5),
+    ("2026-03-01 09:00", "B-2", 7),
+    ("2026-03-02 09:30", "A-1", 13),
+    ("2026-03-01 18:45", "B-2", 6.5),
+    ("2026-03-02 08:00", "C-3", 20),
+    ("2026-02-28 23:59", "C-3", 21),
+    ("2026-03-01 18:45", "A-1", 11),
+]
+candidates.append(
+    json_item(
+        "structured_extraction-16",
+        "latest_by_timestamp_not_position",
+        "hard",
+        "Return exactly one JSON object, with no markdown or extra text, mapping each SKU to its latest price "
+        "(number), where latest means the most recent timestamp, not the last line of the list.\nPrice updates "
+        "(timestamp | sku | price):\n" + "\n".join(f"{when} | {sku} | {price}" for when, sku, price in PRICE_UPDATES),
+        {sku: price for _, sku, price in sorted(PRICE_UPDATES)},
+    )
+)
+candidates.append(
+    code_item(
+        "code_generation-12",
+        "quoted_field_parsing",
+        "hard",
+        "Write only a Python function `split_csv_line(line: str) -> list[str]` that splits one CSV line into its "
+        "fields. Fields are separated by commas. A field may be enclosed in double quotes, and then it may contain "
+        "commas; inside such a field, two double quotes in a row stand for one double quote. Return the fields "
+        "without their enclosing quotes, keeping every other character, spaces included. An empty line has one "
+        "empty field.",
+        "split_csv_line",
+        ["line"],
+        """
+def split_csv_line(line):
+    fields, current, quoted, index = [], [], False, 0
+    while index < len(line):
+        char = line[index]
+        if quoted and char == '"' and line[index + 1 : index + 2] == '"':
+            current.append('"')
+            index += 1
+        elif char == '"':
+            quoted = not quoted
+        elif char == "," and not quoted:
+            fields.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    fields.append("".join(current))
+    return fields
+""",
+        [
+            ("a,b,c",),
+            ('"x,y",z',),
+            ('"say ""hi""",2',),
+            ("",),
+            ("a,,b",),
+            ("a,",),
+            (" a , b ",),
+            ('"",x',),
+            ('"a,""b"",c"',),
+        ],
+        CODE_CRITERIA,
+    )
+)
+candidates.append(
+    code_item(
+        "code_generation-13",
+        "date_range_with_exclusions",
+        "hard",
+        "Write only a Python function `business_days(start: str, end: str, holidays: list[str]) -> int` that counts "
+        "the working days from `start` to `end`, both included. Dates are YYYY-MM-DD strings. A working day is a "
+        "Monday to Friday that is not in `holidays`; a holiday that falls on a weekend changes nothing. Return 0 when "
+        "`end` is before `start`.",
+        "business_days",
+        ["start", "end", "holidays"],
+        """
+from datetime import date, timedelta
+
+
+def business_days(start, end, holidays):
+    day, last = date.fromisoformat(start), date.fromisoformat(end)
+    closed = {date.fromisoformat(holiday) for holiday in holidays}
+    count = 0
+    while day <= last:
+        count += day.weekday() < 5 and day not in closed
+        day += timedelta(days=1)
+    return count
+""",
+        [
+            ("2026-03-02", "2026-03-13", ["2026-03-06"]),
+            ("2026-03-07", "2026-03-08", []),
+            ("2026-03-13", "2026-03-02", []),
+            ("2026-03-02", "2026-03-02", []),
+            ("2026-03-02", "2026-03-08", ["2026-03-07"]),
+            ("2026-12-24", "2027-01-04", ["2026-12-25", "2027-01-01"]),
+            ("2028-02-25", "2028-03-01", []),
+        ],
+        CODE_CRITERIA,
+    )
+)
+march_holidays = {6, 20}
+open_days = sum(calendar.weekday(2026, 3, day) < 5 and day not in march_holidays for day in range(2, 14))
+candidates.append(
+    exact(
+        "contextual_qa-17",
+        QA,
+        "inclusive_count_with_closures",
+        "hard",
+        "Context: The office is closed on Saturdays, Sundays and public holidays. In March 2026, the public holidays "
+        "fall on the 6th and the 20th.\nQuestion: On how many days is the office open from 2 March 2026 to 13 March "
+        "2026, both dates included? Reply with the number only.",
+        str(open_days),
+        dimension="contextual_accuracy",
+    )
+)
+candidates.append(
+    exact(
+        "contextual_qa-18",
+        QA,
+        "precedence_over_recency",
+        "hard",
+        "Context: Document A, the remote-work policy dated 10 January 2025: every employee may work remotely two days "
+        "a week. Document B, a team memo dated 1 March 2025: our team works remotely three days a week. Document C, "
+        "a policy update dated 15 February 2025: the policy prevails over any team memo.\nQuestion: How many days a "
+        "week may a member of that team work remotely? Reply with the number only.",
+        "2",
+        dimension="contextual_accuracy",
+    )
+)
+outage_minutes = (12 * 60 + 5) - (8 * 60 + 10)
+affected = 100
+candidates.append(
+    exact(
+        "classification_routing-18",
+        CR,
+        "boundaries_of_two_rules",
+        "hard",
+        "Assign a priority with these rules: P1 if more than 100 users are affected or if the outage has lasted more "
+        "than 4 hours; P2 if 10 to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'Exactly "
+        "100 users cannot sync their files. The outage started at 08:10 and is still going on now, at 12:05.'",
+        "P1" if affected > 100 or outage_minutes > 4 * 60 else "P2" if affected >= 10 else "P3",
+        dimension="classification_accuracy",
+    )
+)
+candidates.append(
+    exact(
+        "classification_routing-19",
+        CR,
+        "cosmetic_distractor",
+        "hard",
+        "Assign a priority using these rules: P1 = the service is down for all users; P2 = a feature is broken for "
+        "some users and a workaround exists; P3 = a question or a cosmetic issue. Reply with the label only.\nTicket: "
+        "'The export button has the wrong colour, and for some users it does nothing when clicked; they can still "
+        "export from the File menu.'",
+        "P2",
+        dimension="classification_accuracy",
+    )
+)
+candidates.append(
+    exact(
+        "classification_routing-20",
+        CR,
+        "first_matching_rule_with_negation",
+        "hard",
+        "Apply the first rule that matches, in this order: 1) the sender asks for a refund: BILLING; 2) the message "
+        "contains an error code: TECHNICAL; 3) the message is about the sender's account: ACCOUNT; 4) otherwise: "
+        "OTHER. Reply with the label only.\nMessage: 'Error 502 every time I open my account page. I don't want a "
+        "refund, I just want it fixed.'",
+        "TECHNICAL",
+        dimension="classification_accuracy",
+    )
+)
+item = exact(
+    "classification_routing-21",
+    CR,
+    "multi_label_with_negation",
+    "hard",
+    "List every label that applies to the message, from BILLING, TECHNICAL and ACCOUNT, in alphabetical order, "
+    "separated by a comma and a space, and nothing else; reply NONE if no label applies.\nMessage: 'I was charged "
+    "twice for the same order, and since the update the app crashes when I open my receipts. My profile and login "
+    "are fine.'",
+    "BILLING, TECHNICAL",
+    dimension="classification_accuracy",
+)
+item["accepted_answers"] = ["BILLING, TECHNICAL", "BILLING,TECHNICAL"]
+candidates.append(item)
+
+# Long inputs with a short answer: many rows or clauses, several rules at once. Short answers keep the
+# measured output length, and therefore the cost component, comparable. Identifiers are plain numbers or
+# words, since codes such as T4 reach the models as [ADDRESS]. The data come from a fixed seed and every
+# answer is computed here; asserts guarantee each trap actually occurs.
+LONG = random.Random(2026)
+
+PRODUCT_LINES = ["cables", "chargers", "headsets", "keyboards"]
+ORDER_STATUSES = ["delivered", "delivered", "delivered", "delivered late", "returned", "cancelled"]
+ORDERS = [
+    (5001 + index, LONG.choice(PRODUCT_LINES), LONG.randint(1, 14), LONG.randint(5, 80), LONG.choice(ORDER_STATUSES))
+    for index in range(40)
+]
+assert any(qty >= 10 and status.startswith("delivered") for _, _, qty, _, status in ORDERS)
+assert any(qty == 10 for _, _, qty, _, _ in ORDERS) or any(qty == 9 for _, _, qty, _, _ in ORDERS)
+revenue_cents = dict.fromkeys(PRODUCT_LINES, 0)
+for _, line, qty, price, status in ORDERS:
+    if status.startswith("delivered"):
+        revenue_cents[line] += qty * price * (90 if qty >= 10 else 100)
+candidates.append(
+    json_item(
+        "structured_extraction-17",
+        "long_table_filtered_aggregation",
+        "hard",
+        "Return exactly one JSON object, with no markdown or extra text, mapping each product line to its revenue in "
+        "cents (integer). Revenue counts only orders whose status is delivered or delivered late; returned and "
+        "cancelled orders count for nothing. An order of 10 units or more gets 10% off. Include every product line. "
+        'Example of the expected format, with other values: {"monitors": 125000, "mice": 0}\n'
+        "Orders (order | product line | units | unit price in dollars | status):\n"
+        + "\n".join(f"{order} | {line} | {qty} | {price} | {status}" for order, line, qty, price, status in ORDERS),
+        revenue_cents,
+    )
+)
+
+ACCOUNTS = [1001, 1002, 1003, 1004, 1005]
+LEDGER_TRAPS = {
+    "event on an account that is not open",
+    "withdrawal above the balance",
+    "rejected transfer",
+    "closed account",
+    "close refused",
+}
+
+
+def make_ledger(rng: random.Random) -> list[tuple]:
+    ledger: list[tuple] = [("open", 1001), ("open", 1002), ("open", 1003), ("open", 1004)]
+    for _ in range(34):
+        kind = rng.choice(["deposit", "deposit", "withdraw", "withdraw", "transfer", "transfer", "close"])
+        if kind in {"deposit", "withdraw"}:
+            ledger.append((kind, rng.choice(ACCOUNTS), rng.randint(2, 30) * 10))
+        elif kind == "transfer":
+            source, target = rng.sample(ACCOUNTS, 2)
+            ledger.append(("transfer", source, target, rng.randint(2, 30) * 10))
+        else:
+            ledger.append(("close", rng.choice(ACCOUNTS)))
+    ledger.insert(20, ("open", 1005))
+    return ledger
+
+
+def replay_ledger(ledger: list[tuple]) -> tuple[dict[int, int], set[str]]:
+    balances: dict[int, int] = {}
+    closed: set[int] = set()
+    traps: set[str] = set()
+    for event in ledger:
+        kind, account = event[0], event[1]
+        if kind == "open":
+            if account not in balances and account not in closed:
+                balances[account] = 0
+        elif account not in balances:
+            traps.add("event on an account that is not open")
+        elif kind == "deposit":
+            balances[account] += event[2]
+        elif kind == "withdraw":
+            if event[2] > balances[account]:
+                traps.add("withdrawal above the balance")
+            else:
+                balances[account] -= event[2]
+        elif kind == "transfer":
+            target, amount = event[2], event[3]
+            if target not in balances or amount > balances[account]:
+                traps.add("rejected transfer")
+            else:
+                balances[account] -= amount
+                balances[target] += amount
+        elif balances[account] == 0:
+            del balances[account]
+            closed.add(account)
+            traps.add("closed account")
+        else:
+            traps.add("close refused")
+    return balances, traps
+
+
+# The first seed whose ledger springs every trap, so the item is reproducible and none of its rules is idle.
+LEDGER = next(
+    ledger
+    for seed in itertools.count(2026)
+    if replay_ledger(ledger := make_ledger(random.Random(seed)))[1] == LEDGER_TRAPS
+)
+balances, _ = replay_ledger(LEDGER)
+LEDGER_TEXT = {
+    "open": "open account {1}",
+    "deposit": "deposit {2} into account {1}",
+    "withdraw": "withdraw {2} from account {1}",
+    "transfer": "transfer {3} from account {1} to account {2}",
+    "close": "close account {1}",
+}
+candidates.append(
+    json_item(
+        "structured_extraction-18",
+        "long_ledger_with_rejections",
+        "hard",
+        "Replay this ledger in order and return exactly one JSON object, with no markdown or extra text, mapping each "
+        "account still open at the end (its number, as a string) to its final balance (integer). Rules: a new account "
+        "starts at 0; a withdrawal or a transfer larger than the balance of the account it takes from is rejected and "
+        "changes nothing; a transfer to an account that is not open is rejected; an account can be closed only when "
+        "its balance is 0, otherwise the close is ignored; any operation on an account that is not open is ignored, "
+        "and a closed account cannot be opened again.\nLedger:\n"
+        + "\n".join(f"{step}. " + LEDGER_TEXT[event[0]].format(*event) for step, event in enumerate(LEDGER, start=1)),
+        {str(account): balance for account, balance in sorted(balances.items())},
+    )
+)
+
+ROUTED = [
+    ("I was charged twice for order 6120.", "BILLING"),
+    ("Error 500 appears when I download invoice 6121.", "BILLING"),
+    ("How do I change the phone number on my profile?", "ACCOUNT"),
+    ("The login page shows error 403 since this morning.", "TECHNICAL"),
+    ("Do you have a newsletter?", "OTHER"),
+    ("The app crashes when I open the reports page.", "TECHNICAL"),
+    ("The refund for order 6133 has still not arrived.", "BILLING"),
+    ("I forgot my password and the reset email never comes.", "ACCOUNT"),
+    ("Exports stop at 50 percent with error 504.", "TECHNICAL"),
+    ("Thanks for the quick help last week.", "OTHER"),
+    ("My profile page loads very slowly.", "ACCOUNT"),
+    ("Password reset fails with error 422.", "TECHNICAL"),
+    ("Please send the invoice for order 6140 again; the first one had a typo.", "BILLING"),
+    ("Are you hiring interns this summer?", "OTHER"),
+    ("The dashboard shows yesterday's numbers even after a refresh.", "TECHNICAL"),
+    ("Can I add a second login for my assistant?", "ACCOUNT"),
+    ("Error 502 when I try to pay, and now I see two pending charges.", "BILLING"),
+    ("Your mobile app is great, keep it up.", "OTHER"),
+    ("Search returns nothing for any keyword.", "TECHNICAL"),
+    ("How do I delete my profile picture?", "ACCOUNT"),
+    ("Two-factor login rejects every code with error 401.", "TECHNICAL"),
+    ("Is there a discount for non-profits?", "OTHER"),
+    ("The receipt for my last refund shows the wrong amount.", "BILLING"),
+    ("Notifications stopped working after the update.", "TECHNICAL"),
+]
+queues = ["BILLING", "TECHNICAL", "ACCOUNT", "OTHER"]
+queue_counts = [sum(label == queue for _, label in ROUTED) for queue in queues]
+item = exact(
+    "classification_routing-22",
+    CR,
+    "long_batch_routing_with_precedence",
+    "hard",
+    "Route each message to one queue with these rules, in order: a message about a charge, an invoice or a refund is "
+    "BILLING even if it also reports an error; a message about login, password or profile is ACCOUNT, unless it "
+    "reports an error code, then it is TECHNICAL; any other error or malfunction is TECHNICAL; anything else is "
+    "OTHER. Reply with the number of messages in each queue, in the order BILLING, TECHNICAL, ACCOUNT, OTHER, as "
+    "four integers separated by a comma and a space, and nothing else.\n"
+    + "\n".join(f"{index}. '{text}'" for index, (text, _) in enumerate(ROUTED, start=1)),
+    ", ".join(map(str, queue_counts)),
+    dimension="classification_accuracy",
+)
+item["accepted_answers"] = [", ".join(map(str, queue_counts)), ",".join(map(str, queue_counts))]
+candidates.append(item)
+
+BASE_ALLOWANCE = {1: 40, 2: 55, 3: 70, 4: 85, 5: 100}
+AMENDMENTS = [
+    ("1 February 2026", "Meals are reimbursed separately, up to 25 dollars a day, in every zone."),
+    ("1 March 2026", "The daily allowance for zone 3 rises to 75 dollars."),
+    ("10 March 2026", "Interns receive 50% of the employee allowance."),
+    ("1 April 2026", "Contractors receive 80% of the employee allowance."),
+    (
+        "15 April 2026",
+        "For a trip longer than 3 days, the full allowance is paid for the first 3 days and half of it "
+        "for each further day.",
+    ),
+    ("20 April 2026", "The daily allowance for zone 5 rises to 110 dollars."),
+    ("1 May 2026", "The amendment of 1 March 2026 is revoked."),
+    ("5 May 2026", "Weekend days of a trip count like any other day."),
+    ("1 June 2026", "The daily allowance for zone 3 rises to 80 dollars."),
+    ("1 June 2026", "The daily allowance for zone 4 rises to 90 dollars."),
+]
+TRIP = {"zone": 3, "days": 5, "start": "10 May 2026", "role": "contractor"}
+daily = BASE_ALLOWANCE[3] * Fraction(80, 100)  # 1 March raise revoked on 1 May; 1 June raise not yet in force
+trip_allowance = 3 * daily + (TRIP["days"] - 3) * daily / 2
+assert trip_allowance.denominator == 1
+candidates.append(
+    exact(
+        "contextual_qa-19",
+        QA,
+        "rules_with_amendments_and_dates",
+        "hard",
+        "Context: Travel allowance policy. Each amendment applies to trips that start on or after its date.\nDaily "
+        "allowance per zone, in dollars: "
+        + "; ".join(f"zone {zone}: {amount}" for zone, amount in BASE_ALLOWANCE.items())
+        + ".\nAmendments, in order:\n"
+        + "\n".join(f"- {when}: {text}" for when, text in AMENDMENTS)
+        + f"\nQuestion: A {TRIP['role']} makes a {TRIP['days']}-day trip in zone {TRIP['zone']}, starting on "
+        f"{TRIP['start']}. What total allowance does the contractor receive, in dollars, meals excluded? Reply "
+        "with the number only.",
+        str(int(trip_allowance)),
+        dimension="contextual_accuracy",
+    )
+)
+
+TEAMS = ["data", "web", "ops", "sales"]
+CONTRACTS = ["permanent", "permanent", "fixed-term", "contractor"]
+# Rows are numbered rather than given staff numbers: a staff number such as 7005 reaches the models as
+# [PERSON_NAME].
+COLUMNS = ["row", "team", "contract", "start", "remote"]
+
+
+def make_staff(rng: random.Random) -> list[tuple]:
+    return [
+        (
+            index + 1,
+            rng.choice(TEAMS),
+            rng.choice(CONTRACTS),
+            f"{rng.randint(2019, 2025)}-{rng.randint(1, 12):02d}-01",
+            rng.randint(0, 5),
+        )
+        for index in range(40)
+    ]
+
+
+def in_count(row: dict) -> bool:
+    return (
+        row["team"] == "data" and row["contract"] == "permanent" and row["start"] < "2024-01-01" and row["remote"] <= 2
+    )
+
+
+def corrections_for(staff: list[tuple]) -> list[tuple] | None:
+    """Three corrections that each change the answer, two bringing someone into the count and one taking someone out."""
+    rows = {row[0]: dict(zip(COLUMNS, row, strict=True)) for row in staff}
+    moved = [i for i, row in rows.items() if row["team"] != "data" and in_count({**row, "team": "data"})]
+    remote = [i for i, row in rows.items() if row["remote"] > 2 and in_count({**row, "remote": 1})]
+    left = [i for i, row in rows.items() if in_count(row)]
+    if not (moved and remote and left):
+        return None
+    return [
+        (moved[0], "team", "data", f"the person on row {moved[0]} moved to the data team"),
+        (remote[0], "remote", 1, f"the person on row {remote[0]} now works remotely 1 day a week"),
+        (left[0], "contract", "contractor", f"the person on row {left[0]} became a contractor"),
+    ]
+
+
+STAFF, CORRECTIONS = next(
+    (staff, corrections)
+    for seed in itertools.count(2026)
+    if (corrections := corrections_for(staff := make_staff(random.Random(seed)))) is not None
+)
+original = {row[0]: dict(zip(COLUMNS, row, strict=True)) for row in STAFF}
+final_staff = {staff_id: dict(row) for staff_id, row in original.items()}
+for staff_id, column, value, _ in CORRECTIONS:
+    final_staff[staff_id][column] = value
+eligible_staff = [row for row in final_staff.values() if in_count(row)]
+assert len(eligible_staff) == sum(map(in_count, original.values())) + 1
+candidates.append(
+    exact(
+        "contextual_qa-20",
+        QA,
+        "long_roster_with_corrections",
+        "hard",
+        "Context: Staff list (row | team | contract | start date | remote days a week):\n"
+        + "\n".join(" | ".join(str(value) for value in row) for row in STAFF)
+        + "\nCorrections received after the list was drawn up: "
+        + "; ".join(text for *_, text in CORRECTIONS)
+        + ".\nQuestion: Taking the corrections into account, how many permanent staff of the data team started "
+        "before 1 January 2024 and work remotely at most 2 days a week? Reply with the number only.",
+        str(len(eligible_staff)),
+        dimension="contextual_accuracy",
+    )
+)
+candidates.append(
+    code_item(
+        "code_generation-14",
+        "many_rules_with_thresholds",
+        "hard",
+        "Write only a Python function `order_total(lines: list[list[int]], coupon: str) -> int` that returns the "
+        "total of an order in cents. Each line is [quantity, unit price in cents]. Rules, applied in this order: "
+        "1) a line total is quantity times unit price, and a line of 10 units or more gets 10% off that line, rounded "
+        "down to the cent; 2) the subtotal is the sum of the line totals; 3) coupon SAVE5 takes 500 cents off when "
+        "the subtotal is at least 3000 cents and does nothing otherwise; coupon PCT10 takes 10% off the subtotal, "
+        "rounded down to the cent, but at most 2000 cents; coupons are case-sensitive and any other value, the empty "
+        "string included, does nothing; 4) shipping costs 499 cents, and is free when the amount after the coupon is "
+        "at least 5000 cents; 5) an order without lines costs 0, shipping included.",
+        "order_total",
+        ["lines", "coupon"],
+        """
+def order_total(lines, coupon):
+    if not lines:
+        return 0
+    subtotal = 0
+    for quantity, price in lines:
+        line = quantity * price
+        if quantity >= 10:
+            line -= line // 10
+        subtotal += line
+    if coupon == "SAVE5" and subtotal >= 3000:
+        subtotal -= 500
+    elif coupon == "PCT10":
+        subtotal -= min(subtotal // 10, 2000)
+    return subtotal + (0 if subtotal >= 5000 else 499)
+""",
+        [
+            ([[2, 1000]], ""),
+            ([[2, 1500]], "SAVE5"),
+            ([[1, 2999]], "SAVE5"),
+            ([[10, 333]], ""),
+            ([[9, 333]], ""),
+            ([[1, 5400]], "SAVE5"),
+            ([[1, 5600]], "PCT10"),
+            ([[30, 10000]], "PCT10"),
+            ([[2, 3000]], "save5"),
+            ([], "PCT10"),
+            ([[12, 450], [1, 99]], "PCT10"),
+        ],
+        CODE_CRITERIA,
+    )
+)
+
+# ── Final selection (methodology 0.7.0) ──────────────────────────────────────
+# Items every model of the 3 November run answered perfectly separate nothing; items only Llama 3.3 70B missed
+# keep a floor under eligibility but are dropped where a use case has more than five. Candidates join only if
+# a model missed them in the pilot of 3 November (results/pilot/); two rounds of harder items showed that
+# generic deterministic items rarely separate the strongest models, so the suite stops at five items per use
+# case and the quality score acts mainly as an eligibility gate.
+SATURATED = {
+    "structured_extraction-04",
+    "structured_extraction-08",
+    "structured_extraction-10",
+    "structured_extraction-11",
+    "code_generation-10",
+    "code_generation-11",
+    "contextual_qa-12",
+    "contextual_qa-13",
+    "reasoning_analysis-12",
+    "classification_routing-13",
+    "classification_routing-15",
+    "classification_routing-16",
+    "concise_communication-07",
+}
+SURPLUS = {"summarization-06", "instruction_following-08"}
+PROMOTED = {
+    "structured_extraction-15": "Claude Sonnet 5.5 explains before the array; Llama 3.3 70B misorders it",
+    "structured_extraction-17": "Llama 3.3 70B misses the revenue of a 40-order table",
+    "structured_extraction-18": "Llama 3.3 70B misses the balances of a 39-step ledger",
+    "code_generation-14": "GPT-6 Luna fails 8 of 11 tests on one attempt",
+    "contextual_qa-17": "Llama 3.3 70B miscounts the open days",
+    "classification_routing-18": "Llama 3.3 70B misses the boundary of two rules",
+    "classification_routing-22": "Llama 3.3 70B miscounts 24 routed messages",
+}
+dropped = SATURATED | SURPLUS
+assert dropped <= {item["item_id"] for item in items}
+assert set(PROMOTED) <= {item["item_id"] for item in candidates}
+items = [item for item in items if item["item_id"] not in dropped] + [
+    item for item in candidates if item["item_id"] in PROMOTED
+]
+candidates = [item for item in candidates if item["item_id"] not in PROMOTED]
+
 # ── Write and validate ───────────────────────────────────────────────────────
 ORDER = [
     "structured_extraction",
@@ -1037,13 +1679,16 @@ ORDER = [
 ]
 items.sort(key=lambda item: ORDER.index(item["use_case_id"]))
 ids = [item["item_id"] for item in items]
-assert len(ids) == len(set(ids)) == 48, len(ids)
+assert len(ids) == len(set(ids)) == 40, len(ids)
+assert all(sum(item["use_case_id"] == use_case for item in items) == 5 for use_case in ORDER)
+candidate_ids = [item["item_id"] for item in candidates]
+assert len(candidate_ids) == len(set(candidate_ids)) and not set(candidate_ids) & set(ids), candidate_ids
 
 catalog = json.loads((ROOT / "data/catalog/model_compass_use_cases_v2.json").read_text(encoding="utf-8"))
 names = {use_case["id"]: use_case for use_case in catalog["use_cases"]}
-catalog["catalog_version"] = "model-compass-use-cases-v3.1"
+catalog["catalog_version"] = "model-compass-use-cases-v3.2"
 catalog["description"] = (
-    "Use-case catalog for the generic-screen-v3 suite: six items per generic use case. Thresholds stay draft "
+    "Use-case catalog for the generic-screen-v3 suite: five items per generic use case. Thresholds stay draft "
     "until calibrated on a reference run; weights and profiles are justified in docs/model-compass-scope.md. "
     "Recommendation component scores use the fixed logarithmic anchors below."
 )
@@ -1061,6 +1706,7 @@ catalog["use_cases"] = use_cases
 OUTPUTS = {
     SUITE_PATH: json.dumps(items, indent=2, ensure_ascii=False) + "\n",
     CATALOG_PATH: json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
+    CANDIDATES_PATH: json.dumps(candidates, indent=2, ensure_ascii=False) + "\n",
 }
 SUMMARY = "Use cases (first prompt index, items, threshold): " + str(
     {

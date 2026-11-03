@@ -35,6 +35,17 @@ methodology.
   the second (partial credit `1 + 2 × share correct`). Format compliance still
   fails. Replayed on the 3 November answers, only Claude Sonnet 5.5's 15
   correct-but-explained answers change.
+- Suite v3 has five items per use case, 40 in all (catalog `v3.2`), chosen on
+  evidence: the 13 items every model answered perfectly on 3 November and one
+  Llama-only item in summarization and in instruction following leave; the 7
+  candidates a model missed in the pilot join (structured extraction -15, -17,
+  -18, code -14, contextual QA -17, classification -18, -22). Two rounds of
+  harder items showed that generic deterministic items rarely separate the
+  strongest models: of 19 candidates, long tasks included, one was missed on
+  content by a top model. The quality score acts mainly as an eligibility gate.
+  One JSON item shows an example of the expected output; the other strict-format
+  items show none. This changes `quality_suite_id`, and the threshold of 4.0
+  still tolerates one failed item out of five.
 - Every ranked model that a ±10% change of one weight or of the threshold would
   put first is `recommended` beside the leader, its rank unchanged, and the
   decision card reads *Recommended (too close to call)*. On 3 November this adds
@@ -118,6 +129,12 @@ methodology.
 
 ### Added
 
+- `make pilot-items` lists the candidate quality items written in
+  `scripts/build_quality_suite_v3.py` (`data/prompts/quality_candidates_v3.json`);
+  with `LIVE=1` (paid) it checks the gateway forwards them unchanged, sends each
+  one three times to every model and prints which models miss it, so an item
+  enters the suite only if it separates models; `ITEMS=` limits it to some
+  candidates. The candidates left out of the suite stay in the file.
 - `scripts/build_quality_suite_v3.py` and `scripts/build_security_probes.py`,
   the sources of the v3 suite, its catalog and the probe set, with a `--check`
   mode and a test that fails when the committed JSON drifts from them.
@@ -142,7 +159,9 @@ methodology.
 
 - A prompt the gateway rewrites is logged with the words it changed
   (`'M. 2.' -> '[PERSON_NAME].'`), not only the start of the text, where the
-  rewrite rarely is.
+  rewrite rarely is. Three candidate items were reworded this way: a clothing
+  size written `M`, task codes such as `T4` and staff numbers such as `7005`
+  reached the models as `[PERSON_NAME]`, `[ADDRESS]` and `[PERSON_NAME]`.
 - The "no choices" error names the requested model instead of `None`
 - Security probe details keep each attempt's `finish_reason`, and the call-cost
   ledger fills `probe_id`, so an empty probe answer can be traced to its call

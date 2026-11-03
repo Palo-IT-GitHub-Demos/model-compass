@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge verify dry-run dialogue dialogue-live inspect-run select export-gen-e2 export-html split-judging check-judging judge-models verify-quality models
+.PHONY: help install dev test test-cov lint fmt type-check docs-build docs-serve run collect judge merge verify dry-run dialogue dialogue-live inspect-run select export-gen-e2 export-html split-judging check-judging judge-models verify-quality pilot-items models
 
 PYTHON ?= .venv/bin/python
 
@@ -105,6 +105,9 @@ check-judging: ## Validate the latest (or TS=) batch's score files and judge mod
 
 verify-quality: ## Recheck one k=1 objective failure twice through OpenRouter (pass ARGS="...")
 	$(PYTHON) scripts/verify_quality_reproducibility.py $(ARGS)
+
+pilot-items: ## PAID — try the candidate quality items on real models before they join the suite (MODELS=, ITEMS=id,id optional; without LIVE=1 only lists them)
+	$(PYTHON) scripts/pilot_quality_items.py $(if $(LIVE),--live) $(if $(MODELS),--models "$(MODELS)") $(if $(ITEMS),--items "$(ITEMS)")
 
 models: ## List the coherent model-set presets available for MODELS=<name>
 	$(PYTHON) -m src.main models

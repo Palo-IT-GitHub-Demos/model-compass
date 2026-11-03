@@ -380,20 +380,21 @@ huit (prompt 23).
 ### Contenu
 
 `QUALITY_SUITE=v3` (défaut) charge `data/prompts/quality_prompts_v3.json` et
-`data/catalog/model_compass_use_cases_v3.json` : 48 items, **six par cas
-d'usage**, pour qu'un échec isolé ne fasse plus basculer l'éligibilité au seuil
-de 4,0.
+`data/catalog/model_compass_use_cases_v3.json` (catalogue `v3.2`) : 40 items,
+**cinq par cas d'usage** depuis la méthodologie 0.7.0 (six auparavant). Un échec
+isolé ne fait toujours pas basculer l'éligibilité au seuil de 4,0 (voir
+[le périmètre](model-compass-scope.md)).
 
 | Cas d'usage | Items | Repris de la v2 | Évaluateur |
 |---|---:|---:|---|
-| Extraction structurée | 6 | 2 | JSON attendu, crédit partiel |
-| Code court | 6 | 2 | tests dans le sandbox, crédit partiel |
-| Question-réponse avec contexte | 6 | 0 | réponse finale exacte (dont abstention) |
-| Raisonnement borné | 6 | 1 | réponse finale exacte |
-| Classification et routage | 6 | 0 | réponse finale exacte (dont `UNCLEAR` sous règle explicite) |
-| Résumé | 6 | 3 | rubrique, panel de juges |
-| Communication concise | 6 | 1 | rubrique, panel de juges |
-| Suivi d'instruction | 6 | 1 | sortie exacte, 1 rubrique |
+| Extraction structurée | 5 | 1 | JSON attendu, crédit partiel |
+| Code court | 5 | 2 | tests dans le sandbox, crédit partiel |
+| Question-réponse avec contexte | 5 | 0 | réponse finale exacte (dont abstention) |
+| Raisonnement borné | 5 | 1 | réponse finale exacte |
+| Classification et routage | 5 | 0 | réponse finale exacte (dont `UNCLEAR` sous règle explicite) |
+| Résumé | 5 | 3 | rubrique, panel de juges |
+| Communication concise | 5 | 1 | rubrique, panel de juges |
+| Suivi d'instruction | 5 | 1 | sortie exacte, 1 rubrique |
 
 Les items repris sont ceux qui départageaient encore les modèles ; les items
 saturés sont remplacés par des variantes plus difficiles du même construit
@@ -402,7 +403,7 @@ multi-sauts avec un fait périmé, exception à une règle héritée, ironie,
 priorité entre deux demandes, règle de routage explicite, contraintes de
 format cumulées). Les nouveaux items privilégient les contrôles déterministes :
 seuls résumé, communication concise et un item de suivi d'instruction restent
-jugés, soit 13 items. Comme en v2, ils évitent les noms de personnes et de
+jugés, soit 11 items depuis 0.7.0. Comme en v2, ils évitent les noms de personnes et de
 lieux, les adresses et les courriels, qu'un filtre en amont peut masquer.
 Les valeurs attendues des nouveaux items sont calculées par
 `scripts/build_quality_suite_v3.py`, et chaque solution de référence des items
@@ -438,6 +439,33 @@ séparaient déjà Llama des autres modèles sont conservés ; seuls les items
 jugés de communication concise restent à durcir. La difficulté réelle ne sera
 connue qu'après le prochain run : un item trop dur pour tous passera en
 `floor` dans l'analyse des items.
+
+### Suite finale : cinq items par cas d'usage (méthodologie 0.7.0)
+
+Sur le run du 3 novembre 2026, 13 items sur 48 étaient encore réussis par les
+six modèles, et deux séries d'items écrits « plus durs » l'ont confirmé : les
+cinq modèles de tête atteignent le plafond sur les tâches génériques notées
+automatiquement. Des 18 items remplacés en 0.6.0, 12 sont restés réussis par
+tous ; des 19 candidats essayés le 3 novembre avec `make pilot-items`, y compris
+des tâches longues (tableau de 40 commandes, journal de 39 opérations, lot de 24
+messages, avenants datés), un seul est raté sur le fond par un modèle de tête,
+et un autre seulement pour son format.
+
+La suite s'arrête donc à cinq items par cas d'usage, choisis sur preuves :
+
+- retirés : les 13 items réussis par tous, et un item que seul Llama ratait en
+  résumé et en suivi d'instruction, où il en restait six ;
+- ajoutés : les 7 candidats qu'au moins un modèle a ratés (extraction : -15,
+  -17, -18 ; code : -14 ; question-réponse : -17 ; classification : -18, -22).
+  Ceux que seul Llama rate gardent un plancher sous l'éligibilité.
+
+Ce que la qualité générique mesure entre modèles de tête tient au respect du
+format, aux contraintes jugées (longueur, ton, absence de promesse) et à des
+erreurs ponctuelles : elle sert surtout de **seuil d'éligibilité**. Les départager
+finement est le rôle de `gen-e2-eval` sur les données du client. Un seul item
+JSON montre un exemple de la sortie attendue (-17), les autres items stricts
+non. Les candidats écartés restent dans `data/prompts/quality_candidates_v3.json`,
+avec le constat du pilote dans le script de construction.
 
 ### Livraison des prompts (méthodologie 0.6.0)
 
@@ -476,7 +504,9 @@ modifié ou retiré est pris en compte au run suivant.
   ligne pour un item `instruction_following` (`… = 4.\n\nppln-4`), le dernier
   objet ou tableau JSON de la réponse pour un item JSON, dont le crédit partiel
   passe alors à `1 + 2 × part des champs corrects`. La conformité de format
-  échoue à part.
+  échoue à part. Un seul item JSON donne un exemple de la forme attendue : les
+  autres items stricts n'en ont pas, pour départager les modèles qui ne
+  respectent un format qu'une fois montré.
 - **Contenu seul par cas d'usage.** Le score de qualité d'un cas d'usage, qui
   décide de l'éligibilité, ne moyenne que les lignes de contenu ; la conformité
   de format est publiée à part (`format_compliance_rate`, colonne *Format

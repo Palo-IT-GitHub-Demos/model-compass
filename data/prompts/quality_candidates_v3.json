@@ -1,0 +1,407 @@
+[
+  {
+    "prompt": "Extract the order details and return exactly one JSON object, with no markdown or extra text, with the keys `order_id` (string), `quantity` (integer), `delivery_date` (YYYY-MM-DD) and `gift_wrap` (true or false). Use null for any value the text does not state.\nText: 'Order 8812: please send 3 units as soon as possible. No message card is needed.'",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "order_id": "8812",
+      "quantity": 3,
+      "delivery_date": null,
+      "gift_wrap": null
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-12",
+    "use_case_id": "structured_extraction",
+    "construct": "null_for_unstated_values",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, with the keys `quantity` (integer), `colour` and `size`, giving the values the customer finally wants. Example of the expected format, with other values: {\"quantity\": 1, \"colour\": \"green\", \"size\": \"small\"}\nMessages from the customer, in order:\n1. I'd like 4 shirts in blue, size medium.\n2. Make that 6 shirts.\n3. Sorry, ignore my last message: keep the original quantity.\n4. Colour change: navy instead of blue.\n5. And size large, please.\n6. Actually, ignore the size change.",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "quantity": 4,
+      "colour": "navy",
+      "size": "medium"
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-13",
+    "use_case_id": "structured_extraction",
+    "construct": "corrections_and_retractions",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, mapping each task to its duration in minutes (integer). Example of the expected format, with other values: {\"planning\": 15, \"support\": 240}\nTasks (task | duration):\nsetup | 1 h 30\nreview | 45 min + 1 h\ntesting | half an hour\ndeploy | 1.25 h\ntraining | 2 h minus 10 min\naudit | three quarters of an hour",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "setup": 90,
+      "review": 105,
+      "testing": 30,
+      "deploy": 75,
+      "training": 110,
+      "audit": 45
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-14",
+    "use_case_id": "structured_extraction",
+    "construct": "duration_normalisation",
+    "task_type": "json",
+    "difficulty": "medium",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, mapping each SKU to its latest price (number), where latest means the most recent timestamp, not the last line of the list.\nPrice updates (timestamp | sku | price):\n2026-03-02 14:00 | A-1 | 12.5\n2026-03-01 09:00 | B-2 | 7\n2026-03-02 09:30 | A-1 | 13\n2026-03-01 18:45 | B-2 | 6.5\n2026-03-02 08:00 | C-3 | 20\n2026-02-28 23:59 | C-3 | 21\n2026-03-01 18:45 | A-1 | 11",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "C-3": 20,
+      "B-2": 6.5,
+      "A-1": 12.5
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-16",
+    "use_case_id": "structured_extraction",
+    "construct": "latest_by_timestamp_not_position",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `split_csv_line(line: str) -> list[str]` that splits one CSV line into its fields. Fields are separated by commas. A field may be enclosed in double quotes, and then it may contain commas; inside such a field, two double quotes in a row stand for one double quote. Return the fields without their enclosing quotes, keeping every other character, spaces included. An empty line has one empty field. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "split_csv_line",
+    "required_parameters": [
+      "line"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          "a,b,c"
+        ],
+        "expected": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      {
+        "args": [
+          "\"x,y\",z"
+        ],
+        "expected": [
+          "x,y",
+          "z"
+        ]
+      },
+      {
+        "args": [
+          "\"say \"\"hi\"\"\",2"
+        ],
+        "expected": [
+          "say \"hi\"",
+          "2"
+        ]
+      },
+      {
+        "args": [
+          ""
+        ],
+        "expected": [
+          ""
+        ]
+      },
+      {
+        "args": [
+          "a,,b"
+        ],
+        "expected": [
+          "a",
+          "",
+          "b"
+        ]
+      },
+      {
+        "args": [
+          "a,"
+        ],
+        "expected": [
+          "a",
+          ""
+        ]
+      },
+      {
+        "args": [
+          " a , b "
+        ],
+        "expected": [
+          " a ",
+          " b "
+        ]
+      },
+      {
+        "args": [
+          "\"\",x"
+        ],
+        "expected": [
+          "",
+          "x"
+        ]
+      },
+      {
+        "args": [
+          "\"a,\"\"b\"\",c\""
+        ],
+        "expected": [
+          "a,\"b\",c"
+        ]
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "def split_csv_line(line):\n    fields, current, quoted, index = [], [], False, 0\n    while index < len(line):\n        char = line[index]\n        if quoted and char == '\"' and line[index + 1 : index + 2] == '\"':\n            current.append('\"')\n            index += 1\n        elif char == '\"':\n            quoted = not quoted\n        elif char == \",\" and not quoted:\n            fields.append(\"\".join(current))\n            current = []\n        else:\n            current.append(char)\n        index += 1\n    fields.append(\"\".join(current))\n    return fields",
+    "item_id": "code_generation-12",
+    "use_case_id": "code_generation",
+    "construct": "quoted_field_parsing",
+    "task_type": "programmatic",
+    "difficulty": "hard",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `business_days(start: str, end: str, holidays: list[str]) -> int` that counts the working days from `start` to `end`, both included. Dates are YYYY-MM-DD strings. A working day is a Monday to Friday that is not in `holidays`; a holiday that falls on a weekend changes nothing. Return 0 when `end` is before `start`. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "business_days",
+    "required_parameters": [
+      "start",
+      "end",
+      "holidays"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          "2026-03-02",
+          "2026-03-13",
+          [
+            "2026-03-06"
+          ]
+        ],
+        "expected": 9
+      },
+      {
+        "args": [
+          "2026-03-07",
+          "2026-03-08",
+          []
+        ],
+        "expected": 0
+      },
+      {
+        "args": [
+          "2026-03-13",
+          "2026-03-02",
+          []
+        ],
+        "expected": 0
+      },
+      {
+        "args": [
+          "2026-03-02",
+          "2026-03-02",
+          []
+        ],
+        "expected": 1
+      },
+      {
+        "args": [
+          "2026-03-02",
+          "2026-03-08",
+          [
+            "2026-03-07"
+          ]
+        ],
+        "expected": 5
+      },
+      {
+        "args": [
+          "2026-12-24",
+          "2027-01-04",
+          [
+            "2026-12-25",
+            "2027-01-01"
+          ]
+        ],
+        "expected": 6
+      },
+      {
+        "args": [
+          "2028-02-25",
+          "2028-03-01",
+          []
+        ],
+        "expected": 4
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "from datetime import date, timedelta\n\n\ndef business_days(start, end, holidays):\n    day, last = date.fromisoformat(start), date.fromisoformat(end)\n    closed = {date.fromisoformat(holiday) for holiday in holidays}\n    count = 0\n    while day <= last:\n        count += day.weekday() < 5 and day not in closed\n        day += timedelta(days=1)\n    return count",
+    "item_id": "code_generation-13",
+    "use_case_id": "code_generation",
+    "construct": "date_range_with_exclusions",
+    "task_type": "programmatic",
+    "difficulty": "hard",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: Document A, the remote-work policy dated 10 January 2025: every employee may work remotely two days a week. Document B, a team memo dated 1 March 2025: our team works remotely three days a week. Document C, a policy update dated 15 February 2025: the policy prevails over any team memo.\nQuestion: How many days a week may a member of that team work remotely? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "2"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-18",
+    "use_case_id": "contextual_qa",
+    "construct": "precedence_over_recency",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Assign a priority using these rules: P1 = the service is down for all users; P2 = a feature is broken for some users and a workaround exists; P3 = a question or a cosmetic issue. Reply with the label only.\nTicket: 'The export button has the wrong colour, and for some users it does nothing when clicked; they can still export from the File menu.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "P2"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-19",
+    "use_case_id": "classification_routing",
+    "construct": "cosmetic_distractor",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Apply the first rule that matches, in this order: 1) the sender asks for a refund: BILLING; 2) the message contains an error code: TECHNICAL; 3) the message is about the sender's account: ACCOUNT; 4) otherwise: OTHER. Reply with the label only.\nMessage: 'Error 502 every time I open my account page. I don't want a refund, I just want it fixed.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "TECHNICAL"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-20",
+    "use_case_id": "classification_routing",
+    "construct": "first_matching_rule_with_negation",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "List every label that applies to the message, from BILLING, TECHNICAL and ACCOUNT, in alphabetical order, separated by a comma and a space, and nothing else; reply NONE if no label applies.\nMessage: 'I was charged twice for the same order, and since the update the app crashes when I open my receipts. My profile and login are fine.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "BILLING, TECHNICAL",
+      "BILLING,TECHNICAL"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-21",
+    "use_case_id": "classification_routing",
+    "construct": "multi_label_with_negation",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: Travel allowance policy. Each amendment applies to trips that start on or after its date.\nDaily allowance per zone, in dollars: zone 1: 40; zone 2: 55; zone 3: 70; zone 4: 85; zone 5: 100.\nAmendments, in order:\n- 1 February 2026: Meals are reimbursed separately, up to 25 dollars a day, in every zone.\n- 1 March 2026: The daily allowance for zone 3 rises to 75 dollars.\n- 10 March 2026: Interns receive 50% of the employee allowance.\n- 1 April 2026: Contractors receive 80% of the employee allowance.\n- 15 April 2026: For a trip longer than 3 days, the full allowance is paid for the first 3 days and half of it for each further day.\n- 20 April 2026: The daily allowance for zone 5 rises to 110 dollars.\n- 1 May 2026: The amendment of 1 March 2026 is revoked.\n- 5 May 2026: Weekend days of a trip count like any other day.\n- 1 June 2026: The daily allowance for zone 3 rises to 80 dollars.\n- 1 June 2026: The daily allowance for zone 4 rises to 90 dollars.\nQuestion: A contractor makes a 5-day trip in zone 3, starting on 10 May 2026. What total allowance does the contractor receive, in dollars, meals excluded? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "224"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-19",
+    "use_case_id": "contextual_qa",
+    "construct": "rules_with_amendments_and_dates",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: Staff list (row | team | contract | start date | remote days a week):\n1 | data | contractor | 2019-01-01 | 5\n2 | ops | contractor | 2024-03-01 | 3\n3 | web | fixed-term | 2023-03-01 | 2\n4 | ops | permanent | 2024-11-01 | 2\n5 | ops | permanent | 2021-11-01 | 2\n6 | sales | permanent | 2020-12-01 | 2\n7 | ops | permanent | 2022-08-01 | 3\n8 | web | contractor | 2021-12-01 | 2\n9 | data | permanent | 2025-01-01 | 2\n10 | sales | fixed-term | 2023-02-01 | 2\n11 | sales | contractor | 2023-02-01 | 1\n12 | ops | permanent | 2019-11-01 | 4\n13 | sales | permanent | 2022-04-01 | 1\n14 | data | permanent | 2021-10-01 | 5\n15 | data | permanent | 2023-11-01 | 0\n16 | web | fixed-term | 2022-01-01 | 1\n17 | data | permanent | 2024-06-01 | 5\n18 | ops | fixed-term | 2023-07-01 | 3\n19 | sales | permanent | 2025-07-01 | 3\n20 | web | contractor | 2021-04-01 | 4\n21 | data | contractor | 2024-05-01 | 5\n22 | web | permanent | 2021-12-01 | 5\n23 | web | permanent | 2025-02-01 | 2\n24 | sales | contractor | 2020-11-01 | 2\n25 | sales | permanent | 2021-12-01 | 4\n26 | sales | fixed-term | 2021-04-01 | 4\n27 | sales | permanent | 2024-04-01 | 3\n28 | web | fixed-term | 2025-03-01 | 1\n29 | sales | fixed-term | 2020-05-01 | 2\n30 | web | contractor | 2021-11-01 | 2\n31 | ops | permanent | 2025-02-01 | 0\n32 | web | fixed-term | 2022-02-01 | 0\n33 | sales | permanent | 2025-12-01 | 1\n34 | data | contractor | 2024-10-01 | 1\n35 | ops | fixed-term | 2023-07-01 | 0\n36 | data | contractor | 2021-02-01 | 1\n37 | sales | fixed-term | 2024-04-01 | 1\n38 | data | permanent | 2024-06-01 | 3\n39 | sales | permanent | 2024-01-01 | 1\n40 | data | contractor | 2024-09-01 | 2\nCorrections received after the list was drawn up: the person on row 5 moved to the data team; the person on row 14 now works remotely 1 day a week; the person on row 15 became a contractor.\nQuestion: Taking the corrections into account, how many permanent staff of the data team started before 1 January 2024 and work remotely at most 2 days a week? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "2"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-20",
+    "use_case_id": "contextual_qa",
+    "construct": "long_roster_with_corrections",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  }
+]

@@ -80,7 +80,7 @@ dashboard/                     # Data prep, glossary and charts used by the stat
 scripts/                       # Static HTML export, quality recheck, gen-e2-eval export
 
 data/prompts/
-├── quality_prompts_v3.json    # generic-screen-v3: 48 prompts, 6 per use case (default)
+├── quality_prompts_v3.json    # generic-screen-v3: 40 prompts, 5 per use case (default)
 ├── quality_prompts_v2.json    # generic-screen-v2: 34 prompts (kept to re-merge its runs)
 ├── quality_prompts.json       # generic-screen-v1: 16 prompts (legacy baseline)
 ├── security_probes.json       # The security path: 66 probes, 50 scored, 3 multi-turn
@@ -201,8 +201,8 @@ make collect MODELS=selection
 
 This is the only paid step, and its defaults are the reference methodology:
 
-- **Quality:** each model receives the 48 prompts of the v3 suite three times
-  (144 calls). Three attempts give the stability score and the 95% confidence
+- **Quality:** each model receives the 40 prompts of the v3 suite three times
+  (120 calls). Three attempts give the stability score and the 95% confidence
   intervals. Generated code runs against its test cases in the restricted
   sandbox (`src/evaluators/code_sandbox.py`) instead of going to the judges.
 - **Security:** the single security path sends the 66 probes of
@@ -403,6 +403,17 @@ This sends the same prompt to the same OpenRouter model twice. It reports
 **not** identify whether OpenRouter, its upstream provider, or the model caused
 the result. The command rejects correct responses, subjective prompts, and
 runs where the selected prompt already has `k > 1` attempts.
+
+### Trying candidate quality items (maintainers)
+
+A new item enters the suite only if it separates models on real answers.
+Candidates are written in `scripts/build_quality_suite_v3.py`, which also writes
+`data/prompts/quality_candidates_v3.json`; `make pilot-items` lists them, and
+`make pilot-items LIVE=1 MODELS=selection` (paid, a few cents) checks that the
+gateway forwards them unchanged, sends each one three times to every model,
+scores the answers with the suite's deterministic checks and prints which
+models miss each item. A candidate no model misses does not enter the suite.
+Results go to `results/pilot/`; they are never benchmark evidence.
 
 ### Settings that change the methodology
 

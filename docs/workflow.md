@@ -114,7 +114,7 @@ flowchart TD
 | `SECURITY_MODE` | Parcours sécurité : `full` (les 66 sondes de `data/prompts/security_probes.json`, dont 50 notées et rejouées trois fois) ou `skip` (aucune sonde) | `full` |
 | `SECURITY_PROBES_PATH` | Fichier de sondes de remplacement, pour une expérimentation seulement (ignoré avec `skip`) | — |
 | `QUALITY_REPETITIONS` | Essais par prompt qualité (1-5) ; 3 dans le parcours standard | `3` |
-| `QUALITY_SUITE` | Suite qualité et catalogue : `v3` (48 prompts, 6 par cas d'usage), `v2` (34 prompts) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v3` |
+| `QUALITY_SUITE` | Suite qualité et catalogue : `v3` (40 prompts, 5 par cas d'usage), `v2` (34 prompts) ou `v1` (16 prompts, référence historique) ; même valeur pour `collect` et `merge` | `v3` |
 | `QUALITY_CODE_EXECUTION` | Exécute le code généré des prompts `code_execution` contre leurs tests dans le sandbox restreint, avec crédit partiel ; `false` le fait juger | `true` |
 | `QUALITY_MAX_TOKENS` | Plafond d'une réponse qualité, raisonnement caché compris | `16384` |
 | `PROMPT_DELIVERY_AUDIT` | Contrôle, avant chaque collecte, du texte réellement transmis aux modèles ; `false` signale le run comme non-référence | `true` |
@@ -136,7 +136,7 @@ flowchart TD
 | ≥ 10 USD | 20 | 1000 |
 
 Avec les réglages par défaut, un run sur deux modèles gratuits envoie environ
-**670 requêtes** (48 prompts qualité × 3 essais × 2 modèles, plus environ 190
+**600 requêtes** (40 prompts qualité × 3 essais × 2 modèles, plus environ 180
 requêtes de sécurité par modèle), bien au-dessus du plafond de 50/jour d'un
 compte sans crédit. `make verify` et `make collect` affichent un avertissement
 avant tout appel quand le plafond est dépassé.
@@ -302,19 +302,19 @@ Le ledger complet est exporté dans `results/call_costs/`.
 
 ### Suite de prompts (`data/prompts/quality_prompts_v3.json`)
 
-La suite par défaut `generic-screen-v3` compte 48 prompts, 6 par cas d'usage,
+La suite par défaut `generic-screen-v3` compte 40 prompts, 5 par cas d'usage,
 versionnés par hash (`quality_suite_id`) :
 
 | Dimension | Prompts | Type de vérification |
 |---|---|---|
-| `structured_output` | 6 | JSON attendu, crédit partiel par champ |
-| `code_correctness` | 6 | Tests exécutés dans le sandbox, crédit partiel par test réussi |
-| `contextual_accuracy` | 6 | Réponse finale exacte parmi les acceptées |
-| `elementary_reasoning` | 6 | Réponse finale exacte parmi les acceptées |
-| `classification_accuracy` | 6 | Réponse finale exacte parmi les acceptées |
-| `instruction_reliability` | 6 | Sortie exacte (5) et panel de juges (1) |
-| `summarization_quality` | 6 | Panel de juges, critères et ancres explicites |
-| `concise_communication` | 6 | Panel de juges, critères et ancres explicites |
+| `structured_output` | 5 | JSON attendu, crédit partiel par champ |
+| `code_correctness` | 5 | Tests exécutés dans le sandbox, crédit partiel par test réussi |
+| `contextual_accuracy` | 5 | Réponse finale exacte parmi les acceptées |
+| `elementary_reasoning` | 5 | Réponse finale exacte parmi les acceptées |
+| `classification_accuracy` | 5 | Réponse finale exacte parmi les acceptées |
+| `instruction_reliability` | 5 | Sortie exacte (4) et panel de juges (1) |
+| `summarization_quality` | 5 | Panel de juges, critères et ancres explicites |
+| `concise_communication` | 5 | Panel de juges, critères et ancres explicites |
 | `output_format_compliance` | dérivée | Respect littéral du contrat `strict_output`, noté à part du contenu |
 
 Les suites `generic-screen-v2` (34 prompts) et `generic-screen-v1` (16 prompts)
@@ -496,6 +496,19 @@ tentatives dans le run, lorsque la réponse est correcte ou lorsque le test ne
 dispose pas de réponses objectives acceptées. Les benchmarks antérieurs à
 l'export de `expected_answers_json` restent consultables mais ne peuvent pas
 être recheckés automatiquement.
+
+### Essayer des items candidats (mainteneurs)
+
+Un nouvel item n'entre dans la suite que s'il départage des modèles sur de
+vraies réponses. Les candidats s'écrivent dans
+`scripts/build_quality_suite_v3.py`, qui produit aussi
+`data/prompts/quality_candidates_v3.json`. `make pilot-items` les liste ;
+`make pilot-items LIVE=1 MODELS=selection` (payant, quelques centimes) vérifie
+que la passerelle les transmet intacts, envoie chacun trois fois à chaque
+modèle, note les réponses avec les contrôles déterministes de la suite et
+indique quels modèles manquent chaque item. Un candidat qu'aucun modèle ne
+manque n'entre pas dans la suite. Les résultats vont dans `results/pilot/` et
+ne sont jamais une preuve de benchmark.
 
 ---
 

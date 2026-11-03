@@ -194,12 +194,14 @@ variations autour du profil retenu.
 ### Pourquoi ces seuils
 
 Le seuil d'un cas d'usage est **non compensatoire** : un modèle sous le seuil
-est exclu, quel que soit son prix. Avec six items par cas d'usage :
+est exclu, quel que soit son prix. Avec cinq items par cas d'usage :
 
 - **4,0 / 5 pour les cas d'usage à contrôle déterministe.** Un item réussi vaut
   5, un échec 1, et le crédit partiel donne une valeur intermédiaire. Un échec
-  complet sur six donne (5 × 5 + 1) / 6 = 4,33 et reste éligible ; deux échecs
-  donnent 3,67 et excluent. Le seuil tolère donc une erreur sur six, pas deux.
+  complet sur cinq donne (4 × 5 + 1) / 5 = 4,2 et reste éligible ; deux échecs
+  donnent 3,4 et excluent. Le seuil tolère donc une erreur sur cinq, pas deux.
+  Une bonne réponse hors contrat de format (3) sur deux items donne 4,2 :
+  éligible, mais sur trois items 3,8 exclut.
 - **3,5 / 5 pour la synthèse et la communication concise**, notées par les
   juges sur une échelle graduée : 3 veut dire qu'un critère n'est que
   partiellement rempli, 4 qu'il reste un défaut mineur hors critère. 3,5 exige

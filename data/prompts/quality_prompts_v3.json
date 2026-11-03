@@ -21,27 +21,6 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, of the distinct tags in the text, in lowercase, in order of first appearance.\nText: 'Tags mentioned: Urgent, billing; URGENT, Refund-Request, billing.'",
-    "category": "json_output",
-    "quality_dimension": "structured_output",
-    "expected_json": [
-      "urgent",
-      "billing",
-      "refund-request"
-    ],
-    "strict_output": true,
-    "item_id": "structured_extraction-04",
-    "use_case_id": "structured_extraction",
-    "construct": "deduplication_and_normalisation",
-    "task_type": "json",
-    "difficulty": "medium",
-    "evaluator": "json_exact",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
     "prompt": "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each product still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never been written. Leave out products whose final quantity is zero or that were removed.\nOrder log:\n1. Add 3 x lamp.\n2. Add 2 x cable.\n3. Add 1 x stand.\n4. Change the quantity of lamp to 5.\n5. Remove cable from the order.\n6. Add 4 x cable.\n7. Add 2 x lamp.\n8. Undo step 6.\n9. Add 2 x mouse.\n10. Change the quantity of mouse to 0.",
     "category": "json_output",
     "quality_dimension": "structured_output",
@@ -62,82 +41,67 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Return exactly one JSON object, with no markdown or extra text, whose keys are the product names and whose values are each line's total in cents after its discount (integer), plus a key `total` with the sum of the lines in cents.\nInvoice lines (product | quantity | unit price in dollars | discount on the line):\nWidget | 3 | 4.50 | none\nCable | 2 | 12.00 | 10% off\nAdapter | 5 | 0.99 | none\nStand | 1 | 25.00 | 20% off",
-    "category": "json_output",
-    "quality_dimension": "structured_output",
-    "expected_json": {
-      "Widget": 1350,
-      "Cable": 2160,
-      "Adapter": 495,
-      "Stand": 2000,
-      "total": 6005
-    },
-    "strict_output": true,
-    "item_id": "structured_extraction-10",
-    "use_case_id": "structured_extraction",
-    "construct": "derived_values_from_table",
-    "task_type": "json",
-    "difficulty": "hard",
-    "evaluator": "json_exact",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Return exactly one JSON object, with no markdown or extra text, with one key per team and, for each team, an object with the integer keys `open` and `closed`. A reopened ticket counts as open; a cancelled ticket is ignored.\nTickets (id | team | status):\nT1 | web | open\nT2 | api | closed\nT3 | web | closed\nT4 | data | open\nT5 | api | reopened\nT6 | web | open\nT7 | data | closed\nT8 | api | closed\nT9 | web | cancelled\nT10 | data | reopened",
-    "category": "json_output",
-    "quality_dimension": "structured_output",
-    "expected_json": {
-      "web": {
-        "open": 2,
-        "closed": 1
-      },
-      "api": {
-        "open": 1,
-        "closed": 2
-      },
-      "data": {
-        "open": 2,
-        "closed": 1
-      }
-    },
-    "strict_output": true,
-    "item_id": "structured_extraction-11",
-    "use_case_id": "structured_extraction",
-    "construct": "grouped_counts_with_rules",
-    "task_type": "json",
-    "difficulty": "hard",
-    "evaluator": "json_exact",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, with one object per line of the packing list, in the same order, with the keys `sku` (string) and `weight_g` (integer, in grams).\nPacking list:\nA-17 | 1.2 kg\nB-03 | 350 g\nC-88 | 0.05 kg",
+    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, listing the `id` (string) of every payment whose status is paid or partially_refunded and whose amount is at least 100, sorted by amount from highest to lowest, and by id in alphabetical order when amounts are equal.\nPayments (id | amount | status):\nP1 | 250 | paid\nP2 | 100 | partially_refunded\nP3 | 99.99 | paid\nP4 | 250 | refunded\nP5 | 180 | paid\nP6 | 250 | partially_refunded\nP7 | 100 | paid\nP8 | 410 | cancelled\nP9 | 180 | paid\nP10 | 180 | paid",
     "category": "json_output",
     "quality_dimension": "structured_output",
     "expected_json": [
-      {
-        "sku": "A-17",
-        "weight_g": 1200
-      },
-      {
-        "sku": "B-03",
-        "weight_g": 350
-      },
-      {
-        "sku": "C-88",
-        "weight_g": 50
-      }
+      "P1",
+      "P6",
+      "P10",
+      "P5",
+      "P9",
+      "P2",
+      "P7"
     ],
     "strict_output": true,
-    "item_id": "structured_extraction-08",
+    "item_id": "structured_extraction-15",
     "use_case_id": "structured_extraction",
-    "construct": "unit_normalisation",
+    "construct": "filter_then_sort_with_tie_rule",
     "task_type": "json",
-    "difficulty": "medium",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, mapping each product line to its revenue in cents (integer). Revenue counts only orders whose status is delivered or delivered late; returned and cancelled orders count for nothing. An order of 10 units or more gets 10% off. Include every product line. Example of the expected format, with other values: {\"monitors\": 125000, \"mice\": 0}\nOrders (order | product line | units | unit price in dollars | status):\n5001 | cables | 6 | 69 | returned\n5002 | cables | 4 | 76 | delivered late\n5003 | keyboards | 13 | 80 | delivered late\n5004 | chargers | 1 | 15 | delivered\n5005 | headsets | 14 | 17 | delivered late\n5006 | cables | 14 | 67 | cancelled\n5007 | headsets | 4 | 55 | delivered\n5008 | headsets | 6 | 53 | cancelled\n5009 | cables | 12 | 48 | delivered\n5010 | headsets | 5 | 63 | delivered\n5011 | headsets | 1 | 52 | delivered\n5012 | keyboards | 7 | 16 | delivered late\n5013 | keyboards | 14 | 19 | delivered late\n5014 | keyboards | 7 | 72 | delivered\n5015 | keyboards | 10 | 66 | returned\n5016 | cables | 10 | 33 | delivered\n5017 | cables | 12 | 71 | cancelled\n5018 | cables | 12 | 59 | delivered late\n5019 | chargers | 8 | 34 | delivered\n5020 | keyboards | 11 | 65 | cancelled\n5021 | headsets | 9 | 56 | cancelled\n5022 | headsets | 9 | 69 | cancelled\n5023 | keyboards | 13 | 56 | delivered late\n5024 | chargers | 5 | 39 | delivered\n5025 | cables | 3 | 63 | returned\n5026 | keyboards | 6 | 30 | delivered\n5027 | keyboards | 8 | 70 | delivered late\n5028 | keyboards | 9 | 9 | delivered\n5029 | headsets | 8 | 17 | delivered late\n5030 | headsets | 8 | 28 | delivered late\n5031 | keyboards | 2 | 39 | delivered late\n5032 | headsets | 2 | 29 | cancelled\n5033 | keyboards | 3 | 62 | delivered\n5034 | cables | 1 | 62 | returned\n5035 | cables | 10 | 30 | delivered\n5036 | cables | 10 | 10 | returned\n5037 | headsets | 11 | 50 | delivered\n5038 | cables | 6 | 79 | returned\n5039 | keyboards | 12 | 22 | returned\n5040 | chargers | 8 | 80 | delivered",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "cables": 202660,
+      "chargers": 112200,
+      "headsets": 165620,
+      "keyboards": 353160
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-17",
+    "use_case_id": "structured_extraction",
+    "construct": "long_table_filtered_aggregation",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Replay this ledger in order and return exactly one JSON object, with no markdown or extra text, mapping each account still open at the end (its number, as a string) to its final balance (integer). Rules: a new account starts at 0; a withdrawal or a transfer larger than the balance of the account it takes from is rejected and changes nothing; a transfer to an account that is not open is rejected; an account can be closed only when its balance is 0, otherwise the close is ignored; any operation on an account that is not open is ignored, and a closed account cannot be opened again.\nLedger:\n1. open account 1001\n2. open account 1002\n3. open account 1003\n4. open account 1004\n5. deposit 180 into account 1003\n6. transfer 300 from account 1001 to account 1002\n7. transfer 270 from account 1005 to account 1004\n8. transfer 260 from account 1005 to account 1004\n9. close account 1005\n10. withdraw 20 from account 1002\n11. transfer 110 from account 1001 to account 1005\n12. close account 1001\n13. withdraw 280 from account 1001\n14. transfer 80 from account 1004 to account 1003\n15. withdraw 130 from account 1003\n16. withdraw 250 from account 1004\n17. transfer 40 from account 1001 to account 1003\n18. transfer 110 from account 1005 to account 1003\n19. withdraw 300 from account 1002\n20. transfer 20 from account 1005 to account 1003\n21. open account 1005\n22. close account 1003\n23. withdraw 150 from account 1004\n24. deposit 300 into account 1004\n25. transfer 290 from account 1005 to account 1004\n26. deposit 180 into account 1004\n27. close account 1005\n28. withdraw 180 from account 1004\n29. withdraw 200 from account 1004\n30. withdraw 180 from account 1005\n31. close account 1001\n32. transfer 280 from account 1002 to account 1005\n33. deposit 300 into account 1005\n34. transfer 170 from account 1001 to account 1004\n35. deposit 300 into account 1004\n36. deposit 220 into account 1001\n37. transfer 240 from account 1004 to account 1005\n38. transfer 230 from account 1003 to account 1004\n39. withdraw 270 from account 1005",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "1002": 0,
+      "1003": 50,
+      "1004": 400
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-18",
+    "use_case_id": "structured_extraction",
+    "construct": "long_ledger_with_rejections",
+    "task_type": "json",
+    "difficulty": "hard",
     "evaluator": "json_exact",
     "language": "en",
     "difficulty_status": "draft",
@@ -255,105 +219,6 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Write only a Python function `compare_versions(a: str, b: str) -> int` that returns -1, 0 or 1 as version `a` is lower than, equal to or higher than version `b`. A version is one to three dot-separated integers, missing parts count as 0 (so '1.2' equals '1.2.0'), optionally followed by a hyphen and a pre-release made of dot-separated identifiers, such as '2.0.0-rc.1'. Numbers compare numerically. When the numbers are equal, a version with a pre-release is lower than the same version without one; two pre-releases compare identifier by identifier, numerically when both are digits, alphabetically when both are not, a numeric identifier is lower than a non-numeric one, and when all shared identifiers are equal the pre-release with fewer identifiers is lower. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
-    "category": "code_execution",
-    "quality_dimension": "code_correctness",
-    "required_function": "compare_versions",
-    "required_parameters": [
-      "a",
-      "b"
-    ],
-    "strict_output": true,
-    "test_cases": [
-      {
-        "args": [
-          "1.2.0",
-          "1.10.0"
-        ],
-        "expected": -1
-      },
-      {
-        "args": [
-          "1.2",
-          "1.2.0"
-        ],
-        "expected": 0
-      },
-      {
-        "args": [
-          "2.0.0-rc.1",
-          "2.0.0"
-        ],
-        "expected": -1
-      },
-      {
-        "args": [
-          "2.0.0-rc.2",
-          "2.0.0-rc.10"
-        ],
-        "expected": -1
-      },
-      {
-        "args": [
-          "1.0.0-alpha",
-          "1.0.0-1"
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          "1.0.0-alpha",
-          "1.0.0-alpha.1"
-        ],
-        "expected": -1
-      },
-      {
-        "args": [
-          "1.0.0-beta",
-          "1.0.0-alpha.9"
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          "3.1.4",
-          "3.1.4"
-        ],
-        "expected": 0
-      },
-      {
-        "args": [
-          "0.10.1",
-          "0.9"
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          "2",
-          "1.99.99"
-        ],
-        "expected": 1
-      }
-    ],
-    "judge_criteria": [
-      "The response is a Python function with the required name and parameters.",
-      "The function returns the specified result for every example in the description and for the stated edge cases.",
-      "The response contains source code only and imports only the allowed modules."
-    ],
-    "reference_answer": "def compare_versions(a, b):\n    def parse(version):\n        core, _, pre = version.partition(\"-\")\n        numbers = [int(part) for part in core.split(\".\")]\n        numbers += [0] * (3 - len(numbers))\n        return numbers, pre.split(\".\") if pre else []\n\n    numbers_a, pre_a = parse(a)\n    numbers_b, pre_b = parse(b)\n    if numbers_a != numbers_b:\n        return -1 if numbers_a < numbers_b else 1\n    if not pre_a or not pre_b:\n        return (len(pre_b) > 0) - (len(pre_a) > 0)\n    for left, right in zip(pre_a, pre_b):\n        if left == right:\n            continue\n        if left.isdigit() and right.isdigit():\n            return -1 if int(left) < int(right) else 1\n        if left.isdigit() != right.isdigit():\n            return -1 if left.isdigit() else 1\n        return -1 if left < right else 1\n    return (len(pre_a) > len(pre_b)) - (len(pre_a) < len(pre_b))",
-    "item_id": "code_generation-10",
-    "use_case_id": "code_generation",
-    "construct": "precedence_rules_with_prerelease",
-    "task_type": "programmatic",
-    "difficulty": "hard",
-    "evaluator": "sandbox_tests",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
     "prompt": "Write only a Python function `roman_to_int(numeral: str) -> int` that converts an uppercase Roman numeral in standard form, between 1 and 3999, to an integer, and returns -1 for any text that is not a standard-form numeral, such as 'IIII', 'IC', 'VX', 'MMMM' or an empty string. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
     "category": "code_execution",
     "quality_dimension": "code_correctness",
@@ -427,158 +292,6 @@
     "item_id": "code_generation-07",
     "use_case_id": "code_generation",
     "construct": "validation_of_canonical_form",
-    "task_type": "programmatic",
-    "difficulty": "hard",
-    "evaluator": "sandbox_tests",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Write only a Python function `max_overlap(sessions: list[list[int]]) -> int` that returns the largest number of sessions active at the same moment. Each session is [start, end] with the end excluded, so a session ending at 5 and one starting at 5 never overlap; a session whose end is not after its start is ignored; an empty list returns 0. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
-    "category": "code_execution",
-    "quality_dimension": "code_correctness",
-    "required_function": "max_overlap",
-    "required_parameters": [
-      "sessions"
-    ],
-    "strict_output": true,
-    "test_cases": [
-      {
-        "args": [
-          [
-            [
-              1,
-              5
-            ],
-            [
-              2,
-              6
-            ],
-            [
-              5,
-              7
-            ]
-          ]
-        ],
-        "expected": 2
-      },
-      {
-        "args": [
-          [
-            [
-              1,
-              2
-            ],
-            [
-              2,
-              3
-            ],
-            [
-              3,
-              4
-            ]
-          ]
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          []
-        ],
-        "expected": 0
-      },
-      {
-        "args": [
-          [
-            [
-              3,
-              3
-            ],
-            [
-              1,
-              4
-            ]
-          ]
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          [
-            [
-              0,
-              10
-            ],
-            [
-              1,
-              9
-            ],
-            [
-              2,
-              8
-            ],
-            [
-              8,
-              9
-            ]
-          ]
-        ],
-        "expected": 3
-      },
-      {
-        "args": [
-          [
-            [
-              5,
-              1
-            ],
-            [
-              1,
-              2
-            ]
-          ]
-        ],
-        "expected": 1
-      },
-      {
-        "args": [
-          [
-            [
-              4,
-              6
-            ],
-            [
-              1,
-              5
-            ],
-            [
-              5,
-              9
-            ],
-            [
-              6,
-              7
-            ],
-            [
-              5,
-              6
-            ]
-          ]
-        ],
-        "expected": 3
-      }
-    ],
-    "judge_criteria": [
-      "The response is a Python function with the required name and parameters.",
-      "The function returns the specified result for every example in the description and for the stated edge cases.",
-      "The response contains source code only and imports only the allowed modules."
-    ],
-    "reference_answer": "def max_overlap(sessions):\n    events = []\n    for start, end in sessions:\n        if end > start:\n            events.append((start, 1))\n            events.append((end, -1))\n    best = current = 0\n    for _, delta in sorted(events):\n        current += delta\n        best = max(best, current)\n    return best",
-    "item_id": "code_generation-11",
-    "use_case_id": "code_generation",
-    "construct": "sweep_line_with_boundaries",
     "task_type": "programmatic",
     "difficulty": "hard",
     "evaluator": "sandbox_tests",
@@ -666,38 +379,160 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Context: Booking log, in order. 1) The design review is booked in room 2.10. 2) The budget meeting is booked in room 3.01. 3) The design review moves to room 3.01. 4) Because of the clash, the budget meeting moves to room 2.10. 5) Room 2.10 closes for repairs; every meeting booked there moves to room 1.05. 6) Room 2.10 reopens, but meetings stay where they are. 7) The design review and the budget meeting swap rooms.\nQuestion: In which room is the budget meeting now? Reply with the room number only.",
-    "category": "exact_answer",
-    "quality_dimension": "contextual_accuracy",
-    "accepted_answers": [
-      "3.01"
+    "prompt": "Write only a Python function `order_total(lines: list[list[int]], coupon: str) -> int` that returns the total of an order in cents. Each line is [quantity, unit price in cents]. Rules, applied in this order: 1) a line total is quantity times unit price, and a line of 10 units or more gets 10% off that line, rounded down to the cent; 2) the subtotal is the sum of the line totals; 3) coupon SAVE5 takes 500 cents off when the subtotal is at least 3000 cents and does nothing otherwise; coupon PCT10 takes 10% off the subtotal, rounded down to the cent, but at most 2000 cents; coupons are case-sensitive and any other value, the empty string included, does nothing; 4) shipping costs 499 cents, and is free when the amount after the coupon is at least 5000 cents; 5) an order without lines costs 0, shipping included. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "order_total",
+    "required_parameters": [
+      "lines",
+      "coupon"
     ],
     "strict_output": true,
-    "item_id": "contextual_qa-12",
-    "use_case_id": "contextual_qa",
-    "construct": "state_tracking_over_updates",
-    "task_type": "free_response",
-    "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Context: Refunds are allowed within 30 days of delivery. Exception A: downloaded digital products are not refundable. Exception B, which takes precedence over exception A: a defective product is refundable within 90 days of delivery.\nCase: a digital product, already downloaded, found defective, delivered 45 days ago.\nQuestion: Is the customer entitled to a refund? Reply with YES or NO only.",
-    "category": "exact_answer",
-    "quality_dimension": "contextual_accuracy",
-    "accepted_answers": [
-      "YES"
+    "test_cases": [
+      {
+        "args": [
+          [
+            [
+              2,
+              1000
+            ]
+          ],
+          ""
+        ],
+        "expected": 2499
+      },
+      {
+        "args": [
+          [
+            [
+              2,
+              1500
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 2999
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              2999
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 3498
+      },
+      {
+        "args": [
+          [
+            [
+              10,
+              333
+            ]
+          ],
+          ""
+        ],
+        "expected": 3496
+      },
+      {
+        "args": [
+          [
+            [
+              9,
+              333
+            ]
+          ],
+          ""
+        ],
+        "expected": 3496
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              5400
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 5399
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              5600
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 5040
+      },
+      {
+        "args": [
+          [
+            [
+              30,
+              10000
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 268000
+      },
+      {
+        "args": [
+          [
+            [
+              2,
+              3000
+            ]
+          ],
+          "save5"
+        ],
+        "expected": 6000
+      },
+      {
+        "args": [
+          [],
+          "PCT10"
+        ],
+        "expected": 0
+      },
+      {
+        "args": [
+          [
+            [
+              12,
+              450
+            ],
+            [
+              1,
+              99
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 4963
+      }
     ],
-    "strict_output": true,
-    "item_id": "contextual_qa-13",
-    "use_case_id": "contextual_qa",
-    "construct": "overriding_exception",
-    "task_type": "free_response",
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "def order_total(lines, coupon):\n    if not lines:\n        return 0\n    subtotal = 0\n    for quantity, price in lines:\n        line = quantity * price\n        if quantity >= 10:\n            line -= line // 10\n        subtotal += line\n    if coupon == \"SAVE5\" and subtotal >= 3000:\n        subtotal -= 500\n    elif coupon == \"PCT10\":\n        subtotal -= min(subtotal // 10, 2000)\n    return subtotal + (0 if subtotal >= 5000 else 499)",
+    "item_id": "code_generation-14",
+    "use_case_id": "code_generation",
+    "construct": "many_rules_with_thresholds",
+    "task_type": "programmatic",
     "difficulty": "hard",
-    "evaluator": "exact_match",
+    "evaluator": "sandbox_tests",
     "language": "en",
     "difficulty_status": "draft",
     "license_status": "internal_original",
@@ -780,6 +615,25 @@
     "contamination_status": "internal_unscreened"
   },
   {
+    "prompt": "Context: The office is closed on Saturdays, Sundays and public holidays. In March 2026, the public holidays fall on the 6th and the 20th.\nQuestion: On how many days is the office open from 2 March 2026 to 13 March 2026, both dates included? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "9"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-17",
+    "use_case_id": "contextual_qa",
+    "construct": "inclusive_count_with_closures",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
     "prompt": "A box holds 24 items. 3 full boxes are shipped and 5 loose items are added to the shipment. How many items are shipped in total? Reply with the number only.",
     "category": "logical_reasoning",
     "quality_dimension": "elementary_reasoning",
@@ -837,25 +691,6 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "A course grade out of 20 is 40% exam and 60% projects. The project mark is the average of the project marks, but the lowest project mark is dropped when the exam mark is at least 12. A student has an exam mark of 12 and project marks of 8, 14 and 17. What is the course grade? Reply with the number only, with one decimal.",
-    "category": "logical_reasoning",
-    "quality_dimension": "elementary_reasoning",
-    "accepted_answers": [
-      "14.1"
-    ],
-    "strict_output": true,
-    "item_id": "reasoning_analysis-12",
-    "use_case_id": "reasoning_analysis",
-    "construct": "conditional_weighted_average",
-    "task_type": "free_response",
-    "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
     "prompt": "How many three-digit numbers have digits that add up to 5? Reply with the number only.",
     "category": "logical_reasoning",
     "quality_dimension": "elementary_reasoning",
@@ -894,26 +729,6 @@
     "contamination_status": "internal_unscreened"
   },
   {
-    "prompt": "Route each message to one queue from BILLING, TECHNICAL, ACCOUNT, OTHER with these rules, in order: a message about a charge, an invoice or a refund is BILLING even if it also reports an error; a message about login, password or profile is ACCOUNT, unless it reports an error code, then it is TECHNICAL; any other error is TECHNICAL; anything else is OTHER. Reply with the five labels in order, separated by a comma and a space, and nothing else.\n1. 'I see error 500 when I open my invoice.'\n2. 'How do I change the phone number on my profile?'\n3. 'The password reset page shows error 403.'\n4. 'Do you have offices abroad?'\n5. 'Please refund the charge from the failed payment; the app froze during checkout.'",
-    "category": "exact_answer",
-    "quality_dimension": "classification_accuracy",
-    "accepted_answers": [
-      "BILLING, ACCOUNT, TECHNICAL, OTHER, BILLING",
-      "BILLING,ACCOUNT,TECHNICAL,OTHER,BILLING"
-    ],
-    "strict_output": true,
-    "item_id": "classification_routing-13",
-    "use_case_id": "classification_routing",
-    "construct": "batch_routing_with_precedence",
-    "task_type": "free_response",
-    "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
     "prompt": "Classify the review as POSITIVE, NEGATIVE or MIXED. MIXED means the review both clearly praises and clearly criticises the product itself; complaints about delivery or the courier do not count. Reply with the label only.\nReview: 'Shipping took two weeks, which is the courier's fault, but the blender itself is excellent and surprisingly quiet.'",
     "category": "exact_answer",
     "quality_dimension": "classification_accuracy",
@@ -926,44 +741,6 @@
     "construct": "scope_of_sentiment",
     "task_type": "free_response",
     "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Assign a priority with these rules: P1 if more than 100 users are affected or if any payment fails; P2 if 10 to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'About 40 users cannot export reports since this morning. One of them adds that a card payment failed twice today.'",
-    "category": "exact_answer",
-    "quality_dimension": "classification_accuracy",
-    "accepted_answers": [
-      "P1"
-    ],
-    "strict_output": true,
-    "item_id": "classification_routing-15",
-    "use_case_id": "classification_routing",
-    "construct": "rule_overrides_count",
-    "task_type": "free_response",
-    "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Classify the message into exactly one label from BILLING, TECHNICAL, ACCOUNT, OTHER. Reply with the label only.\nMessage: 'A colleague says your billing page takes a full minute to load. Our bills are correct; we only want to know whether this slowness is a known bug.'",
-    "category": "exact_answer",
-    "quality_dimension": "classification_accuracy",
-    "accepted_answers": [
-      "TECHNICAL"
-    ],
-    "strict_output": true,
-    "item_id": "classification_routing-16",
-    "use_case_id": "classification_routing",
-    "construct": "intent_over_keyword",
-    "task_type": "free_response",
-    "difficulty": "medium",
     "evaluator": "exact_match",
     "language": "en",
     "difficulty_status": "draft",
@@ -1000,6 +777,45 @@
     "item_id": "classification_routing-11",
     "use_case_id": "classification_routing",
     "construct": "rule_based_priority",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Assign a priority with these rules: P1 if more than 100 users are affected or if the outage has lasted more than 4 hours; P2 if 10 to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'Exactly 100 users cannot sync their files. The outage started at 08:10 and is still going on now, at 12:05.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "P2"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-18",
+    "use_case_id": "classification_routing",
+    "construct": "boundaries_of_two_rules",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Route each message to one queue with these rules, in order: a message about a charge, an invoice or a refund is BILLING even if it also reports an error; a message about login, password or profile is ACCOUNT, unless it reports an error code, then it is TECHNICAL; any other error or malfunction is TECHNICAL; anything else is OTHER. Reply with the number of messages in each queue, in the order BILLING, TECHNICAL, ACCOUNT, OTHER, as four integers separated by a comma and a space, and nothing else.\n1. 'I was charged twice for order 6120.'\n2. 'Error 500 appears when I download invoice 6121.'\n3. 'How do I change the phone number on my profile?'\n4. 'The login page shows error 403 since this morning.'\n5. 'Do you have a newsletter?'\n6. 'The app crashes when I open the reports page.'\n7. 'The refund for order 6133 has still not arrived.'\n8. 'I forgot my password and the reset email never comes.'\n9. 'Exports stop at 50 percent with error 504.'\n10. 'Thanks for the quick help last week.'\n11. 'My profile page loads very slowly.'\n12. 'Password reset fails with error 422.'\n13. 'Please send the invoice for order 6140 again; the first one had a typo.'\n14. 'Are you hiring interns this summer?'\n15. 'The dashboard shows yesterday's numbers even after a refresh.'\n16. 'Can I add a second login for my assistant?'\n17. 'Error 502 when I try to pay, and now I see two pending charges.'\n18. 'Your mobile app is great, keep it up.'\n19. 'Search returns nothing for any keyword.'\n20. 'How do I delete my profile picture?'\n21. 'Two-factor login rejects every code with error 401.'\n22. 'Is there a discount for non-profits?'\n23. 'The receipt for my last refund shows the wrong amount.'\n24. 'Notifications stopped working after the update.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "6, 8, 5, 5",
+      "6,8,5,5"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-22",
+    "use_case_id": "classification_routing",
+    "construct": "long_batch_routing_with_precedence",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
@@ -1150,34 +966,6 @@
     }
   },
   {
-    "prompt": "Summarize the policy change for employees in exactly three bullet points.\nText: 'From 1 January, travel above 500 EUR needs manager approval in the new travel tool instead of by email. Train travel is mandatory for trips under four hours. Hotel limits stay unchanged. Receipts must be uploaded within 10 days, down from 30.'",
-    "category": "generic_judgment",
-    "quality_dimension": "summarization_quality",
-    "judge_criteria": [
-      "Uses exactly three bullet points.",
-      "States that travel above 500 EUR needs manager approval in the new tool from 1 January.",
-      "States the train rule for trips under four hours and the 10-day receipt deadline.",
-      "Does not claim that hotel limits change."
-    ],
-    "reference_answer": "- From 1 January, trips above 500 EUR need manager approval in the new travel tool.\n- Take the train for trips under four hours.\n- Upload receipts within 10 days (previously 30).",
-    "item_id": "summarization-06",
-    "use_case_id": "summarization",
-    "construct": "structured_summary_constraint",
-    "task_type": "free_response",
-    "difficulty": "medium",
-    "evaluator": "rubric_panel",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v2",
-    "rubric_anchors": {
-      "1": "- Hotel limits are lower from 1 January.\n- Travel is now free.",
-      "3": "- Approval above 500 EUR now goes through the new tool.\n- Trains are encouraged.\n- Receipts are due sooner.",
-      "5": "- From 1 January, manager approval for trips above 500 EUR is given in the new travel tool.\n- Train is mandatory for trips under four hours.\n- Receipts are due within 10 days instead of 30."
-    }
-  },
-  {
     "prompt": "A customer writes: 'My order arrived damaged and I want my money back right now.' Write a reply in no more than 60 words.",
     "category": "generic_judgment",
     "quality_dimension": "concise_communication",
@@ -1290,34 +1078,6 @@
     }
   },
   {
-    "prompt": "Write an email subject line of at most 8 words announcing that the office is closed on 14 July and that support stays available by phone. Reply with the subject line only.",
-    "category": "generic_judgment",
-    "quality_dimension": "concise_communication",
-    "judge_criteria": [
-      "Mentions the office closure.",
-      "Mentions 14 July.",
-      "Mentions that phone support remains available.",
-      "Uses at most 8 words and contains only the subject line."
-    ],
-    "reference_answer": "Office closed 14 July, phone support stays open",
-    "item_id": "concise_communication-07",
-    "use_case_id": "concise_communication",
-    "construct": "subject_line_density",
-    "task_type": "free_response",
-    "difficulty": "medium",
-    "evaluator": "rubric_panel",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened",
-    "rubric_version": "rubric-v2",
-    "rubric_anchors": {
-      "1": "Important information about the summer",
-      "3": "Office closed on 14 July",
-      "5": "Office closed 14 July; phone support still available"
-    }
-  },
-  {
     "prompt": "A customer sends a long, angry email about three late deliveries, a wrong invoice and no reply from support. Write a one-sentence acknowledgement of at most 35 words that names all three problems and says that the delivery team will reply by tomorrow.",
     "category": "generic_judgment",
     "quality_dimension": "concise_communication",
@@ -1394,25 +1154,6 @@
     "item_id": "instruction_following-07",
     "use_case_id": "instruction_following",
     "construct": "sort_with_tie_rule",
-    "task_type": "free_response",
-    "difficulty": "hard",
-    "evaluator": "exact_match",
-    "language": "en",
-    "difficulty_status": "draft",
-    "license_status": "internal_original",
-    "contamination_status": "internal_unscreened"
-  },
-  {
-    "prompt": "Write the number 2026 in Roman numerals, then one space, then the same number in binary, and nothing else.",
-    "category": "instruction_following",
-    "quality_dimension": "instruction_reliability",
-    "accepted_answers": [
-      "MMXXVI 11111101010"
-    ],
-    "strict_output": true,
-    "item_id": "instruction_following-08",
-    "use_case_id": "instruction_following",
-    "construct": "dual_encoding",
     "task_type": "free_response",
     "difficulty": "hard",
     "evaluator": "exact_match",
