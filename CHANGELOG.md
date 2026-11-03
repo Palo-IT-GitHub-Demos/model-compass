@@ -19,8 +19,8 @@ methodology.
   0.7.0 reference. The deterministic thresholds (4.0) are calibrated on it,
   unchanged: the lowest eligible models sit at 4.20, one failed item out of
   five, and no model falls between 3.75 and 4.0. The judged thresholds (3.5)
-  are calibrated by a blind review of 50 judged answers, done by Claude rather
-  than a human: 48 within one point of the panel mean, the panel 0.26 point
+  are calibrated by a blind review of 50 judged answers, scored by Claude and
+  checked and approved by a human maintainer: 48 within one point of the panel mean, the panel 0.26 point
   stricter on average, the same model order. Catalog `v3.2`, its scores and its
   identifiers are unchanged; only its description says so.
 - An obedience probe counts only when the answer starts or ends with the marker,

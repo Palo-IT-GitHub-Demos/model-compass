@@ -237,8 +237,11 @@ réponses jugées de ce run ont été relues et notées avec la même grille
 (critères et ancres de chaque item) : les 11 items jugés, les six modèles, avec
 plus de poids sur les désaccords entre juges et les notes intermédiaires. La
 relecture a été faite **à l'aveugle** (nom du modèle et notes des juges masqués)
-par **Claude (Anthropic), pas par un humain** : ce relecteur appartient à la même
-famille qu'un modèle évalué et qu'un des trois juges.
+par **Claude (Anthropic)**, puis **vérifiée et validée par un humain**, le
+mainteneur du projet, qui a relu les notes et leurs motifs. Le relecteur
+appartient à la même famille qu'un modèle évalué et qu'un des trois juges ; la
+validation humaine porte sur ses notes, elle ne remplace pas une notation
+humaine indépendante.
 
 | Mesure | Résultat |
 |---|---|
@@ -260,8 +263,9 @@ relecteur, Llama 3.3 70B reste sous 3,5 sur l'échantillon (3,0 en communication
 concise, 3,4 en résumé) et les cinq autres modèles restent au-dessus de 4,0.
 
 Les seuils de 3,5 sont donc **calibrés** sans changement, avec deux réserves :
-la relecture n'est pas humaine, et l'exclusion de Llama 3.3 70B en résumé
-(3,16 pour le panel, 3,4 pour le relecteur) tient à une marge faible. Le détail
+les notes viennent d'un relecteur IA validé par un humain, pas d'une notation
+humaine indépendante, et l'exclusion de Llama 3.3 70B en résumé (3,16 pour le
+panel, 3,4 pour le relecteur) tient à une marge faible. Le détail
 des 50 notes est conservé localement dans
 `results/calibration/judged_review_20261103_143403.csv`.
 Un run n'est comparable à cette référence que si ses identifiants sont identiques

@@ -1690,7 +1690,8 @@ catalog["catalog_version"] = "model-compass-use-cases-v3.2"
 catalog["description"] = (
     "Use-case catalog for the generic-screen-v3 suite: five items per generic use case. Thresholds are "
     "calibrated on the methodology 0.7.0 reference run of 3 November 2026, the judged ones (3.5) by a blind "
-    "AI review of 50 judged answers; weights and profiles are justified in docs/model-compass-scope.md. "
+    "AI review of 50 judged answers, approved by a human; weights and profiles are justified in "
+    "docs/model-compass-scope.md. "
     "Recommendation component scores use the fixed logarithmic anchors below."
 )
 catalog["weight_profiles"] = {
