@@ -28,7 +28,7 @@ from src.api.openrouter_client import (
     OpenRouterError,
 )
 from src.core.config import Settings, get_settings
-from src.core.methodology import METHODOLOGY_VERSION
+from src.core.methodology import METHODOLOGY_VERSION, can_merge
 from src.core.model_presets import format_model_presets
 from src.core.model_selector import (
     catalog_entries,
@@ -921,11 +921,17 @@ class MergePipeline:
                     "Re-run 'make collect' before merging."
                 )
         pending_methodology = pending.get("methodology_version")
-        if pending_methodology != METHODOLOGY_VERSION:
+        if not can_merge(pending_methodology):
             raise ValueError(
                 "Pending artifact methodology version is missing or differs from the current version: "
                 f"pending={pending_methodology!r}, current={METHODOLOGY_VERSION}. "
                 "Re-run 'make collect' before merging."
+            )
+        if pending_methodology != METHODOLOGY_VERSION:
+            logger.info(
+                "[MERGE] Collected under methodology %s; its changes up to %s apply at merge, so it is merged as is.",
+                pending_methodology,
+                METHODOLOGY_VERSION,
             )
 
         models: list[str] = pending["models"]
@@ -1053,6 +1059,7 @@ class MergePipeline:
             run_id=timestamp,
             metadata={
                 "methodology_version": METHODOLOGY_VERSION,
+                "collected_methodology_version": pending_methodology,
                 "models": models,
                 "workload_profile": self._settings.workload_profile,
                 "quality_suite_id": suite_id,

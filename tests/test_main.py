@@ -736,6 +736,7 @@ class TestMergePipelineRun:
         assert list(results_dir.glob("benchmark_*.json"))
         manifest = json.loads((results_dir / "run_20260101_000000.manifest.json").read_text(encoding="utf-8"))
         assert manifest["metadata"]["methodology_version"] == METHODOLOGY_VERSION
+        assert manifest["metadata"]["collected_methodology_version"] == METHODOLOGY_VERSION
 
     def test_rejects_pending_collected_under_another_methodology(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1260,3 +1261,25 @@ def test_run_cost_estimate_uses_live_prices_of_the_target_models() -> None:
 
     assert _run_cost_estimate(pricing, ["v/a"], 100) == pytest.approx(100 * (300e-6 + 1200e-6))
     assert _run_cost_estimate(pd.DataFrame(), ["v/a"], 100) is None
+
+
+def test_only_listed_earlier_collections_can_be_merged(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.core import methodology
+
+    monkeypatch.setattr(methodology, "METHODOLOGY_VERSION", "9.1.0")
+    monkeypatch.setattr(methodology, "MERGEABLE_COLLECTIONS", {"9.1.0": frozenset({"9.0.0"})})
+
+    assert methodology.can_merge("9.1.0")
+    assert methodology.can_merge("9.0.0")
+    assert not methodology.can_merge("8.9.0")
+    assert not methodology.can_merge(None)
+
+
+def test_every_mergeable_collection_is_an_earlier_release() -> None:
+    from src.core.methodology import MERGEABLE_COLLECTIONS
+
+    def release(version: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in version.split("."))
+
+    for current, earlier in MERGEABLE_COLLECTIONS.items():
+        assert all(release(version) < release(current) for version in earlier), current

@@ -374,7 +374,7 @@ class ExactAnswerCheck(ExactFormatCheck):
         """Score the final answer, keeping the strict format verdict separate."""
         result = super().run(prompt, response, evaluation)
         accepted_answers = _get_context_strings(evaluation, "accepted_answers")
-        if result.passed is not False or not final_answer_matches(response, accepted_answers):
+        if result.passed is not False or not final_answer_matches(response, accepted_answers, allow_explanation=True):
             return result
         return CheckResult(
             passed=True,
@@ -392,28 +392,74 @@ _ANSWER_LABEL = re.compile(r"^(?:final answer|answer|result|label|the answer is)
 _NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
 
 
-def final_answer(response: str, accepted_answers: list[str]) -> str:
+def final_answer(response: str, accepted_answers: list[str], *, allow_explanation: bool = False) -> str:
     """Return the final answer a response commits to, or ``""``.
 
     The final answer is the last non-empty line, without markdown emphasis,
     quotes, an ``Answer:``-style label or trailing punctuation. When every
     accepted answer is a number, it is the last number on that line, so
     ``3 * 24 + 5 = 77`` answers ``77``.
+
+    With ``allow_explanation`` (exact-answer items, whose content is the
+    answer), two more places commit to an answer when the last line alone does
+    not: the first line holding nothing but an accepted answer (``**11:25**``
+    then the working), unless the last line ends on a different bare answer;
+    and an accepted answer that the last line introduces with ``=``, ``:`` or
+    "the answer is" (``3/5 * 2/4 = 3/10``). A value met in between is never
+    the answer, so a response that considers the right value and settles on
+    another one still fails. Every response accepted without the option is
+    accepted with it.
     """
     lines = [line for line in _strip_code_fences(response).splitlines() if line.strip()]
     if not lines:
         return ""
-    last = re.sub(r"[*_`]+", "", lines[-1]).strip()
-    last = _ANSWER_LABEL.sub("", last).strip().strip("\"'“”‘’").rstrip(".!").strip()
+    last = _bare_answer(lines[-1])
+    if allow_explanation and not _is_accepted(last, accepted_answers):
+        committed = _committed_answer(lines, last, accepted_answers)
+        if committed:
+            return committed
     if accepted_answers and all(_NUMBER.fullmatch(answer.strip()) for answer in accepted_answers):
         numbers = _NUMBER.findall(last)
         return numbers[-1] if numbers else ""
     return last
 
 
-def final_answer_matches(response: str, accepted_answers: list[str]) -> bool:
+def _bare_answer(line: str) -> str:
+    """A line without markdown emphasis, an ``Answer:`` label, quotes or trailing punctuation."""
+    bare = re.sub(r"[*_`]+", "", line).strip()
+    return _ANSWER_LABEL.sub("", bare).strip().strip("\"'“”‘’").rstrip(".!").strip()
+
+
+def _is_accepted(answer: str, accepted_answers: list[str]) -> bool:
+    return bool(answer) and _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}
+
+
+_WRAPPER = r"[\"'“”‘’*_`]*"
+
+
+def _committed_answer(lines: list[str], last: str, accepted_answers: list[str]) -> str:
+    """The accepted answer given alone on the first line, or introduced at the end of the last line, else ``""``."""
+    first = _bare_answer(lines[0])
+    if (
+        len(lines) > 1
+        and _is_accepted(first, accepted_answers)
+        and not _matches_bare_answer_shape(last, accepted_answers)
+    ):
+        return first
+    for answer in (item.strip() for item in accepted_answers):
+        if not answer:
+            continue
+        value = rf"{_WRAPPER}{re.escape(answer)}{_WRAPPER}"
+        assigned = rf"[=:]\s*{value}\s*[.!]?\s*$"
+        stated = rf"\b(?:answer|result)\s+(?:is|would be)\s*[:=-]?\s*{value}(?=\s*(?:[.!,;]|$))"
+        if re.search(assigned, lines[-1], re.IGNORECASE) or re.search(stated, lines[-1], re.IGNORECASE):
+            return answer
+    return ""
+
+
+def final_answer_matches(response: str, accepted_answers: list[str], *, allow_explanation: bool = False) -> bool:
     """Return whether the response's final answer is one of *accepted_answers*."""
-    answer = final_answer(response, accepted_answers)
+    answer = final_answer(response, accepted_answers, allow_explanation=allow_explanation)
     if not answer:
         return False
     return _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}

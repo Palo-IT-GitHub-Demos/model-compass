@@ -58,7 +58,11 @@ def rescore_final_answers(rows: list[dict[str, object]]) -> list[dict[str, objec
             and row.get("quality_dimension") != FORMAT_COMPLIANCE_DIMENSION
             and float(str(row.get("score", 5))) < 5
             and isinstance(accepted, list)
-            and final_answer_matches(str(row.get("response") or ""), [str(item) for item in accepted])
+            and final_answer_matches(
+                str(row.get("response") or ""),
+                [str(item) for item in accepted],
+                allow_explanation=True,
+            )
         ):
             row = {
                 **row,

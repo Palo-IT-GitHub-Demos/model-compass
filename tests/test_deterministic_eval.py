@@ -212,6 +212,48 @@ class TestExactFormatCheck:
 
     @pytest.mark.parametrize(
         ("response", "accepted"),
+        [
+            ("**11:25**\n\nThe first booking ends at 11:15, so the slot runs 11:25 to 12:35.", ["11:25"]),
+            ("3/5 * 2/4 = 6/20 = 3/10", ["3/10"]),
+            ("Q4 is not published.\n\nSo the answer is: NOT STATED.", ["NOT STATED"]),
+            (
+                "We cannot add an estimate.\n\nThe correct answer would be NOT STATED, as Q4 is not provided.",
+                ["NOT STATED"],
+            ),
+        ],
+        ids=["alone-on-first-line", "assigned-on-last-line", "labelled-on-last-line", "stated-with-a-clause"],
+    )
+    def test_exact_answer_recovers_answer_before_or_after_explanation(self, response: str, accepted: list[str]) -> None:
+        result = ExactAnswerCheck().run("", response, {"accepted_answers": accepted, "strict_output": True})
+
+        assert (result.passed, result.score, result.format_score) == (True, 5, 1)
+
+    @pytest.mark.parametrize(
+        ("response", "accepted"),
+        [
+            ("This could be P1.\nFinal answer: P2", ["P1"]),
+            ("3 x 24 + 5 = 77\nWait, two boxes came back: 77 - 48 = 29\n\n29", ["77"]),
+            ("P1\n\nOn reflection, a workaround exists.\n\nP2", ["P1"]),
+            ("**11:25** is tempting, but the buffer pushes the start.\n\nThe earliest start is 11:30.", ["11:25"]),
+            ("The answer is not P1.", ["P1"]),
+        ],
+        ids=[
+            "considered-then-another",
+            "intermediate-value",
+            "first-line-then-corrected",
+            "same-line-mention",
+            "negated",
+        ],
+    )
+    def test_exact_answer_never_takes_a_value_the_response_does_not_settle_on(
+        self, response: str, accepted: list[str]
+    ) -> None:
+        result = ExactAnswerCheck().run("", response, {"accepted_answers": accepted, "strict_output": True})
+
+        assert (result.passed, result.score) == (False, 1)
+
+    @pytest.mark.parametrize(
+        ("response", "accepted"),
         [("I think 10, not 12", ["10"]), ("TECHNICAL", ["UNCLEAR"]), ("Canberra or Sydney", ["Canberra"])],
     )
     def test_exact_answer_still_fails_a_wrong_or_hedged_final_answer(self, response: str, accepted: list[str]) -> None:

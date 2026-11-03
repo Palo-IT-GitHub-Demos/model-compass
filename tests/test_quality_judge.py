@@ -749,3 +749,24 @@ def test_merge_rescores_a_correct_final_answer_that_showed_its_working() -> None
     assert [row["score"] for row in rescored] == [5, 1, 1, 1]
     assert "rescored at merge" in str(rescored[0]["reasoning"])
     assert rows[0]["score"] == 1
+
+
+def test_merge_rescores_correct_markdown_answer_followed_by_explanation() -> None:
+    from src.evaluators.quality_judge import rescore_final_answers
+
+    row: dict[str, object] = {
+        "prompt_id": 16,
+        "attempt": 0,
+        "model": "v/a",
+        "category": "logical_reasoning",
+        "quality_dimension": "elementary_reasoning",
+        "source": "deterministic",
+        "score": 1,
+        "response": "**11:25**\n\nThe first booking ends at 11:15, so the slot starts at 11:25.",
+        "expected_answers_json": '["11:25"]',
+    }
+
+    (rescored,) = rescore_final_answers([row])
+
+    assert rescored["score"] == 5
+    assert row["score"] == 1
