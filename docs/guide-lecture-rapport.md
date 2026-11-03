@@ -48,7 +48,6 @@ génération de code, synthèse, etc.) et indique, dans l'ordre :
 | Badge **weight-profile-sensitive** | Le recommandé change selon le profil de poids (`quality-first`, `balanced`, `cost-sensitive`) ; la carte nomme le leader de chaque profil. | Retenir le leader du profil qui correspond au dossier : `quality-first` pour des réponses critiques, `cost-sensitive` pour un fort volume ou un budget serré, `balanced` sinon. |
 | Badge **same leader** | Le recommandé est le même sous les trois profils de poids. | La recommandation ne dépend pas de la pondération retenue. |
 | Badge **disputed key** | Sur un prompt du cas d'usage, la plupart des modèles donnent la même réponse, que le corrigé rejette. | Faire relire ce prompt avant de s'appuyer sur le classement. |
-| **within uncertainty** | La qualité de ces modèles ne se distingue pas statistiquement de celle du recommandé. | Départager sur un critère du dossier : coût, fournisseur, conformité. |
 | **Also eligible** | Franchit le seuil mais obtient un score plus bas. | Alternative si une contrainte exclut les premiers. |
 | **cannot be ranked (missing evidence)** | Qualité suffisante, mais il manque une mesure de sécurité, de coût ou de performance. | Ne pas retenir sans compléter la mesure. |
 | **Below the quality threshold** | Qualité insuffisante pour ce cas d'usage, quel que soit son prix. **borderline** : l'intervalle de confiance chevauche le seuil. | Ne pas retenir ; un modèle *borderline* peut mériter un test sur données client. |
@@ -71,8 +70,8 @@ génération de code, synthèse, etc.) et indique, dans l'ordre :
 - Le bandeau d'avertissement est absent, ou ses raisons sont acceptables pour
   l'usage visé.
 - Chaque cas d'usage du dossier a été rapproché d'une carte du rapport.
-- Une recommandation **fragile** ou entourée de modèles *within uncertainty* a
-  été départagée sur un critère explicite du dossier.
+- Une recommandation **fragile** ou *too close to call* a été départagée sur un
+  critère explicite du dossier.
 - Les exigences hors périmètre (conformité, hébergement, contrat) ont été
   vérifiées à part.
 - Si un jeu de données propre au client existe, le choix final est confirmé avec

@@ -154,6 +154,10 @@ methodology.
 
 ### Added
 
+- The *Prompts & responses* page filters the quality attempts by model (several
+  at once), use case, prompt, result (*not perfect* lists every attempt below
+  5 / 5), content or format rows and text, and compares the models side by side
+  on one prompt. The table gains the use case, prompt, attempt and result.
 - `make pilot-items` lists the candidate quality items written in
   `scripts/build_quality_suite_v3.py` (`data/prompts/quality_candidates_v3.json`);
   with `LIVE=1` (paid) it checks the gateway forwards them unchanged, sends each
@@ -182,6 +186,16 @@ methodology.
 
 ### Fixed
 
+- The Cost page no longer says the monthly TCO assumes the profile's output
+  length: since 0.6.0 it uses each model's measured output. The cost-vs-security
+  chart drops marker sizes that encoded overall quality without a legend, shows
+  quality in the hover and says its cost axis is reversed.
+- Decision cards no longer list the models *within uncertainty*: with five items
+  per use case their quality interval overlapped the leader's for every eligible
+  model of the reference run. *Use cases in detail* keeps the column.
+- Every page names the published ranking weights as the balanced profile, lists
+  the other weight profiles, and says what the workload profile is (requests
+  and input size, for cost only).
 - The test suite gives every test a fake OpenRouter key: 12 tests needed the
   local `.env`, so CI had failed on `main` since 13 October 2026.
 - A prompt the gateway rewrites is logged with the words it changed

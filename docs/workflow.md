@@ -719,7 +719,7 @@ pour un décideur.
 
 | Page | Contenu |
 |---|---|
-| **Decision summary** (`index.html`) | Une carte par cas d'usage : recommandé(s), modèles à égalité statistique, éligibles, exclus et motif, badges *fragile*, *judge-sensitive*, *weight-profile-sensitive* et *disputed key* ; liens vers les CSV sources |
+| **Decision summary** (`index.html`) | Une carte par cas d'usage : recommandé(s), plusieurs quand l'écart est trop faible, éligibles, exclus et motif, badges *fragile*, *judge-sensitive*, *weight-profile-sensitive* et *disputed key* ; liens vers les CSV sources |
 | **Use cases in detail** | Tableau des profils de poids et des arbitrages qu'ils impliquent, puis, par cas d'usage, tableau trié par rang : seuil, intervalle de confiance, respect du format, composantes, plage de rang sous ±10 %, rang sous chaque profil, preuves manquantes |
 | **Quality × cost** | Nuage qualité globale × coût mélangé avec frontière de Pareto ; vue d'ensemble, pas un outil de choix |
 | **Quality** | Couverture par dimension, stabilité, éligibilité CER, erreurs de collecte, score exact par dimension |

@@ -208,6 +208,34 @@ class TestMainCli:
         assert "<script>alert(3)</script>" not in html
         assert "&lt;script&gt;alert(3)&lt;/script&gt;" in html
 
+    def test_evidence_filters_list_models_and_prompts_escaped(self, tmp_path: Path) -> None:
+        results = _write_sample_csv(tmp_path)
+        details_dir = tmp_path / "quality_details"
+        details_dir.mkdir()
+        pd.DataFrame(
+            {
+                "model": ["openai/gpt-4o-mini", "anthropic/claude"],
+                "prompt_id": [3, 3],
+                "attempt": [0, 0],
+                "quality_dimension": ["contextual_accuracy", "contextual_accuracy"],
+                "prompt": ["Is <b>this</b> stated?", "Is <b>this</b> stated?"],
+                "response": ["NOT STATED", "12.3"],
+                "score": [5, 1],
+                "source": ["deterministic", "deterministic"],
+                "reasoning": ["ok", "wrong"],
+            }
+        ).to_csv(details_dir / "benchmark_test_quality_details.csv", index=False)
+        output = tmp_path / "dashboard.html"
+
+        main(["--results", str(results), "--output", str(output)])
+
+        html = (tmp_path / "dashboard" / "evidence.html").read_text(encoding="utf-8")
+        assert '<select id="f-model" multiple' in html
+        assert '<option value="anthropic/claude">anthropic/claude</option>' in html
+        assert '<option value="3">3 · Is &lt;b&gt;this&lt;/b&gt; stated?</option>' in html
+        assert 'id="f-compare"' in html and "Compare side by side" in html
+        assert "<b>this</b>" not in html
+
     def test_judge_verdicts_replace_truncated_reasoning_and_are_escaped(self, tmp_path: Path) -> None:
         results = _write_sample_csv(tmp_path)
         details_dir = tmp_path / "quality_details"
@@ -450,15 +478,15 @@ class TestDecisionReport:
         assert main(["--results", str(results), "--output", str(output)]) == 0
         return output
 
-    def test_summary_card_states_leader_uncertainty_and_exclusions(self, tmp_path: Path) -> None:
+    def test_summary_card_states_leader_eligible_models_and_exclusions(self, tmp_path: Path) -> None:
         output = self._export(tmp_path)
         html = (tmp_path / "dashboard" / "index.html").read_text(encoding="utf-8")
 
         assert "Recommended: <span" in html
         assert "leader" in html and "84.5 / 100" in html
         assert 'title="Rank range under ±10%: 1–2">fragile</span>' in html
-        assert "within uncertainty</span> quality not distinguishable from the leader" in html
-        assert "<strong>runner-up</strong> (rank 2)" in html
+        assert "within uncertainty" not in html
+        assert "<strong>runner-up</strong> (rank 2, " in html
         assert "<strong>no-latency</strong> (performance)" in html
         assert "<strong>below</strong> (3.30 / 5, borderline)" in html
         assert "Preserve &lt;facts&gt;." in html

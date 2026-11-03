@@ -524,18 +524,50 @@ def run_provenance(benchmark_df: pd.DataFrame, recommendations_df: pd.DataFrame)
 
     weights = recorded(recommendations_df, "recommendation_weights")
     try:
-        shares = json.loads(weights)
-        weights = " · ".join(f"{name} {shares[name]:.0%}" for name in ("quality", "security", "cost", "performance"))
+        weights = _weight_shares(json.loads(weights))
     except (ValueError, KeyError, TypeError):
         pass
+    else:
+        weights += _other_weight_profiles(recommendations_df, weights)
+    workload = recorded(benchmark_df, "workload_profile")
+    profile = BUILTIN_WORKLOAD_PROFILES.get(workload)
+    if profile is not None:
+        workload += (
+            f" ({profile.daily_requests} requests/day of {profile.avg_prompt_tokens} input tokens, for cost only; "
+            "output length measured per model)"
+        )
     return {
         "Methodology": recorded(benchmark_df, "methodology_version"),
         "Quality suite": recorded(benchmark_df, "quality_suite_id"),
         "Use-case catalog": recorded(recommendations_df, "catalog_version"),
         "Security probe set": recorded(benchmark_df, "security_probe_set_id"),
-        "Decision weights": weights,
-        "Workload profile": recorded(benchmark_df, "workload_profile"),
+        "Published ranking weights": weights,
+        "Workload profile": workload,
     }
+
+
+_WEIGHT_ORDER = ("quality", "security", "cost", "performance")
+
+
+def _weight_shares(shares: dict[str, float]) -> str:
+    return " · ".join(f"{name} {shares[name]:.0%}" for name in _WEIGHT_ORDER)
+
+
+def _other_weight_profiles(recommendations_df: pd.DataFrame, published: str) -> str:
+    """Name the weight profiles shown beside the published ranking, which never change it."""
+    if "weight_profiles" not in recommendations_df.columns:
+        return ""
+    raw = recommendations_df["weight_profiles"].dropna()
+    try:
+        profiles = json.loads(str(raw.iloc[0])) if not raw.empty else {}
+        others = [
+            f"{name.replace('_', '-')} {'/'.join(f'{profile[part]:.0%}'.rstrip('%') for part in _WEIGHT_ORDER)}"
+            for name, profile in profiles.items()
+            if _weight_shares(profile) != published
+        ]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return ""
+    return f" (also shown, never changing the rank: {', '.join(others)})" if others else ""
 
 
 def run_warnings(benchmark_df: pd.DataFrame, source_name: str) -> list[str]:
@@ -762,3 +794,59 @@ def quality_threshold_borderline(rows: pd.DataFrame) -> pd.Series:
     high = numeric_series(rows, "quality_score_ci95_high")
     threshold = numeric_series(rows, "quality_threshold")
     return (low < threshold) & (high >= threshold)
+
+
+FORMAT_DIMENSION = "output_format_compliance"
+EVIDENCE_RESULT_ORDER = ("fail", "partial", "pass", "format broken", "format ok")
+
+
+def evidence_result(dimension: object, score: object) -> str:
+    """Label one scored attempt for filtering: ``pass`` (5/5), ``partial``, ``fail`` (1/5), or its format verdict."""
+    value = pd.to_numeric(pd.Series([score]), errors="coerce").iloc[0]
+    if pd.isna(value):
+        return ""
+    if dimension == FORMAT_DIMENSION:
+        return "format ok" if value >= 4 else "format broken"
+    return "pass" if value >= 5 else "fail" if value <= 1 else "partial"
+
+
+def quality_evidence_table(quality_details_df: pd.DataFrame, recommendations_df: pd.DataFrame) -> pd.DataFrame:
+    """Scored attempts with their use case and a result label, ordered prompt by prompt, for the evidence page.
+
+    The use case comes from the ``prompt_ids`` of the recommendation rows; a
+    prompt that no use case lists keeps an empty use case.
+    """
+    if quality_details_df.empty:
+        return pd.DataFrame()
+    use_cases: dict[int, str] = {}
+    if {"use_case_name", "prompt_ids"}.issubset(recommendations_df.columns):
+        for name, rows in recommendations_df.groupby("use_case_name", sort=False):
+            for prompt_id in use_case_prompt_ids(rows):
+                use_cases[prompt_id] = str(name)
+    table = quality_details_df.copy()
+    prompt_ids = numeric_series(table, "prompt_id")
+    table["prompt_id"] = prompt_ids.astype("Int64")
+    table["use_case"] = prompt_ids.map(lambda value: use_cases.get(int(value), "") if pd.notna(value) else "")
+    dimension = table.get("quality_dimension", pd.Series("", index=table.index))
+    table["result"] = [
+        evidence_result(dim, score) for dim, score in zip(dimension, numeric_series(table, "score"), strict=True)
+    ]
+    table["is_format"] = dimension.eq(FORMAT_DIMENSION)
+    sort_columns = [column for column in ("prompt_id", "model", "attempt", "is_format") if column in table.columns]
+    table = table.sort_values(sort_columns, kind="stable").drop(columns="is_format")
+    columns = [
+        "use_case",
+        "prompt_id",
+        "model",
+        "attempt",
+        "quality_dimension",
+        "result",
+        "score",
+        "prompt",
+        "response",
+        "judge_disagreement",
+        "verification_status",
+        "source",
+        "reasoning",
+    ]
+    return table[[column for column in columns if column in table.columns]].reset_index(drop=True)

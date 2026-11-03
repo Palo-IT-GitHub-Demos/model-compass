@@ -275,8 +275,8 @@ make inspect-run   # checks the run manifest and artifact checksums
 
 Open `results/dashboard_<ts>.html` directly from disk; it works offline. The
 report opens on the **decision summary**: one card per generic use case with the
-recommended model(s), the models whose quality cannot be told apart from the
-leader, the exclusions and their reason, and a *fragile* badge when a 10 %
+recommended model(s) (several when they are too close to call), the other
+eligible models, the exclusions and their reason, and a *fragile* badge when a 10 %
 change of one weight or of the threshold changes the outcome. Every page shows
 the methodology version, quality suite, use-case catalog, security probe set,
 decision weights and workload profile of the run, and a warning when the run

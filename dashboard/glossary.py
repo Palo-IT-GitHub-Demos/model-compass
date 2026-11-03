@@ -40,8 +40,9 @@ GLOSSARY_TERMS: tuple[tuple[str, str], ...] = (
     ),
     (
         "TCO — Total Cost of Ownership",
-        "`tco_usd` is a **projected monthly** cost for a given workload profile (requests per day, "
-        "average tokens) — not what this run actually cost (see `actual_cost_credits`).",
+        "`tco_usd` is a **projected monthly** cost for a given workload profile (requests per day and "
+        "input tokens per request), with the output length each model really produced on the quality suite "
+        "— not what this run actually cost (see `actual_cost_credits`).",
     ),
     (
         "CER — Cost-Efficiency Ratio",

@@ -54,6 +54,7 @@ from dashboard.data_prep import (  # noqa: E402
     profile_label,
     quality_dimension_long_frame,
     quality_dimension_table,
+    quality_evidence_table,
     quality_threshold_borderline,
     quality_tier,
     run_notices,
@@ -128,6 +129,9 @@ h3 { margin-top: 1.8rem; }
 .badge.fragile { background: #fff3cd; color: #856404; }
 .badge.tied { background: #d1ecf1; color: #0c5460; }
 .badge.borderline { background: #fff3cd; color: #856404; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: flex-end; margin: 1rem 0; }
+.filters label { display: flex; flex-direction: column; font-size: 0.85rem; color: #444; gap: 0.2rem; }
+.filters select, .filters input { font: inherit; padding: 0.2rem; max-width: 22rem; }
 @media (max-width: 640px) {
   body { padding: 1rem; }
   nav.toc ul { columns: 1; }
@@ -273,14 +277,9 @@ def _use_case_card(rows: pd.DataFrame, disputed_prompts: set[int] | frozenset[in
     status = rows["recommendation_status"].astype(str)
     borderline = quality_threshold_borderline(rows)
     recommended = rows.loc[status.eq("recommended")]
-    eligible = rows.loc[status.eq("eligible")]
-    tied_mask = (
-        eligible["quality_ci95_overlaps_leader"].map(_is_true)
-        if "quality_ci95_overlaps_leader" in eligible.columns
-        else pd.Series(False, index=eligible.index)
-    )
-    tied = eligible.loc[tied_mask.astype(bool)]
-    other_eligible = eligible.drop(index=tied.index)
+    # Quality confidence intervals overlap the leader's for nearly every eligible model with five items per
+    # use case, so the card does not list them; "Use cases in detail" keeps quality_ci95_overlaps_leader.
+    other_eligible = rows.loc[status.eq("eligible")]
     below = rows.loc[status.eq("below_quality_threshold")]
     missing = rows.loc[status.eq("insufficient_decision_evidence")]
     incomplete = rows.loc[status.eq("insufficient_quality_evidence")]
@@ -339,12 +338,6 @@ def _use_case_card(rows: pd.DataFrame, disputed_prompts: set[int] | frozenset[in
         items.append(
             '<li><span class="badge fragile">judge-sensitive</span> without the judge from each model\'s own '
             f"provider, the recommendation would be: <strong>{names}</strong></li>"
-        )
-    if not tied.empty:
-        items.append(
-            '<li><span class="badge tied">within uncertainty</span> quality not distinguishable from the leader: '
-            + _model_list(tied, lambda row: f"rank {_number(row.get('recommendation_rank'), '{:.0f}')}")
-            + "</li>"
         )
     if not other_eligible.empty:
         items.append(
@@ -422,8 +415,8 @@ def _summary_section(
     <p class="callout"><strong>How to read this:</strong> each card is one generic use case. A model
     is <strong>recommended</strong> when it passes the use case's quality threshold with complete
     evidence and has the best weighted decision score; equal scores share the place.
-    <strong>Fragile</strong> means a 10 % change of one weight or of the threshold changes the outcome,
-    and <strong>within uncertainty</strong> means the quality gap with the leader is not established.
+    <strong>Fragile</strong> means a 10 % change of one weight or of the threshold changes the outcome;
+    several recommended models are then <em>too close to call</em>.
     Match the use cases to the tender yourself: the final choice remains human.</p>
     <div class="use-cases">{cards}</div>
     {sources}
@@ -684,7 +677,132 @@ def _quality_section(df: pd.DataFrame) -> str:
 # ── Prompts & responses ───────────────────────────────────────────────────────
 
 
-def _prompts_responses_section(quality_details_df: pd.DataFrame, security_probe_df: pd.DataFrame) -> str:
+def _options(values: list[str], labels: dict[str, str] | None = None) -> str:
+    return "".join(
+        f'<option value="{escape(value)}">{escape((labels or {}).get(value, value))}</option>' for value in values
+    )
+
+
+def _evidence_filters(table: pd.DataFrame) -> str:
+    """Filter bar for the quality evidence table: values are escaped here, the script only compares text."""
+    models = sorted(table["model"].dropna().astype(str).unique()) if "model" in table.columns else []
+    use_cases = list(dict.fromkeys(table["use_case"].dropna().astype(str))) if "use_case" in table.columns else []
+    prompts = table.drop_duplicates("prompt_id") if "prompt_id" in table.columns else pd.DataFrame()
+    prompt_labels = {
+        str(row.prompt_id): f"{row.prompt_id} · {str(row.prompt).splitlines()[0][:70] if str(row.prompt) else ''}"
+        for row in prompts.itertuples()
+    }
+    model_size = min(max(len(models), 2), 6)
+    model_options = _options(models)
+    use_case_options = _options([use_case for use_case in use_cases if use_case])
+    prompt_options = _options(list(prompt_labels), prompt_labels)
+    return f"""
+    <p class="callout">Pick models, a use case or a prompt, and a result: <em>not perfect</em> lists every
+    attempt below 5 / 5, so you can see the prompts a model misses. With one prompt selected,
+    <strong>Compare side by side</strong> puts each model's attempts in its own column.</p>
+    <div class="filters" id="evidence-filters">
+      <label>Models <select id="f-model" multiple size="{model_size}">{model_options}</select></label>
+      <label>Use case <select id="f-use-case"><option value="">all</option>{use_case_options}</select></label>
+      <label>Prompt <select id="f-prompt"><option value="">all</option>{prompt_options}</select></label>
+      <label>Result <select id="f-result">
+        <option value="">all</option><option value="not perfect">not perfect (fail or partial)</option>
+        {_options(["fail", "partial", "pass"])}</select></label>
+      <label>Rows <select id="f-kind"><option value="content">content</option>
+        <option value="format">format compliance</option><option value="">both</option></select></label>
+      <label>Search <input id="f-text" type="search" placeholder="text in prompt, response or reasoning"></label>
+      <button type="button" id="f-compare" disabled>Compare side by side</button>
+      <span class="meta"><strong id="f-count">0</strong> attempt(s) shown</span>
+    </div>
+    """
+
+
+_EVIDENCE_FILTER_JS = """
+(function () {
+  const table = document.querySelector('#quality-evidence table');
+  if (!table) return;
+  const heads = Array.from(table.tHead.rows[0].cells).map((cell) => cell.textContent.trim());
+  const col = (name) => heads.indexOf(name);
+  const rows = Array.from(table.tBodies[0].rows);
+  const value = (row, name) => (col(name) < 0 ? '' : row.cells[col(name)].textContent.trim());
+  const $ = (id) => document.getElementById(id);
+  const compareBox = $('evidence-compare');
+  let comparing = false;
+
+  function keep(row) {
+    const models = Array.from($('f-model').selectedOptions).map((option) => option.value);
+    const result = value(row, 'result');
+    const wanted = $('f-result').value;
+    const kind = $('f-kind').value;
+    const isFormat = result.startsWith('format');
+    const text = $('f-text').value.toLowerCase();
+    return (!models.length || models.includes(value(row, 'model')))
+      && (!$('f-use-case').value || value(row, 'use_case') === $('f-use-case').value)
+      && (!$('f-prompt').value || value(row, 'prompt_id') === $('f-prompt').value)
+      && (!kind || (kind === 'format') === isFormat)
+      && (!wanted || (wanted === 'not perfect' ? result === 'fail' || result === 'partial'
+        || result === 'format broken' : result === wanted))
+      && (!text || row.textContent.toLowerCase().includes(text));
+  }
+
+  function compare(shown) {
+    compareBox.replaceChildren();
+    const models = [...new Set(shown.map((row) => value(row, 'model')))];
+    const grid = document.createElement('table');
+    grid.className = 'data-table wrap-table';
+    const head = grid.createTHead().insertRow();
+    ['attempt', ...models].forEach((label) => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      head.appendChild(th);
+    });
+    const body = grid.createTBody();
+    [...new Set(shown.map((row) => value(row, 'attempt')))].forEach((attempt) => {
+      const line = body.insertRow();
+      line.insertCell().textContent = attempt;
+      models.forEach((model) => {
+        const cell = line.insertCell();
+        shown.filter((row) => value(row, 'model') === model && value(row, 'attempt') === attempt).forEach((row) => {
+          const label = document.createElement('strong');
+          label.textContent = value(row, 'result') + ' · ' + value(row, 'score');
+          const text = document.createElement('div');
+          text.textContent = value(row, 'response');
+          cell.append(label, text);
+        });
+      });
+    });
+    const prompt = document.createElement('p');
+    prompt.className = 'callout';
+    prompt.textContent = shown.length ? value(shown[0], 'prompt') : '';
+    compareBox.append(prompt, grid);
+  }
+
+  function apply() {
+    const shown = rows.filter((row) => {
+      const ok = keep(row);
+      row.hidden = !ok;
+      return ok;
+    });
+    $('f-count').textContent = shown.length;
+    const onePrompt = Boolean($('f-prompt').value);
+    $('f-compare').disabled = !onePrompt;
+    if (!onePrompt) comparing = false;
+    $('f-compare').textContent = comparing ? 'Back to the list' : 'Compare side by side';
+    compareBox.hidden = !comparing;
+    $('quality-evidence').hidden = comparing;
+    if (comparing) compare(shown);
+  }
+
+  ['f-model', 'f-use-case', 'f-prompt', 'f-result', 'f-kind'].forEach((id) => $(id).addEventListener('change', apply));
+  $('f-text').addEventListener('input', apply);
+  $('f-compare').addEventListener('click', () => { comparing = !comparing; apply(); });
+  apply();
+})();
+"""
+
+
+def _prompts_responses_section(
+    quality_details_df: pd.DataFrame, security_probe_df: pd.DataFrame, recommendations_df: pd.DataFrame | None = None
+) -> str:
     quality_block = """
     <p class="callout">No prompt/response detail file for this run — available under
     <code>results/quality_details/</code> for runs merged after this feature was added.</p>
@@ -695,22 +813,13 @@ def _prompts_responses_section(quality_details_df: pd.DataFrame, security_probe_
         anomalies_df = quality_details_df.loc[evidence_status == "Collection anomaly"]
         quality_parts: list[str] = []
         if not scored_df.empty:
-            transcript_columns = [
-                "model",
-                "quality_dimension",
-                "prompt",
-                "response",
-                "score",
-                "judge_disagreement",
-                "verification_status",
-                "source",
-                "reasoning",
-            ]
-            transcript_df = scored_df[[c for c in transcript_columns if c in scored_df.columns]].copy()
-            if "judge_verdicts" in scored_df.columns and "reasoning" in transcript_df.columns:
+            if {"judge_verdicts", "reasoning"}.issubset(scored_df.columns):
                 # The merged reasoning truncates each judge; show every score and full rationale instead.
                 verdicts = scored_df["judge_verdicts"].map(format_judge_verdicts)
-                transcript_df["reasoning"] = verdicts.where(verdicts.ne(""), transcript_df["reasoning"])
+                scored_df = scored_df.assign(reasoning=verdicts.where(verdicts.ne(""), scored_df["reasoning"]))
+            transcript_df = quality_evidence_table(
+                scored_df, recommendations_df if recommendations_df is not None else pd.DataFrame()
+            )
             quality_table = _table_html(
                 transcript_df,
                 formats={"score": "{:.1f} / 5", "judge_disagreement": "{:.0f}"},
@@ -718,10 +827,10 @@ def _prompts_responses_section(quality_details_df: pd.DataFrame, security_probe_
             )
             quality_parts.append(
                 f"""
-                <details>
-                  <summary>Show the {len(scored_df)} scored quality evaluation(s)</summary>
-                  <div class="table-wrap">{quality_table}</div>
-                </details>
+                {_evidence_filters(transcript_df)}
+                <div id="evidence-compare" class="table-wrap" hidden></div>
+                <div id="quality-evidence" class="table-wrap">{quality_table}</div>
+                <script>{_EVIDENCE_FILTER_JS}</script>
                 """
             )
         if not anomalies_df.empty:
@@ -940,11 +1049,11 @@ def _cost_section(df: pd.DataFrame, profile_name: str, profile: WorkloadProfile)
     if "rsi" in cost_df.columns:
         quadrant = f"""
         <div class="chart">{_fig_html(build_cost_security_quadrant(cost_df))}</div>
-        <p class="callout">Every model is priced on the <strong>same</strong> assumed monthly workload
-        above ({profile.daily_requests} requests/day, {profile.avg_prompt_tokens} input +
-        {profile.avg_completion_tokens} output tokens/request) — so a cheaper <code>tco_usd</code> here
-        means cheaper for identical usage. <code>avg_completion_tokens</code> is a workload assumption,
-        not each model's actual reply length, so real spend will differ from this projection.</p>
+        <p class="callout">Every model is priced for the <strong>same</strong> requests: {profile.daily_requests}
+        a day of {profile.avg_prompt_tokens} input tokens each. The output is what each model really wrote
+        on the quality suite, hidden reasoning included (<em>measured completion tokens per answer</em> in the
+        table), so a verbose model costs more for the same work. The vertical axis is reversed: cheaper is
+        higher, so the best models sit top right.</p>
         """
 
     return f"""
@@ -953,9 +1062,10 @@ def _cost_section(df: pd.DataFrame, profile_name: str, profile: WorkloadProfile)
     selected usage pattern, not the cost of this benchmark. CER is quality per dollar, normalised so
     1.0 is the best eligible model in this comparison. Actual run cost is what OpenRouter reported.</p>
     <p class="meta">Workload profile: <strong>{escape(profile_name)}</strong> —
-    {profile.daily_requests} requests/day · {profile.avg_prompt_tokens} input tokens/request ·
-    {profile.avg_completion_tokens} output tokens/request · {profile.working_days_per_month}
-    working days/month. Re-run with <code>--profile</code> for another profile.</p>
+    {profile.daily_requests} requests/day · {profile.avg_prompt_tokens} input tokens/request · output
+    tokens measured per model · {profile.working_days_per_month} working days/month. The profile is a
+    usage assumption for cost only; re-run with <code>--profile</code> for another one
+    ({", ".join(sorted(BUILTIN_WORKLOAD_PROFILES))}).</p>
     <div class="kpi-row">{kpi_cards}</div>
     <div class="table-wrap">{table}</div>
     {quadrant}
@@ -1141,7 +1251,7 @@ def build_reports(
         "evidence.html": (
             "Prompts & responses",
             "evidence",
-            f"{_prompts_responses_section(quality_details, security_probe_df)}{_raw_data_section(df)}",
+            f"{_prompts_responses_section(quality_details, security_probe_df, recommendations)}{_raw_data_section(df)}",
         ),
         "glossary.html": ("Glossary", "glossary", _glossary_section()),
     }

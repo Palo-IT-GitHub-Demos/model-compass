@@ -13,6 +13,7 @@ from dashboard.data_prep import (
     blended_cost_per_1m_tokens,
     compute_cost_columns,
     enrich_benchmark,
+    evidence_result,
     format_judge_verdicts,
     leaders_label,
     load_quality_details,
@@ -21,6 +22,7 @@ from dashboard.data_prep import (
     parse_judge_verdicts,
     quality_dimension_long_frame,
     quality_dimension_table,
+    quality_evidence_table,
     quality_threshold_borderline,
     quality_tier,
     run_notices,
@@ -293,9 +295,28 @@ class TestRunProvenance:
             "Quality suite": "generic-screen-v2-abc",
             "Use-case catalog": "model-compass-use-cases-v2.1",
             "Security probe set": "owasp-def",
-            "Decision weights": "quality 70% · security 10% · cost 10% · performance 10%",
-            "Workload profile": "enterprise_qa",
+            "Published ranking weights": "quality 70% · security 10% · cost 10% · performance 10%",
+            "Workload profile": "enterprise_qa (500 requests/day of 512 input tokens, for cost only; "
+            "output length measured per model)",
         }
+
+    def test_provenance_names_the_weight_profiles_shown_beside_the_published_ranking(self) -> None:
+        balanced = {"quality": 0.5, "security": 0.25, "cost": 0.2, "performance": 0.05}
+        profiles = {
+            "quality_first": {"quality": 0.7, "security": 0.2, "cost": 0.07, "performance": 0.03},
+            "balanced": balanced,
+            "cost_sensitive": {"quality": 0.35, "security": 0.2, "cost": 0.4, "performance": 0.05},
+        }
+        recommendations = pd.DataFrame(
+            {"recommendation_weights": [json.dumps(balanced)], "weight_profiles": [json.dumps(profiles)]}
+        )
+
+        weights = run_provenance(pd.DataFrame({"model": ["a"]}), recommendations)["Published ranking weights"]
+
+        assert weights == (
+            "quality 50% · security 25% · cost 20% · performance 5% "
+            "(also shown, never changing the rank: quality-first 70/20/7/3, cost-sensitive 35/20/40/5)"
+        )
 
     def test_legacy_run_is_explicitly_not_recorded(self) -> None:
         provenance = run_provenance(pd.DataFrame({"model": ["a"]}), pd.DataFrame())
@@ -632,3 +653,52 @@ def test_weight_profile_table_and_leaders_read_the_recommendation_artifact() -> 
     table = weight_profile_table(rows)
     assert list(table["Profile"]) == ["quality-first", "cost-sensitive"]
     assert list(table["1 quality point is worth"]) == ["more than any price gap", "a 5× price gap"]
+
+
+class TestQualityEvidenceTable:
+    def test_each_attempt_gets_a_result_label(self) -> None:
+        assert [evidence_result("contextual_accuracy", score) for score in (5, 3, 1, None)] == [
+            "pass",
+            "partial",
+            "fail",
+            "",
+        ]
+        assert [evidence_result("output_format_compliance", score) for score in (5, 1)] == [
+            "format ok",
+            "format broken",
+        ]
+
+    def test_attempts_get_their_use_case_and_are_ordered_prompt_by_prompt(self) -> None:
+        details = pd.DataFrame(
+            {
+                "model": ["b/m", "a/m", "a/m", "a/m"],
+                "prompt_id": [7, 7, 7, 2],
+                "attempt": [0, 0, 0, 0],
+                "quality_dimension": [
+                    "output_format_compliance",
+                    "contextual_accuracy",
+                    "output_format_compliance",
+                    "x",
+                ],
+                "score": [1, 3, 5, 5],
+                "prompt": ["p7", "p7", "p7", "p2"],
+                "response": ["r", "r", "r", "r"],
+            }
+        )
+        recommendations = pd.DataFrame(
+            {"use_case_name": ["QA", "QA", "Other"], "prompt_ids": ["[7]", "[7]", "[2]"], "model": ["a", "b", "a"]}
+        )
+
+        table = quality_evidence_table(details, recommendations)
+
+        assert table[["prompt_id", "model", "result"]].values.tolist() == [
+            [2, "a/m", "pass"],
+            [7, "a/m", "partial"],
+            [7, "a/m", "format ok"],
+            [7, "b/m", "format broken"],
+        ]
+        assert table["use_case"].tolist() == ["Other", "QA", "QA", "QA"]
+        assert list(table.columns[:6]) == ["use_case", "prompt_id", "model", "attempt", "quality_dimension", "result"]
+
+    def test_an_empty_frame_stays_empty(self) -> None:
+        assert quality_evidence_table(pd.DataFrame(), pd.DataFrame()).empty
