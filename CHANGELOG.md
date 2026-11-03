@@ -140,6 +140,9 @@ methodology.
 
 ### Fixed
 
+- A prompt the gateway rewrites is logged with the words it changed
+  (`'M. 2.' -> '[PERSON_NAME].'`), not only the start of the text, where the
+  rewrite rarely is.
 - The "no choices" error names the requested model instead of `None`
 - Security probe details keep each attempt's `finish_reason`, and the call-cost
   ledger fills `probe_id`, so an empty probe answer can be traced to its call

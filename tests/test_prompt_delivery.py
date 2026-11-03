@@ -21,6 +21,7 @@ from src.evaluators.prompt_delivery import (
     delivered_user_text,
     enforce_prompt_delivery,
     prompts_to_audit,
+    rewritten_words,
 )
 from src.evaluators.security_scanner import AsyncSecurityScanner, probe_set_id
 from src.pipeline_merge import merge_results
@@ -71,6 +72,12 @@ def test_reads_the_user_text_of_every_upstream_format(upstream: dict[str, Any]) 
 
 def test_a_rendered_prompt_string_is_not_readable() -> None:
     assert delivered_user_text({"prompt": "<|user|>hello"}) is None
+
+
+def test_the_rewrite_is_named_even_far_into_a_long_prompt() -> None:
+    sent = "Return one object. " * 20 + "Messages:\n1. I want size M.\n2. Make that 6."
+    delivered = "Return one object. " * 20 + "Messages:\n1. I want size [PERSON_NAME]. Make that 6."
+    assert rewritten_words(sent, delivered) == "'M. 2.' -> '[PERSON_NAME].'"
 
 
 def test_every_turn_of_a_multi_turn_probe_is_audited() -> None:

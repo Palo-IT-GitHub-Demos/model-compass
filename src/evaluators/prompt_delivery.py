@@ -18,6 +18,7 @@ control, and passing it by disguise would measure nothing useful.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -118,6 +119,21 @@ def _normalized(text: str) -> str:
     return " ".join(text.split())
 
 
+def rewritten_words(sent: str, delivered: str) -> str:
+    """Name what the gateway changed, word by word: ``'M. 2.' -> '[PERSON_NAME].'``.
+
+    The rewrite is often far into a long prompt, so the start of the delivered
+    text does not show it.
+    """
+    before, after = sent.split(), delivered.split()
+    changes = [
+        f"{' '.join(before[i1:i2])!r} -> {' '.join(after[j1:j2])!r}"
+        for operation, i1, i2, j1, j2 in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+        if operation != "equal"
+    ]
+    return "; ".join(changes)
+
+
 def _unit_price(model: Mapping[str, Any]) -> float:
     pricing = model.get("pricing") or {}
     try:
@@ -194,6 +210,7 @@ async def audit_prompt_delivery(
         elif _normalized(text) != _normalized(prompt.text):
             altered = audit.altered_items if prompt.kind == "quality" else audit.altered_probes
             altered[prompt.name] = text
+            logger.warning("[delivery] '%s' is rewritten: %s", prompt.name, rewritten_words(prompt.text, text))
     return audit
 
 
