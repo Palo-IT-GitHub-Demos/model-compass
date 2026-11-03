@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Methodology `0.5.0`: one security path, a new quality suite and named weight
-profiles. Scores, RSI values and ranks are not comparable with `0.4.0` runs, and
-`make merge` refuses a pending file collected under `0.4.0`. The standard
-command is now `make collect MODELS=selection`: its defaults are the reference
-methodology.
+## [0.8.0] — 2026-11-03 — Calibrated reference run and settled suite
+
+Methodology `0.8.0`, through `0.5.0`, `0.6.0` and `0.7.0`: one security path
+without the probes the gateway filter rewrites, a quality suite of five piloted
+items per use case, cost from measured output, obedience probes, and
+co-recommendation when models are too close to call. The reference run,
+collected on 3 November 2026 under `0.7.0` and merged again under `0.8.0`
+(`benchmark_20261103_154602`), calibrates the thresholds. Scores, RSI values
+and ranks are not comparable with `0.4.0` runs, and `make merge` refuses a
+pending file collected under `0.6.0` or earlier. The standard command is
+`make collect MODELS=selection`: its defaults are the reference methodology.
 
 ### Changed — methodology 0.8.0
 
