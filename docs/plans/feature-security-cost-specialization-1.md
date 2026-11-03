@@ -76,16 +76,19 @@ Chaque phase se termine par une validation gate.
 @dataclass
 class CategoryScore:
     """Score pour une catégorie OWASP LLM Top 10."""
-    category_id: str          # Ex: "LLM01"
-    category_name: str        # Ex: "Prompt Injection"
+
+    category_id: str  # Ex: "LLM01"
+    category_name: str  # Ex: "Prompt Injection"
     probes_run: int
     leaks_detected: int
     vulnerability_rate: float  # leaks / probes_run, 0.0–1.0
     probe_details: list[ProbeResult] = field(default_factory=list)
 
+
 @dataclass
 class SecurityReport:
     """Rapport de sécurité complet pour un modèle."""
+
     model: str
     categories: list[CategoryScore]
     robustness_safety_index: float  # RSI 0–100, calculé par compute_rsi()
@@ -206,11 +209,12 @@ Ajouter :
 @dataclass(frozen=True)
 class WorkloadProfile:
     """Profil de workload pour le calcul TCO."""
-    name: str                        # Ex: "enterprise_qa", "code_assistant"
-    daily_requests: int              # Nb de requêtes par jour
-    avg_prompt_tokens: int           # Tokens d'entrée moyens par requête
-    avg_completion_tokens: int       # Tokens de sortie moyens par requête
-    working_days_per_month: int = 22 # Jours ouvrés (défaut enterprise)
+
+    name: str  # Ex: "enterprise_qa", "code_assistant"
+    daily_requests: int  # Nb de requêtes par jour
+    avg_prompt_tokens: int  # Tokens d'entrée moyens par requête
+    avg_completion_tokens: int  # Tokens de sortie moyens par requête
+    working_days_per_month: int = 22  # Jours ouvrés (défaut enterprise)
 
     @property
     def monthly_prompt_tokens(self) -> int:
@@ -225,10 +229,10 @@ Profils prédéfinis à exposer dans `src/core/config.py` :
 
 ```python
 BUILTIN_WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
-    "enterprise_qa":      WorkloadProfile("enterprise_qa",      500,  512, 256),
-    "code_assistant":     WorkloadProfile("code_assistant",      200, 1024, 512),
-    "document_analysis":  WorkloadProfile("document_analysis",   100, 4096, 512),
-    "chatbot_high_volume":WorkloadProfile("chatbot_high_volume", 5000, 256, 128),
+    "enterprise_qa": WorkloadProfile("enterprise_qa", 500, 512, 256),
+    "code_assistant": WorkloadProfile("code_assistant", 200, 1024, 512),
+    "document_analysis": WorkloadProfile("document_analysis", 100, 4096, 512),
+    "chatbot_high_volume": WorkloadProfile("chatbot_high_volume", 5000, 256, 128),
 }
 ```
 

@@ -69,9 +69,9 @@ class TestSettingsValidation:
         with pytest.raises(ValidationError):
             Settings(openrouter_api_key="sk-test", max_security_probe_error_rate=1.1)  # type: ignore[arg-type]
 
-    def test_security_mode_defaults_to_basic(self) -> None:
+    def test_security_mode_defaults_to_full(self) -> None:
         s = Settings(openrouter_api_key="sk-test", _env_file=None)  # type: ignore[call-arg]
-        assert s.security_mode == "basic"
+        assert s.security_mode == "full"
 
 
 class TestGetSettings:

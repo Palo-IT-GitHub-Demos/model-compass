@@ -107,6 +107,33 @@ def estimate_cost_usd(
     )
 
 
+RUN_ESTIMATE_PROMPT_TOKENS = 300
+"""Input tokens assumed per benchmark request — above the ~60–100 observed per call."""
+
+RUN_ESTIMATE_COMPLETION_TOKENS = 600
+"""Output tokens assumed per benchmark request — above the ~30–220 observed per call."""
+
+
+def estimate_run_cost_usd(
+    prices: list[tuple[float, float]],
+    requests_per_model: int,
+    *,
+    avg_prompt_tokens: int = RUN_ESTIMATE_PROMPT_TOKENS,
+    avg_completion_tokens: int = RUN_ESTIMATE_COMPLETION_TOKENS,
+) -> float:
+    """Estimate what one benchmark run costs on OpenRouter, deliberately on the high side.
+
+    *prices* holds one ``(input, output)`` USD price per token pair per model.
+    Judge calls run in Copilot and are not included.
+    """
+    if min(requests_per_model, avg_prompt_tokens, avg_completion_tokens) < 0:
+        raise ValueError("run-cost inputs cannot be negative")
+    return sum(
+        requests_per_model * (input_price * avg_prompt_tokens + output_price * avg_completion_tokens)
+        for input_price, output_price in prices
+    )
+
+
 def save_selection(models: list[str], path: Path = SELECTION_PATH) -> Path:
     """Persist the selected model IDs for subsequent pipeline commands."""
     if not models or any(not model for model in models):

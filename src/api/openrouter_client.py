@@ -21,6 +21,7 @@ Usage (async):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from collections.abc import Mapping
@@ -37,6 +38,8 @@ from openai.types.chat import ChatCompletion
 from src.core.config import Settings
 
 logger = logging.getLogger(__name__)
+
+_UPSTREAM_ECHO_MAX_TOKENS = 16
 
 # HTTP status codes that warrant a retry attempt.
 _RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
@@ -84,6 +87,26 @@ class CallCostRecord:
 
 class OpenRouterError(Exception):
     """Raised when the OpenRouter API returns an unrecoverable error."""
+
+
+def completion_text(completion: object, model: str) -> tuple[str, str | None]:
+    """Return the first choice's text and finish reason.
+
+    A completion without any choice is an invalid API response, not an empty
+    model answer, so it raises :class:`OpenRouterError` with the error payload
+    OpenRouter attached, if any. An empty or ``None`` content is returned as
+    ``""`` with its finish reason (``length`` means the token budget ran out).
+    """
+    choices = getattr(completion, "choices", None)
+    if not choices:
+        extra = getattr(completion, "model_extra", None)
+        error = extra.get("error") if isinstance(extra, dict) else None
+        detail = f": {error}" if error else ""
+        # An error payload carries no ``model`` field, so name the requested one.
+        raise OpenRouterError(f"OpenRouter returned no choices for model '{model}'{detail}")
+    choice = choices[0]
+    finish_reason = getattr(choice, "finish_reason", None)
+    return choice.message.content or "", str(finish_reason) if isinstance(finish_reason, str) else None
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -318,7 +341,7 @@ class OpenRouterClient(_CallCostLedger):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
                 raise OpenRouterError(
-                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — " "check OPENROUTER_API_KEY in .env."
+                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — check OPENROUTER_API_KEY in .env."
                 ) from exc
             raise OpenRouterError(f"Failed to fetch key info: HTTP {exc.response.status_code}") from exc
         except httpx.RequestError as exc:
@@ -428,6 +451,38 @@ class AsyncOpenRouterClient(_CallCostLedger):
         # Unreachable — tenacity always either returns or raises.
         raise OpenRouterError(f"Unexpected retry exhaustion for model '{model}'")  # pragma: no cover
 
+    async def upstream_request(self, model: str, text: str) -> dict[str, Any] | None:
+        """Return the request body OpenRouter would forward upstream for one user message.
+
+        Uses OpenRouter's streaming ``debug.echo_upstream_body`` option and drops
+        the stream as soon as the echo arrives, so a call costs a few tokens.
+        ``None`` means the response carried no echo.
+
+        Raises:
+            OpenRouterError: On HTTP or network errors.
+        """
+        body = {
+            "model": model,
+            "stream": True,
+            "max_tokens": _UPSTREAM_ECHO_MAX_TOKENS,
+            "debug": {"echo_upstream_body": True},
+            "messages": [{"role": "user", "content": text}],
+        }
+        try:
+            async with self._semaphore, self._http.stream("POST", "/chat/completions", json=body) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data:") or line.strip() == "data: [DONE]":
+                        continue
+                    echoed = json.loads(line.removeprefix("data:")).get("debug", {}).get("echo_upstream_body")
+                    if isinstance(echoed, dict):
+                        return echoed
+        except httpx.HTTPStatusError as exc:
+            raise OpenRouterError(f"Upstream echo failed for '{model}': HTTP {exc.response.status_code}") from exc
+        except (httpx.RequestError, json.JSONDecodeError) as exc:
+            raise OpenRouterError(f"Upstream echo failed for '{model}': {exc}") from exc
+        return None
+
     async def get_models(self) -> list[dict[str, Any]]:
         """Async fetch of all available models from ``GET /api/v1/models``.
 
@@ -461,7 +516,7 @@ class AsyncOpenRouterClient(_CallCostLedger):
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
                 raise OpenRouterError(
-                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — " "check OPENROUTER_API_KEY in .env."
+                    "OpenRouter rejected the API key (HTTP 401 Unauthorized) — check OPENROUTER_API_KEY in .env."
                 ) from exc
             raise OpenRouterError(f"Failed to fetch key info: HTTP {exc.response.status_code}") from exc
         except httpx.RequestError as exc:

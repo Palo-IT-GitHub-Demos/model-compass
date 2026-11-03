@@ -10,12 +10,25 @@ dist/
 *.pyc
 .DS_Store
 .pytest_cache/
-mlruns/
-mlruns.db
+results/mlflow/
 results/*.csv
 results/*.json
 results/call_costs/
 data/intermediate/*.json
+data/intermediate/rejected_scores/
 data/dry_run/
 site/
 .coverage
+# Generated reports and per-run evidence (keep results/.gitkeep tracked)
+results/dashboard_*
+results/recommendations/
+results/quality_details/
+results/quality_diagnostics/
+results/quality_analysis/
+results/verification/
+results/pilot/
+results/calibration/
+results/*.zip
+
+.mypy_cache/
+.ruff_cache/

@@ -17,3 +17,12 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: conventional-commit
+        name: Validate Conventional Commit message
+        entry: python scripts/check_commit_message.py
+        language: python
+        stages: [commit-msg]
+        pass_filenames: true

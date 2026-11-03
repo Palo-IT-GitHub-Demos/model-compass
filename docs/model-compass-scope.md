@@ -37,10 +37,28 @@ Le pipeline est volontairement générique et réutilisable :
 L'humain fait ensuite correspondre les résultats génériques aux besoins du
 dossier qu'il connaît.
 
-## Catalogue initial
+## Catalogue actif
 
-Le catalogue est défini dans `data/catalog/model_compass_use_cases.json`.
-La version initiale relie les prompts qualité existants à six cas d'usage :
+Le catalogue par défaut est `data/catalog/model_compass_use_cases_v2.json`
+(`model-compass-use-cases-v2.1`, suite `generic-screen-v2`). Il relie les 34
+prompts qualité à huit cas d'usage :
+
+| Cas d'usage | Prompts | Seuil |
+| --- | ---: | ---: |
+| Structured extraction | 0-4 | 4,0 / 5 |
+| Code generation | 5-9 | 4,0 / 5 |
+| Contextual question answering | 10-14 | 4,0 / 5 |
+| Reasoning and analysis | 15-19 | 4,0 / 5 |
+| Classification and routing | 20-23 | 4,0 / 5 |
+| Summarization | 24-26 | 3,5 / 5 |
+| Concise communication | 27-29 | 3,5 / 5 |
+| Instruction following | 30-33 | 4,0 / 5 |
+
+### Catalogue v1 (référence historique)
+
+Le catalogue `data/catalog/model_compass_use_cases.json`
+(`model-compass-use-cases-v1.1`) reste utilisé avec `QUALITY_SUITE=v1`. Il
+relie les 16 prompts de la suite v1 à six cas d'usage :
 
 | Cas d'usage | Prompts | Seuil initial |
 | --- | ---: | ---: |
@@ -62,9 +80,13 @@ La décision comporte deux niveaux indépendants.
 
 ### 1. Éligibilité qualité
 
-Pour chaque couple `cas d'usage / modèle`, les scores des prompts du catalogue
-sont moyennés par prompt. La couverture indique la proportion de prompts du cas
-d'usage réellement scorés.
+Pour chaque couple `cas d'usage / modèle`, les scores de **contenu** des prompts
+du catalogue sont moyennés par prompt. Les lignes de conformité de format
+(`output_format_compliance`) n'y entrent pas : elles sont publiées à part, dans
+la colonne `format_compliance_rate`, pour qu'une bonne réponse qui ne respecte
+pas le format « réponse seule » ne fasse jamais baisser la qualité du cas
+d'usage. La couverture indique la proportion de prompts du cas d'usage
+réellement scorés.
 
 ```text
 qualité éligible =
@@ -84,8 +106,8 @@ Le score de décision utilise quatre composantes normalisées sur 0-100 :
 | --- | ---: | --- |
 | Qualité fonctionnelle | 50 % | Score qualité du cas d'usage, échelle 1-5 normalisée |
 | Sécurité générique | 25 % | RSI, échelle 0-100 |
-| Coût du modèle seul | 20 % | TCO du profil, normalisé avec le coût le plus bas en meilleur score |
-| Performance | 5 % | Latence P95, ou tokens/seconde si la latence manque |
+| Coût du modèle seul | 20 % | Coût de 1 000 requêtes du profil avec la longueur de sortie mesurée du modèle ; bornes logarithmiques fixes dans le catalogue |
+| Performance | 5 % | Latence p95 ; bornes logarithmiques fixes dans le catalogue |
 
 ```text
 score_decision =
@@ -104,6 +126,169 @@ MODEL_COMPASS_WEIGHTS='{"quality":0.60,"security":0.20,"cost":0.15,"performance"
 
 Les poids doivent être positifs et leur somme doit être égale à `1.0`. Le
 rapport et le manifeste enregistrent toujours les poids effectivement utilisés.
+Un run collecté avec `SECURITY=skip` met le poids sécurité à 0 et remet les
+trois autres à l'échelle (par défaut 0,67 / 0,27 / 0,07) ; le rapport le
+signale sur chaque page.
+
+### Pourquoi ces poids
+
+Un poids ne se justifie pas seul : ce qui compte est l'arbitrage qu'il impose
+entre deux composantes, sur les ancres fixes du catalogue. Un point de qualité
+sur l'échelle 1-5 vaut 25 points de la composante qualité. Le coût perd
+33,3 points par décade de coût (ancres 0,05–50 USD pour 1 000 requêtes, trois décades), la
+performance 67,7 points par décade de latence p95 (ancres 1–30 s), et la
+sécurité un point par point de RSI. `implied_tradeoffs`
+(`src/evaluators/recommendation.py`) calcule ces arbitrages ; le rapport les
+affiche dans la page *Use cases in detail*.
+
+| Profil | Qualité | Sécurité | Coût | Perf. | 1 point de qualité vaut | Un prix 10 fois plus bas vaut | Une fuite confirmée coûte |
+| --- | ---: | ---: | ---: | ---: | --- | --- | --- |
+| `quality_first` | 70 % | 20 % | 7 % | 3 % | plus que tout écart de prix | 0,13 point | ≥ 0,4 point |
+| `balanced` (défaut) | 50 % | 25 % | 20 % | 5 % | un écart de prix de 75 fois | 0,53 point | ≥ 0,7 point |
+| `cost_sensitive` | 35 % | 20 % | 40 % | 5 % | un écart de prix de 4,5 fois | 1,52 point | ≥ 0,8 point |
+
+« Une fuite confirmée coûte » est un minimum : le RSI d'un modèle qui fuit est
+ramené sous 65, soit au moins 35 points de RSI perdus.
+
+**Le défaut `balanced` (50/25/20/5).**
+
+- **Qualité 50 %.** Un modèle d'un point meilleur l'emporte sur un modèle
+  75 fois moins cher ; pour un demi-point, l'écart de prix doit rester sous
+  9 fois. C'est l'ordre de grandeur qui sépare un modèle de pointe d'un modèle
+  économique : un demi-point d'écart justifie de payer le modèle de pointe, un
+  dixième de point non. Quand la qualité des modèles éligibles est à égalité
+  statistique, comme dans le run de référence 0.4.0, le coût décide, et c'est
+  voulu : à qualité indiscernable, payer plus n'a pas de justification
+  générique.
+- **Sécurité 25 %.** Une fuite confirmée coûte au moins 0,7 point de qualité,
+  soit l'équivalent d'un prix 20 fois plus élevé : un modèle qui divulgue son
+  contexte caché doit être nettement meilleur pour rester premier. La sécurité
+  reste compensatoire, car le RSI ne mesure qu'un périmètre étroit (la
+  divulgation d'un secret) ; un dossier où la sécurité est éliminatoire doit
+  l'appliquer comme critère d'exclusion, hors de l'outil.
+- **Coût 20 %.** Il départage les modèles de qualité proche sans pouvoir
+  racheter un écart de qualité réel : sur toute la plage des ancres (un facteur
+  1 000), il ne vaut que 1,6 point de qualité.
+- **Performance 5 %.** Une latence p95 dix fois plus élevée ne vaut que
+  0,27 point de qualité : le profil de charge par défaut (`enterprise_qa`)
+  traite des questions où quelques secondes n'invalident pas une réponse. Une
+  application interactive doit passer par un autre profil ou par
+  `MODEL_COMPASS_WEIGHTS`.
+
+**Les deux autres profils.**
+
+- `quality_first` : sur toute la plage des ancres, le coût ne vaut que
+  0,4 point de qualité ; il ne départage que des modèles déjà proches. Pour des
+  réponses critiques (juridique, médical, décision engageante).
+- `cost_sensitive` : un point de qualité vaut un prix 4,5 fois plus bas. Pour
+  un fort volume ou un budget contraint, quand un modèle légèrement moins bon
+  mais beaucoup moins cher reste acceptable.
+
+Les profils ne changent jamais le rang publié, qui suit les poids du run. Ils
+montrent si la recommandation résiste au profil qui correspond à l'appel
+d'offres : une carte marquée *weight-profile-sensitive* nomme le leader de
+chaque profil, et l'humain retient celui du profil qui correspond au dossier.
+La plage de rang sous ±10 % (*fragile*) complète cette lecture pour de petites
+variations autour du profil retenu.
+
+### Pourquoi ces seuils
+
+Le seuil d'un cas d'usage est **non compensatoire** : un modèle sous le seuil
+est exclu, quel que soit son prix. Avec cinq items par cas d'usage :
+
+- **4,0 / 5 pour les cas d'usage à contrôle déterministe.** Un item réussi vaut
+  5, un échec 1, et le crédit partiel donne une valeur intermédiaire. Un échec
+  complet sur cinq donne (4 × 5 + 1) / 5 = 4,2 et reste éligible ; deux échecs
+  donnent 3,4 et excluent. Le seuil tolère donc une erreur sur cinq, pas deux.
+  Une bonne réponse hors contrat de format (3) sur deux items donne 4,2 :
+  éligible, mais sur trois items 3,8 exclut.
+- **3,5 / 5 pour la synthèse et la communication concise**, notées par les
+  juges sur une échelle graduée : 3 veut dire qu'un critère n'est que
+  partiellement rempli, 4 qu'il reste un défaut mineur hors critère. 3,5 exige
+  qu'en moyenne la réponse soit plus proche de « défaut mineur » que de
+  « critère partiel », ce qui laisse de la place à la sévérité variable des juges
+  sur des critères en partie subjectifs.
+
+**Calibration sur le run de référence.** Le run collecté le 3 novembre 2026
+(`run_20261103_121614`) est la référence. Collecté en 0.7.0, il a été fusionné
+à nouveau en 0.8.0 (`results/benchmark_20261103_154602`) : la 0.8.0 ne change
+que la lecture des réponses exactes, appliquée à la fusion aux réponses brutes
+stockées, donc une nouvelle collecte aurait envoyé les mêmes requêtes. Le
+manifeste note les deux versions (`collected_methodology_version`). Identifiants :
+`quality_suite_id` `generic-screen-v3-be713fff517f`, catalogue `v3.2`,
+`security_probe_set_id` `full-fafdd3e07f92`, poids par défaut, profil
+`enterprise_qa`, six modèles. Les seuils y séparent les modèles sans ambiguïté :
+
+| Cas d'usage | Seuil | Plus bas éligible | Meilleur exclu |
+|---|---:|---|---|
+| Extraction structurée | 4,0 | 4,20 (Claude Sonnet 5.5) | 2,23 (Llama 3.3 70B) |
+| Code court | 4,0 | 4,44 (GPT-6 Luna) | 3,74 (Llama 3.3 70B) |
+| Question-réponse avec contexte | 4,0 | 4,73 (GPT-6 Luna) | 1,80 (Llama 3.3 70B) |
+| Raisonnement borné | 4,0 | 4,20 (Llama 3.3 70B) | aucun |
+| Classification et routage | 4,0 | 4,20 (Claude Sonnet 5.5) | 3,13 (Llama 3.3 70B) |
+| Résumé | 3,5 | 4,60 (Gemini 3.8 Flash) | 3,16 (Llama 3.3 70B) |
+| Communication concise | 3,5 | 4,09 (Claude Sonnet 5.5) | 3,40 (Llama 3.3 70B) |
+| Suivi d'instruction | 4,0 | 4,36 (GPT-6 Luna) | 3,27 (Claude Sonnet 5.5) |
+
+Les modèles éligibles les plus bas sont à 4,20, soit exactement un item raté sur
+cinq ; aucun modèle ne tombe entre 3,75 et 4,0, où un seul essai ferait basculer
+l'éligibilité. Les seuils de 4,0 des cas d'usage à contrôle déterministe sont
+donc **calibrés** sans changement. En 0.7.0, Llama 3.3 70B était exclu du
+raisonnement à 3,40 parce que ses réponses justes `= 3/10` n'étaient pas lues ;
+il y est éligible en 0.8.0, à la limite d'une erreur sur cinq.
+
+**Relecture des réponses jugées.** Les seuils de 3,5 du résumé et de la
+communication concise reposent sur le panel de juges. Pour les calibrer, 50
+réponses jugées de ce run ont été relues et notées avec la même grille
+(critères et ancres de chaque item) : les 11 items jugés, les six modèles, avec
+plus de poids sur les désaccords entre juges et les notes intermédiaires. La
+relecture a été faite **à l'aveugle** (nom du modèle et notes des juges masqués)
+par **Claude (Anthropic)**, puis **vérifiée et validée par un humain**, le
+mainteneur du projet, qui a relu les notes et leurs motifs. Le relecteur
+appartient à la même famille qu'un modèle évalué et qu'un des trois juges ; la
+validation humaine porte sur ses notes, elle ne remplace pas une notation
+humaine indépendante.
+
+| Mesure | Résultat |
+|---|---|
+| Notes identiques à la moyenne du panel | 27 / 50 |
+| Écart d'au plus 1 point | 48 / 50 |
+| Écart moyen (relecteur − panel) | +0,26 : le panel est un peu plus sévère |
+| Ordre des modèles sur l'échantillon | identique, sauf GPT-6 Luna et Gemini 3.8 Flash (0,04 point d'écart) |
+
+Les deux écarts de plus d'un point portent sur une réponse de 50 mots pour une
+limite de 45, que les trois juges notent 2 et le relecteur 4, et sur une réponse
+que deux juges trouvent imprécise sur « les réponses les plus lentes ». Chaque
+juge a ses angles morts, que la moyenne compense : le juge Google accepte une
+réponse qui promet un remboursement immédiat, interdit par les critères ; le juge
+OpenAI accepte des questions doubles là où une seule est demandée, mais il est
+le seul à relever qu'un résumé écrit que le marketing « a été déplacé » quand le
+texte dit qu'il a été prévenu. Le relecteur l'avait manqué et a corrigé ces
+trois notes après levée de l'aveugle. Même avec la sévérité plus faible du
+relecteur, Llama 3.3 70B reste sous 3,5 sur l'échantillon (3,0 en communication
+concise, 3,4 en résumé) et les cinq autres modèles restent au-dessus de 4,0.
+
+Les seuils de 3,5 sont donc **calibrés** sans changement, avec deux réserves :
+les notes viennent d'un relecteur IA validé par un humain, pas d'une notation
+humaine indépendante, et l'exclusion de Llama 3.3 70B en résumé (3,16 pour le
+panel, 3,4 pour le relecteur) tient à une marge faible. Le détail
+des 50 notes est conservé localement dans
+`results/calibration/judged_review_20261103_143403.csv`.
+Un run n'est comparable à cette référence que si ses identifiants sont identiques
+(voir [la méthodologie qualité](quality-methodology.md)).
+
+Les catalogues `model-compass-use-cases-v1.2`, `v2.2`, `v3.1` et `v3.2` fixent les
+bornes du calcul : 0,05–50 USD pour 1 000 requêtes du profil et 1–30
+secondes pour la latence p95. Le coût d'une requête est la taille d'entrée du
+profil au prix d'entrée, plus la longueur de sortie que le modèle a réellement
+produite sur la suite qualité au prix de sortie : le prix affiché seul ignore
+qu'un modèle peu cher au token peut en produire dix fois plus. Les anciennes
+ancres (0,10–100 USD par million de tokens) couvraient aussi trois décades, donc
+les arbitrages ci-dessus ne changent pas. En dessous de la borne meilleure le score est 100 ;
+au-dessus de la borne moins bonne il est 0 ; entre les deux l'échelle est
+logarithmique. Un coût nul (modèle gratuit) vaut 100. Ces scores ne sont pas
+recalculés relativement aux modèles du run. Si la latence p95 manque, la preuve
+de performance est absente ; le débit tokens/s ne la remplace pas.
 
 Si une composante manque, le modèle reste visible mais reçoit le statut
 `insufficient_decision_evidence` et aucun rang de recommandation. Le pipeline
@@ -118,7 +303,9 @@ même rang et peuvent tous être `recommended`.
 Les statuts sont :
 
 - `recommended` : meilleur rang parmi les modèles éligibles et suffisamment
-  documentés ;
+  documentés, ou modèle classé qu'une variation de ±10 % d'un poids ou du seuil
+  mettrait premier (`recommendation_sensitivity_rank_min = 1`, rang inchangé) :
+  la carte affiche alors *Recommended (too close to call)* ;
 - `eligible` : dépasse le seuil et possède les preuves nécessaires, mais n'a
   pas le meilleur rang ;
 - `below_quality_threshold` : qualité insuffisante pour ce cas d'usage ;
@@ -160,8 +347,8 @@ results/recommendations/benchmark_<timestamp>_recommendations.{csv,json}
 
 Chaque ligne de cet artefact correspond à un couple `use_case_id / model` et
 contient le seuil, la couverture, les quatre composantes, le score pondéré, le
-rang, le statut et les preuves manquantes. Le dashboard Streamlit et l'export
-HTML utilisent ce même artefact.
+rang, le statut et les preuves manquantes. Le rapport HTML (`make export-html`)
+affiche ce même artefact.
 
 ## Hors périmètre
 

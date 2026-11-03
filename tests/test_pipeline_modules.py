@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 import src.main as facade
+from src.core.methodology import METHODOLOGY_VERSION
 from src.evaluators.quality_judge import CollectResult
 from src.pipeline_cli import build_arg_parser
 from src.pipeline_merge import merge_results
@@ -32,6 +33,15 @@ def test_facade_merge_matches_extracted_aggregation() -> None:
     )
 
 
+def test_merge_records_methodology_and_security_probe_set() -> None:
+    security = pd.DataFrame({"model": ["model-a"], "rsi": [80], "security_probe_set_id": ["owasp-abc123"]})
+
+    merged = merge_results(["model-a"], pd.DataFrame(), pd.DataFrame(), security)
+
+    assert merged.loc[0, "methodology_version"] == METHODOLOGY_VERSION
+    assert merged.loc[0, "security_probe_set_id"] == "owasp-abc123"
+
+
 def test_facade_export_respects_patched_destination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(facade, "_RESULTS_DIR", tmp_path)
     stem = facade._export(pd.DataFrame({"model": ["example"]}))
@@ -53,6 +63,10 @@ def test_facade_pending_respects_patched_catalog_and_preserves_blindness(
                     "security": 0.25,
                     "cost": 0.2,
                     "performance": 0.05,
+                },
+                "score_scales": {
+                    "cost_usd_per_1m_tokens": {"best": 0.1, "worst": 100.0},
+                    "actual_latency_p95_ms": {"best": 1000.0, "worst": 30000.0},
                 },
                 "use_cases": [
                     {
@@ -81,6 +95,7 @@ def test_facade_pending_respects_patched_catalog_and_preserves_blindness(
     path = facade._save_pending(["model-a"], pd.DataFrame(), pd.DataFrame(), result, pd.DataFrame())
     pending = json.loads(path.read_text())
     judging = json.loads((tmp_path / path.name.replace("pending_", "judging_")).read_text())
+    assert pending["methodology_version"] == METHODOLOGY_VERSION
     assert pending["use_case_catalog_version"] == "test"
     assert pending["pending_judgments"][0]["responses"]["A"] == "raw"
     assert judging["pending_judgments"][0]["responses"]["A"] == "redacted"
@@ -91,3 +106,25 @@ def test_cli_keeps_free_form_subcommand_and_facade_choices() -> None:
     parser = build_arg_parser({"basic": None}, {"v2": None})
     assert parser.parse_args(["unknown"]).subcommand == "unknown"
     assert facade._build_arg_parser().parse_args(["--quality-suite", "v2"]).quality_suite == "v2"
+
+
+def test_a_skipped_security_stage_passes_the_error_budget() -> None:
+    from src.evaluators.quality_judge import CollectResult
+    from src.pipeline_collect import enforce_collect_error_budget
+
+    enforce_collect_error_budget(
+        CollectResult(),
+        pd.DataFrame(),
+        model_count=1,
+        max_quality_collection_error_rate=0.1,
+        max_security_probe_error_rate=0.1,
+        security_required=False,
+    )
+    with pytest.raises(ValueError, match="no rows"):
+        enforce_collect_error_budget(
+            CollectResult(),
+            pd.DataFrame(),
+            model_count=1,
+            max_quality_collection_error_rate=0.1,
+            max_security_probe_error_rate=0.1,
+        )

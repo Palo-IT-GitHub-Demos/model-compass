@@ -23,8 +23,4 @@ RUN pip install \
 # gen-e2 Lab Registry MCP server
 RUN pip install "git+https://github.com/Palo-IT-GitHub-Demos/lab-registry-mcp@v0.2.0"
 
-# ── Node.js 20 (via nvm already available in base image) ──────────────────────
-# The devcontainer feature handles Node — this is just a reminder to keep in sync
-# with the version in devcontainer.json features block if you add one.
-
 WORKDIR /workspaces/app

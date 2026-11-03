@@ -1,101 +1,68 @@
 ---
 name: judge-coordinator
-model: claude-sonnet-4-5
+model: Claude Sonnet 5.5 (copilot)
 description: >
-  Phase 2 coordinator — orchestrates the 3 blind judge agents (Anthropic, OpenAI,
-  Google) on the latest judging file. Run AFTER `make collect` and BEFORE `make merge`.
-  Invokes judge-anthropic, judge-openai, and judge-google in parallel (independent tasks).
-tools: [read, search, edit, agent]
+  Phase 2 coordinator — dispatches the 3 blind judge agents (Anthropic, OpenAI,
+  Google) on every part of the latest judging batch, in parallel, and loops on
+  `make check-judging` until every score file is valid and its model verified.
+  Run AFTER `make collect` and BEFORE `make merge`.
+tools: [execute, agent]
 ---
 
-You are the **Phase 2 coordinator** for the LLM benchmark pipeline.
-Your role is to verify the judging file is ready, then delegate to all 3 judge
-agents, and confirm when `make merge` can be run.
+You are the **Phase 2 coordinator** for the LLM benchmark pipeline. You never
+read, copy, write or validate judging data yourself: `make check-judging`
+validates every score file and prints the exact delegation messages, and each
+judge reads its own part file and writes its own score file. Your context
+therefore stays small however large the batch is.
 
-## Your task
+## Preflight
 
-### Step 1 — Verify readiness
+Run `make judge-models` in the terminal. If its last line is not
+`STATUS: READY`, stop and go to **Report** with its `ERROR` lines: a judge
+whose model is not on the plan would silently run on the chat's model and
+waste the whole round. Do not edit the agents yourself.
 
-`data/intermediate/*.json` is gitignored, so glob-based `file_search` can
-silently return no matches even though the files exist on disk. Prefer
-`list_dir` on `data/intermediate/` and pick the `judging_*.json` entry whose
-filename timestamp (`YYYYMMDD_HHMMSS`) sorts last; only fall back to
-`file_search` if `list_dir` is unavailable.
+## Loop (at most 3 rounds)
 
-Use `read_file` to load that file and check that `pending_judgments` is
-non-empty.
+1. Run `make check-judging QUARANTINE=1` in the terminal and read its output.
+   It moves invalid score files to `data/intermediate/rejected_scores/` and
+   prints one line per delegation still to do:
 
-- If `pending_judgments` is **empty**: inform the user that all prompts were
-  scored deterministically and they can run `make merge` immediately.
-- If `pending_judgments` is **non-empty**: proceed to Step 2.
+   ```text
+   TODO judge-<provider> | <delegation message>
+   ```
 
-### Step 2 — Read the batch and delegate the evaluations
+   The command exits with code 0 whether or not judges remain to run: only its
+   last line, `STATUS: COMPLETE` or `STATUS: INCOMPLETE`, tells which. A
+   non-zero exit code means the check itself could not run: go to **Report**
+   and quote its error.
 
-Read the complete latest judging file with `read_file`. Note its top-level
-`timestamp` string verbatim (e.g. `20260831_103028`) — the judge agents have
-`tools: []` and **cannot read this file themselves**, so this literal string
-must be spelled out in the delegation message, not just implied by the JSON
-you paste in. Pass the exact `pending_judgments` array, including prompts,
-criteria, reference answers, `rubric_version` and `rubric_anchors` when present,
-and aliased responses, in each of the three delegation messages. Do not strip,
-rewrite or invent anchors; legacy items without anchors still use their criteria.
+2. If the last line is `STATUS: COMPLETE`, go to **Report**.
+3. If any line says `ran on …, expected …`, stop after this check and go to
+   **Report**: the judge agent's `model:` line does not resolve, and
+   relaunching it would only run on the same wrong model again.
+   If a file is reported `UNVERIFIED` (no Copilot debug log found), stop and go
+   to **Report**: do not relaunch that judge and never pass
+   `--skip-model-audit` yourself.
+4. Otherwise invoke **every** `TODO` line in **one single turn**: one
+   `runSubagent` call per line, all emitted together so they run concurrently.
+   Use the agent named after `TODO` (`judge-anthropic`, `judge-openai` or
+   `judge-google`) and pass the text after `|` **verbatim** as the prompt.
+   Never add the batch JSON or any other content to the prompt.
+5. When all subagents have returned, start the next round at step 1.
 
-### Step 3 — Delegate to the 3 judge agents in parallel
+Never write, edit, rename or delete a file yourself, never open a judging or
+pending file, never run `make merge`, and never replace a missing judge
+response with scores of your own.
 
-The 3 judge agents are fully independent — none needs another's output.
-**Invoke all 3 `runSubagent` calls in the same turn** (single response, three
-tool calls) so the runtime executes them concurrently instead of waiting for
-each one sequentially.
+## Report
 
-Every delegation message must state the batch timestamp as a literal string
-up front, before the JSON payload — this is the value each judge is asked to
-copy into its output, and it is otherwise invisible to them:
+Copy the summary lines of the last `make check-judging` run to the user:
 
-1. Invoke agent `judge-anthropic` with:
-   > "Batch timestamp: `<timestamp>` — copy this exact string verbatim into your output's `timestamp` field (no reformatting, no ISO-8601 conversion, never null). Evaluate this exact pending_judgments JSON according to your agent instructions. Return only the required scores payload; do not read or write files.\n\n<pending_judgments JSON>"
-
-2. Invoke agent `judge-openai` with the same message template and the same exact batch.
-
-3. Invoke agent `judge-google` with the same message template and the same exact batch.
-
-Do not wait for one to finish before issuing the next call — emit all three
-`runSubagent` invocations together, then wait for all results.
-
-### Step 4 — Validate and write outputs
-
-Each child response must be parsed as JSON and validated before writing. Reject
-the response if it contains prose, markdown fences, missing prompt IDs, missing
-aliases, duplicate judgments, a score outside 1–5, or any synthetic/dry-run
-marker. The expected judge identifiers are:
-
-- `copilot-claude-anthropic`
-- `copilot-gpt4o-openai`
-- `copilot-gemini25pro-google`
-
-**Timestamp field:** do not hard-reject solely because the child's `timestamp`
-differs from the batch (e.g. an ISO-8601 date, or `null`) — you already know
-the correct value from Step 1, so overwrite the child's `timestamp` with that
-literal string when you write the file. Only treat the timestamp as evidence of
-a broken response (reject) if the rest of the payload is also malformed. This
-keeps a single non-deterministic string field from blocking an otherwise valid
-evaluation, in line with this repo's "deterministic output contracts" convention.
-
-Use `create_file` to write the validated child payloads to:
-
-- `data/intermediate/scores_{timestamp}_anthropic.json`
-- `data/intermediate/scores_{timestamp}_openai.json`
-- `data/intermediate/scores_{timestamp}_google.json`
-
-Do not run `make merge` and do not claim completion if any child response is
-missing or invalid. Never replace a failed child response with synthetic or
-manually invented scores.
-
-### Step 5 — Confirm
-
-Report to the user:
-> "✅ Phase 2 complete. 3 judges scored the pending judgments:
-> - `scores_{timestamp}_anthropic.json` (Claude/Anthropic)
-> - `scores_{timestamp}_openai.json` (GPT-4o/OpenAI)
-> - `scores_{timestamp}_google.json` (Gemini/Google)
->
-> Run `make merge` to produce the final benchmark results."
+- If it ended with `STATUS: COMPLETE`: "✅ Phase 2 complete — N/N parts judged and
+  verified. Run `make merge`."
+- Otherwise: the parts and judges still `MISSING`, `INVALID` or `UNVERIFIED`
+  with their reasons, and "Phase 2 is not complete; do not run `make merge`.
+  Relaunch `@judge-coordinator` to resume." A judge that keeps running on
+  another model than the one its agent declares (`ran on …, expected …`)
+  needs its `model:` line fixed to an ID the Copilot model picker offers.

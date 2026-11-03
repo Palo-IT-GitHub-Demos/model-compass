@@ -15,5 +15,5 @@
 - [ ] Tests added or updated
 - [ ] Tested locally (`make test`)
 - [ ] No secrets hardcoded
-- [ ] No `any` in TypeScript / all Python functions typed
+- [ ] Public Python functions have type annotations
 - [ ] Related issue linked — closes #

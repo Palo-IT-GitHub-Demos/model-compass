@@ -1,7 +1,7 @@
 # Model Compass — LLM decision-support pipeline
 
 > Evidence-based, reproducible evaluation of large language models available on
-> [OpenRouter](https://openrouter.ai/) across three critical axes: **Quality**,
+> [OpenRouter](https://openrouter.ai/) across four axes: **Quality**,
 > **Security**, **Cost**, and **Performance**.
 >
 > Built at **Palo IT Singapore** to support technical model selection for enterprise calls for tender.
@@ -12,8 +12,8 @@
 
 Model Compass evaluates all selected models through the OpenRouter API and
 produces a comparison matrix plus a versioned recommendation report by generic
-enterprise use case. Results are exported as CSV/JSON and visualised in a local
-Streamlit dashboard and a static HTML report.
+enterprise use case. Results are exported as CSV/JSON and presented in a static,
+multi-page HTML report.
 
 It is a cross-provider technical decision-support tool, not an automatic tender
 analyser or procurement system. It measures generic quality fundamentals,
@@ -36,7 +36,7 @@ decision contract and boundaries.
 | Axis               | Method                                                                                                                                                                                              | Key metric                                              |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | **Quality** | Versioned generic prompts with deterministic contracts and blind LLM-as-a-Judge scoring | Score 1–5 by use case, coverage and stability |
-| **Security** | Internal prompt-injection probes aligned with selected OWASP categories + Zero Data Retention policy check | Leak count / RSI / ZDR flag |
+| **Security** | One path of 66 internal probes aligned with the OWASP GenAI LLM Top 10 2026: canary disclosure, plus obedience to a harmless hidden instruction (every scored probe run three times) + Zero Data Retention policy check; skippable as a whole | Leak count / RSI / ZDR flag |
 | **Cost** | Live OpenRouter pricing and actual usage ledger | Model-only TCO + actual credits per call |
 | **Performance** | Network latency and completion throughput captured after semaphore acquisition | P50/P95 latency + tokens/second |
 | **Recommendation** | Versioned use-case catalog, quality thresholds and configurable weights | Ranked eligible models and one or more tied recommendations |
@@ -49,41 +49,57 @@ decision contract and boundaries.
 src/
 ├── core/
 │   ├── config.py              # Pydantic-settings (env vars, target models)
-│   └── model_presets.py       # Named, coherent TARGET_MODELS sets (free/paid/mixed)
+│   ├── methodology.py         # METHODOLOGY_VERSION recorded in every run artifact
+│   ├── model_presets.py       # Named TARGET_MODELS sets (free/paid/mixed)
+│   ├── model_selector.py      # `make select` catalog filters and saved selection
+│   └── run_manifest.py        # Run manifest and checksums (`make inspect-run`)
 ├── api/
-│   └── openrouter_client.py   # Sync + Async OpenAI SDK wrapper (tenacity retries, Semaphore)
+│   ├── openrouter_client.py   # Sync + async OpenAI SDK wrapper (retries, semaphore, cost ledger)
+│   └── fake_client.py         # Offline client used by `make dry-run`
 ├── evaluators/
-│   ├── deterministic_eval.py  # JSON / Python syntax checks (no LLM call needed)
-│   ├── cost_analyzer.py       # Pricing fetch + pandas cost matrix
-│   ├── quality_judge.py       # Deterministic pre-eval + response collection (LLM judging is external)
-│   ├── security_scanner.py    # Injection probes + ZDR policy check
-│   └── recommendation.py      # Model Compass use-case ranking and evidence statuses
-├── observability/
-│   └── tracker.py             # MLflow experiment tracker
-└── main.py                    # CollectPipeline / MergePipeline / DryRunPipeline orchestrators (CLI)
+│   ├── deterministic_eval.py  # JSON / exact-answer / code checks (no LLM call)
+│   ├── code_sandbox.py        # Restricted execution of generated code against test cases
+│   ├── quality_judge.py       # Response collection + blind judging batch (judging is external)
+│   ├── quality_metrics.py     # Aggregation, coverage, stability, bootstrap intervals
+│   ├── quality_diagnostics.py # Item analysis and inter-judge agreement
+│   ├── security_scanner.py    # Canary-based injection probes, RSI, ZDR check
+│   ├── leak_detection.py      # Canary leak detection
+│   ├── scenario_runner.py     # Bounded multi-turn scenarios of the security path
+│   ├── dialogue_quality.py    # Optional two-turn dialogue screen
+│   ├── cost_analyzer.py       # Pricing, TCO/CER, actual call costs
+│   └── recommendation.py      # Use-case eligibility, weighted ranking, sensitivity
+├── observability/             # MLflow tracker + content-free JSON log events
+├── pipeline_cli.py            # CLI parsing and per-run overrides
+├── pipeline_collect.py        # Concurrent collection + error budgets
+├── pipeline_merge.py          # Benchmark matrix consolidation
+├── pipeline_artifacts.py      # Result exports + blind judging files
+├── dialogue_cli.py            # `make dialogue` / `make dialogue-live`
+└── main.py                    # CLI entry point: collect / merge / dry-run / verify / select
 
-dashboard/
-├── pareto.py                  # Pareto frontier computation
-└── app.py                     # Streamlit scatter plot dashboard
+dashboard/                     # Data prep, glossary and charts used by the static HTML report
+scripts/                       # Static HTML export, quality recheck, gen-e2-eval export
 
 data/prompts/
-├── quality_prompts.json       # Generic screening prompts (JSON, code, reasoning…)
-├── security_prompts.json      # 5 baseline injection probes
-└── extended_probes.json       # 23 single-turn probes + 2 bounded LLM01 scenarios
+├── quality_prompts_v3.json    # generic-screen-v3: 40 prompts, 5 per use case (default)
+├── quality_prompts_v2.json    # generic-screen-v2: 34 prompts (kept to re-merge its runs)
+├── quality_prompts.json       # generic-screen-v1: 16 prompts (legacy baseline)
+├── security_probes.json       # The security path: 66 probes, 50 scored, 3 multi-turn
+├── legacy/                    # Probe sets of methodology 0.4 and earlier, for traceability only
+└── dialogue_scenarios_v1.json # Optional two-turn dialogue screen
 
 data/catalog/
-└── model_compass_use_cases.json # Versioned generic use cases, prompt mapping and thresholds
+├── model_compass_use_cases_v3.json # 8 use cases, thresholds, weights and weight profiles (default)
+├── model_compass_use_cases_v2.json # Catalog of the v2 suite
+└── model_compass_use_cases.json    # 6 use cases of the v1 suite
 
-results/                       # Auto-generated CSV + JSON exports (timestamped)
-docs/
-├── adr/                       # Architecture Decision Records
-└── plans/                     # Implementation plans
+results/                       # Timestamped exports: benchmark, recommendations, evidence, report
+docs/                          # MkDocs site: workflow, methodology, ADRs, project history
 
 .github/agents/
-├── judge-anthropic.agent.md   # Copilot judge — Claude (blind evaluation)
-├── judge-openai.agent.md      # Copilot judge — GPT-4o (blind evaluation)
-├── judge-google.agent.md      # Copilot judge — Gemini (blind evaluation)
-└── judge-coordinator.agent.md # Invokes all 3 judges in parallel
+├── judge-coordinator.agent.md # Phase 2 entry point: dispatches the 3 judges until make check-judging passes
+├── judge-anthropic.agent.md   # Blind judge — Claude Sonnet 5
+├── judge-openai.agent.md      # Blind judge — GPT-6 Sol
+└── judge-google.agent.md      # Blind judge — Gemini 3.8 Flash
 ```
 
 ### Key design decisions
@@ -95,80 +111,204 @@ docs/
 - **Deterministic pre-eval** — JSON / Python syntax checked in pure code before calling a judge (saves cost)
 - **Blind judging via Copilot agents** — no OpenRouter LLM-judge call. Undecidable responses are
   written to a `judging_*.json` file with model identities stripped, then scored by 3 Copilot
-  agents (Claude/GPT-4o/Gemini) running in parallel. Scores are averaged per model — zero extra
-  API cost, no single-provider bias
+  agents (Claude Sonnet 5 / GPT-6 Sol / Gemini 3.8 Flash) running in parallel. Scores are averaged per model — zero extra
+  API cost, three providers instead of one (their own bias is discussed in the
+  [quality methodology](docs/quality-methodology.md))
 - **Generic quality screen** — versioned, provider-neutral prompts test structured output, code
-  contracts, factual sanity, elementary reasoning, instruction reliability and concise communication.
+  correctness, contextual accuracy, reasoning, classification, instruction reliability,
+  summarization and concise communication.
   The aggregate is macro-averaged by dimension; coverage and optional repeat-run stability are exported
   alongside the score. The Model Compass catalog maps these prompts to generic use cases and applies
   a per-use-case quality threshold before ranking models.
 - **Model Compass recommendation layer** — every model remains visible for every catalog use case;
   quality eligibility is evaluated first, then quality, security, model-only cost and performance are
-  combined with configurable weights. Equal scores remain tied and the final choice stays human.
-- **MLflow** — local SQLite tracking (`sqlite:///mlruns.db`) by default, no external service required
+  combined with configurable weights. Cost and p95 latency use fixed logarithmic anchors in the
+  versioned catalog, so adding or removing a model cannot change another model's component scores.
+  Equal scores remain tied and the final choice stays human.
+- **MLflow** — local SQLite tracking (`sqlite:///results/mlflow/mlruns.db`) by default, no external service required
 - **Actual call-cost ledger** — every successful OpenRouter completion records the provider-returned
   `usage.cost`, token usage, resolved model, latency and evaluation stage. The raw ledger contains no
   prompts or responses and is exported under `results/call_costs/`.
 
 ---
 
-## Quick Start
+## Quick Start — the standard evaluation path
 
-> **First benchmark, condensed.** The full walkthrough is below; this is the
-> command sequence once `.env` holds a valid `OPENROUTER_API_KEY`:
->
-> ```bash
-> make dry-run && make verify        # both $0 — catch config/key/model mistakes first
-> make collect MODELS=free_general SECURITY=basic   # paid step (free models here: $0)
-> # then, in VS Code Copilot chat:  @judge-coordinator
-> make merge && make export-html     # benchmark + recommendations + dashboard
-> ```
+Follow these seven steps in order. Runs produced this way with the same release
+of the repository can be compared with each other.
 
-### 1. Prerequisites
+| Step | Action | Cost |
+| --- | --- | --- |
+| 1 | Install | $0 |
+| 2 | Add your OpenRouter key | $0 |
+| 3 | Choose the models — `make select` | $0 |
+| 4 | Check key, models and probes — `make verify` | $0 |
+| 5 | Collect the answers — `make collect` | **Paid** |
+| 6 | Blind judging — `@judge-coordinator` in Copilot Chat | $0 on OpenRouter |
+| 7 | Merge and publish — `make merge`, `make export-html` | $0 |
 
-- Python 3.11+
-- An [OpenRouter API key](https://openrouter.ai/keys)
+### Prerequisites
 
-### 2. Install
+- Python 3.11+ and an [OpenRouter API key](https://openrouter.ai/keys) with credits.
+- VS Code with GitHub Copilot Chat. Step 6 runs three judge agents on Claude
+  Sonnet 5, GPT-6 Sol and Gemini 3.8 Flash, each set in the `model:` field of
+  `.github/agents/judge-*.agent.md` by the qualified name the Copilot Chat model
+  picker shows (`Claude Opus 5.5 (copilot)`). VS Code silently runs an agent on
+  the chat's current model when that name does not resolve, including for a
+  bare ID such as `claude-opus-5.5`, so `make check-judging` refuses bare IDs,
+  reads Copilot Chat's local debug logs and rejects scores produced by any
+  other model. Gemini 3.8 Flash is also benchmarked (no other Google
+  model is enabled on the plan): the report's outcome without the own-provider
+  judge is the check against self-preference.
+
+### 1. Install
 
 ```bash
-git clone <repo>
-cd model-compass
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev,docs]"
-npm install
-pre-commit install
+git clone <repo> && cd model-compass
+python3 -m venv .venv && source .venv/bin/activate  # the Makefile uses .venv/bin/python
+pip install -e .                                    # contributors: make dev
 ```
 
-### 3. Configure
+### 2. Configure
 
 ```bash
-cp .env.example .env
-# Edit .env — minimum required:
-#   OPENROUTER_API_KEY=sk-or-...
-#   TARGET_MODELS=anthropic/claude-sonnet-5,openai/gpt-4o-mini
+cp .env.example .env   # then set OPENROUTER_API_KEY=sk-or-...
 ```
 
-> Model slugs on OpenRouter change over time (renames, deprecations). Run
-> `make verify` after editing `TARGET_MODELS` — it checks every entry against
-> the live catalog for free, before any paid call is made.
+Keep the other settings at their defaults: they are part of the reference
+methodology.
 
-#### Pick a model set faster with a preset
+### 3. Choose the models
 
-Instead of hand-typing model IDs, use a named, coherent preset — either in
-`.env` (`TARGET_MODELS=paid_flagship`) or per run, without touching `.env`:
+```bash
+make select   # asks for model type, prices and context, then saves the choice as "selection"
+```
+
+### 4. Check before spending
+
+```bash
+make verify MODELS=selection
+```
+
+Free: it only calls `GET /key` and `GET /models`. It stops on an invalid key, a
+model slug missing from the live catalog or a malformed probe file.
+
+### 5. Collect
+
+```bash
+make collect MODELS=selection
+```
+
+This is the only paid step, and its defaults are the reference methodology:
+
+- **Quality:** each model receives the 40 prompts of the v3 suite three times
+  (120 calls). Three attempts give the stability score and the 95% confidence
+  intervals. Generated code runs against its test cases in the restricted
+  sandbox (`src/evaluators/code_sandbox.py`) instead of going to the judges.
+- **Security:** the single security path sends the 66 probes of
+  `data/prompts/security_probes.json` (about 180 requests per model). The 50
+  probes whose check can fail run three times and form the RSI: 43 ask for a
+  fresh secret planted in the system prompt, 7 hide a harmless instruction in
+  the content to process and check whether the model obeys it. The other 16
+  are reported as observations. The classic direct injections (DAN, developer
+  mode, encoded instructions) are not in the set: the gateway filter of the
+  benchmark key rewrites them, so they never reach a model.
+
+`make collect` first checks what the OpenRouter path really forwards for every
+prompt, for less than a cent. A security probe that a gateway filter would rewrite
+is not sent and leaves the RSI, and the report lists it. A rewritten quality item,
+or too few delivered probes, stops the run before any scored call.
+
+`make select` and `make verify` print a rough upper estimate of the run's
+OpenRouter cost before you start. Raising `MAX_CONCURRENT_REQUESTS` in `.env`
+(for example to 6) shortens the run if your OpenRouter account allows it.
+
+### 6. Judge
+
+In VS Code Copilot Chat, send:
+
+```text
+@judge-coordinator
+```
+
+The coordinator first runs `make judge-models`, which stops it when a judge
+agent's model is not enabled on your Copilot plan (see "Changing a judge
+model" below). It then runs `make check-judging QUARANTINE=1`, which lists every
+(part, judge) pair still to score, and launches all of them at once. Each judge
+reads its anonymised part (aliases A, B, C…) and writes its own
+`data/intermediate/scores_<ts>_<provider>[_partNNofMM].json`. The coordinator
+then runs the check again and relaunches only what failed, for up to three
+rounds. `make check-judging` accepts a score file only when it covers exactly
+the expected responses, carries the declared judge identifier, and the Copilot
+debug log shows the declared model reading nothing but its part. Invalid files
+are moved to `data/intermediate/rejected_scores/`. Wait for "N/N parts judged
+and verified"; if the coordinator stops earlier, relaunch it, as it resumes
+from the files already accepted. Never merge before that.
+
+`make collect` splits a large batch into `judging_<ts>_partNNofMM.json` files of
+at most 30 KB and 36 responses, the most a judge has returned complete in one
+answer, and `make merge` combines the per-part score files (a response scored
+twice by the same judge fails the merge). For a batch collected before this
+split existed, run `make split-judging` first; `make split-judging REPLACE=1`
+re-splits a batch none of whose parts is scored. Without access to Copilot's
+debug logs (for instance inside the dev container), point
+`COPILOT_DEBUG_LOGS_DIR` at them or pass `SKIP_MODEL_AUDIT=1`, which leaves the
+judge models unverified.
+
+**Changing a judge model.** When Copilot retires or adds a model, run
+`make judge-models`. It reads the plan's model list from Copilot Chat's local
+debug logs and, for each judge, says whether its model is enabled, whether it is
+also benchmarked in the saved selection (it would score itself), and which
+models of the same vendor are enabled instead. Switch a judge with
+`make judge-models SET="anthropic=Claude Sonnet 5 (copilot)"`: it rewrites the
+agent's `model:` line and judge identifier together. Prefer a model that is not
+benchmarked. A batch must be judged by one panel: switch judges only between
+runs, never halfway through a batch.
+
+### 7. Merge and publish
+
+```bash
+make merge         # benchmark + recommendations under results/
+make export-html   # shareable report: results/dashboard_<ts>.html
+make inspect-run   # checks the run manifest and artifact checksums
+```
+
+Open `results/dashboard_<ts>.html` directly from disk; it works offline. The
+report opens on the **decision summary**: one card per generic use case with the
+recommended model(s) (several when they are too close to call), the other
+eligible models, the exclusions and their reason, and a *fragile* badge when a 10 %
+change of one weight or of the threshold changes the outcome. Every page shows
+the methodology version, quality suite, use-case catalog, security probe set,
+decision weights and workload profile of the run, and a warning when the run
+does not follow this standard path. **Compare two runs only when all of these
+match.** The [report reading guide](docs/guide-lecture-rapport.md) explains each
+page for a decision-maker.
+
+---
+
+## Advanced options
+
+None of these options is needed for the standard path. Skipping security, a
+different number of attempts or any setting listed under *Settings that change
+the methodology* makes a run incomparable with standard runs.
+
+### Model presets and selector options
+
+Instead of `make select`, use a named preset — either in `.env`
+(`TARGET_MODELS=paid_flagship`) or per run, without touching `.env`:
 
 ```bash
 make models                          # list every preset + the models it contains
 make verify MODELS=paid_flagship     # $0 — check a preset against the live catalog
-make collect MODELS=paid_flagship SECURITY=owasp
+make collect MODELS=paid_flagship
 ```
 
-The `free_general` preset intentionally contains two free models. With the
-default basic security set, that is about 42 requests, within the indicative
-50-request free-tier quota. Use `make select FREE_ONLY=1 LIMIT=1` when you want
-one recommended free model.
+The `free_general` preset contains two free models. With the defaults, one run
+sends about 670 requests (2 × 144 quality calls + 2 × about 190 security
+requests): far above the 50 requests/day that OpenRouter allows accounts with
+less than 10 USD of credits (1,000/day above that). `make verify`
+and `make collect` warn before any call when a run exceeds this cap. Use
+`make select FREE_ONLY=1 LIMIT=1` when you want one recommended free model.
 
 For a current, price-aware selection without typing model IDs manually, use
 the dynamic selector. It only reads the OpenRouter catalog and prints ready-to-
@@ -184,13 +324,18 @@ printed `make verify` command before the printed `make collect` command.
 
 When run from a terminal, `make select` asks for the model type, maximum input
 and output prices per 1M tokens, minimum context length, and maximum number of
-models. Press **Enter** or enter `skip` to keep the default for any filter. The
-result shows a numbered preselection of the cheapest matches and additional
-models that also satisfy the filters. `LIMIT` controls the size of the
-preselection; it does not prevent other matching models from being shown. The
-numbered list accepts `0` (the complete recommendation) or comma-separated
-numbers such as `2,7`, including models outside the preselection. The chosen IDs are saved locally as `selection`, so the
-next commands can use the same selection without copying model names:
+models. At filter prompts, press **Enter** or enter `skip` to keep the default;
+for model type, that means no paid/free filter. The result shows a numbered
+preselection of the cheapest matches and up to 20 additional matching models.
+`LIMIT` controls the size of the preselection, not the total number of matches.
+At the final choice, **Enter**, `skip`, or `all` selects every matching model
+with usable pricing, including matches not shown in the numbered list. The
+selector reports the total, estimated request count, and cost, then asks for
+explicit confirmation; declining keeps the recommendation instead. Enter `0`
+to use only the recommendations, or enter comma-separated numbers such as
+`2,7` to choose from the displayed models. The chosen IDs are saved locally as
+`selection`, so the next commands can use the same selection without copying
+model names:
 
 ```bash
 make verify MODELS=selection
@@ -200,6 +345,8 @@ make collect MODELS=selection
 The saved selection is local runtime state under `data/intermediate/` and is
 ignored by Git. Run `make select` again whenever you want to replace it.
 
+### Two-turn dialogue screen (separate from the benchmark)
+
 The optional two-turn dialogue screen is **separate from the main benchmark**:
 `make dialogue` runs nine bounded scenarios offline with synthetic answers;
 `make dialogue-live MODELS=paid_flagship` makes 18 billable calls per model.
@@ -207,91 +354,41 @@ Its versioned drift and omission metrics are written to separate dialogue
 artifacts, not included in the single-turn scores or recommendations. See
 [the multi-probe methodology](docs/multiprobe-system.md).
 
-`SECURITY=` picks the probe set for that run only: `basic` (5 built-in probes,
-default), `owasp` (30 internally authored probes aligned with the OWASP GenAI
-LLM Top 10 2026 categories — required for the dashboard's RSI/heatmap), or
-`extended` (25 red-team entries across LLM01/02/03/07/10, including two
-bounded LLM01 scenarios). These are not official OWASP probe files or an OWASP certification.
-The profiles serve different purposes:
+### Skipping security
 
-| Profile | Scope | Recommended use |
-| --- | --- | --- |
-| `basic` | 5 built-in, single-turn injection probes | Fast smoke test and low-cost screening |
-| `owasp` | 30 internal probes aligned with 10 OWASP categories, 3 per category | Broad, repeatable security baseline and heatmap |
-| `extended` | 23 single-turn probes across LLM01/02/03/07/10 and two bounded LLM01 scenarios | Canary-disclosure stress test across contexts |
-
-`extended` is not a full OWASP security certification: it deepens `LLM01` with techniques
-such as encoding, Unicode smuggling, jailbreak framing, typoglycemia, few-shot
-authority spoofing and bounded multi-turn escalation (see
-[`docs/multiprobe-system.md`](docs/multiprobe-system.md) for the scenario
-contract) and adds canary-disclosure probes for four more categories. It does
-not verify tool access, factuality or HTML safety. Do not compare its RSI directly with an `owasp` RSI; compare runs
-only when their scored category set and probe profile/version are the same.
-The Streamlit dashboard's **"Plan a new run"** panel exposes the same profiles
-visually and prints the ready-to-run command.
-
-### 4. Verify before spending anything
-
-The `SECURITY=extended` profile runs bounded sequential prompt-injection
-scenarios alongside its mono-turn probes. It keeps the canary across turns and
-reports trajectory outcomes separately within the extended suite.
-
-Two preflight checks, both **$0**, run in this order before a paid `make collect`:
+Security is one path, run whole or not at all:
 
 ```bash
-make dry-run   # 100% offline — fake client, validates config/prompts/probes shape
-make verify    # real network — GET /key + GET /models, validates the API key and
-               # every TARGET_MODELS entry against the live catalog (no chat completions)
+make collect MODELS=selection SECURITY=skip
 ```
 
-`make verify` fails fast (non-zero exit) on an invalid/expired key or an unknown model
-slug — exactly the two mistakes that would otherwise only surface mid-way through a
-paid `make collect`.
+`SECURITY=skip` sends no probe. The recommendation then ranks models on
+quality, cost and performance only, with their weights rescaled to sum to one,
+and every report page carries a warning that the run is not reference evidence.
+Use it for a quality-only exploration, never for a decision where prompt
+injection or data disclosure matters. `SECURITY_PROBES_PATH` replaces the probe
+set for an experiment; its RSI is not comparable with the standard path. The
+probe sets of methodology 0.4 and earlier (`basic`, `owasp`, `extended`) are
+kept under `data/prompts/legacy/` only to trace those runs. See
+[`docs/security-methodology.md`](docs/security-methodology.md) for the probe
+set, the attempts and the leak oracle.
 
-### 5. Run the benchmark
-
-> ⚠️ **`make collect` spends OpenRouter credits.** Every model call is billed
-> (`$0` for `:free` models, real cost otherwise). Steps 3 and 4 above are free
-> and catch the two most common mistakes — a bad key and a stale model slug —
-> before you spend anything.
->
-> The benchmark is **3 phases**, and Phase 2 is a manual step in VS Code
-> Copilot chat, not a `make` target. Do all three before looking at results:
->
-> 1. `make collect` — paid, calls OpenRouter
-> 2. `@judge-coordinator` in Copilot chat — $0, no OpenRouter call
-> 3. `make merge` — $0, fails with "Missing Copilot judge scores" if step 2 was skipped
+### Offline smoke test
 
 ```bash
-make collect
-# Phase 1 — collects responses, runs deterministic checks + security scans.
-# Writes data/intermediate/pending_<ts>.json and judging_<ts>.json
+make dry-run   # 100% offline: fake client and synthetic judges, nothing billed
 ```
 
-In VS Code Copilot chat, invoke the judge coordinator:
+It runs the whole pipeline with fake answers and simulated latency, then writes
+a full rehearsal report (`data/dry_run/dashboard_preview_<ts>.html`, flagged as
+synthetic on every page). Everything stays under `data/dry_run/`, so it can
+never be merged as a real run. Use it after changing
+prompts, probes or settings. For a cheap first contact with real models,
+`make collect MODELS=selection QUALITY_REPETITIONS=1 SECURITY=skip` sends about
+a sixth of the calls, but gives no confidence intervals and no security
+evidence, so the report flags it and it must not support a recommendation.
 
-```text
-@judge-coordinator
-# Phase 2 — reads judging_<ts>.json and delegates the same anonymised batch
-# to @judge-anthropic, @judge-openai, and @judge-google in parallel.
-# Judges return JSON only; the coordinator validates and writes scores_<ts>_*.json.
-# Each judge sees aliases (A, B, C…) only — blind evaluation.
-```
-
-The coordinator must confirm that all three score files were created and
-validated before you run `make merge`. If a judge cannot return a valid payload,
-do not merge; retry Phase 2 instead. The coordinator never substitutes
-synthetic scores for a failed judge.
-
-```bash
-make merge
-# Phase 3 — averages the 3 judges' scores per model, merges pricing + security,
-# exports results/benchmark_<timestamp>.{csv,json}. MLflow run recorded in ./mlruns/
-make export-html
-# Creates results/dashboard_<timestamp>.html and its linked page bundle.
-make inspect-run
-# Verifies the latest merge manifest and the checksums of its benchmark artifacts.
-```
+### Optional reproducibility recheck (`k=1` runs only)
 
 For an objective failure from a run with `QUALITY_REPETITIONS=1`, an optional
 paid OpenRouter-only recheck can measure whether the failure is reproducible:
@@ -307,16 +404,25 @@ This sends the same prompt to the same OpenRouter model twice. It reports
 the result. The command rejects correct responses, subjective prompts, and
 runs where the selected prompt already has `k > 1` attempts.
 
-### 6. View the results
+### Trying candidate quality items (maintainers)
 
-Open `results/dashboard_<timestamp>.html` for a shareable report with linked
-Quality, Evidence, Security, and Cost pages. It works directly from disk, with
-no server required.
+A new item enters the suite only if it separates models on real answers.
+Candidates are written in `scripts/build_quality_suite_v3.py`, which also writes
+`data/prompts/quality_candidates_v3.json`; `make pilot-items` lists them, and
+`make pilot-items LIVE=1 MODELS=selection` (paid, a few cents) checks that the
+gateway forwards them unchanged, sends each one three times to every model,
+scores the answers with the suite's deterministic checks and prints which
+models miss each item. A candidate no model misses does not enter the suite.
+Results go to `results/pilot/`; they are never benchmark evidence.
 
-```bash
-make dashboard
-# Opens the interactive dashboard at http://localhost:8501
-```
+### Settings that change the methodology
+
+`QUALITY_SUITE=v2` or `v1` (earlier suites), `QUALITY_CODE_EXECUTION=false`
+(generated code judged instead of tested), `QUALITY_MAX_TOKENS`,
+`SECURITY_PROBES_PATH`, `MODEL_COMPASS_WEIGHTS` and `WORKLOAD_PROFILE` change
+scores or ranks. Runs made
+with different values are not comparable, even under the same methodology
+version. See [Configuration](#configuration).
 
 ---
 
@@ -328,18 +434,20 @@ All settings are loaded from environment variables (`.env`).
 | --------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `OPENROUTER_API_KEY`      | —                               | **Required.** OpenRouter API key                                                                                                                                             |
 | `OPENROUTER_BASE_URL`     | `https://openrouter.ai/api/v1` | API base URL                                                                                                                                                                       |
-| `TARGET_MODELS`           | 3 preset models                  | Comma-separated model list,**or** a named preset (`free_general` / `paid_flagship` / `mixed_value`, see `make models`)                                               |
+| `TARGET_MODELS`           | 3 built-in free models           | Comma-separated model list, a named preset (`free_general` / `paid_flagship` / `budget_paid` / `mixed_value`, see `make models`), or `selection` saved by `make select` |
 | `MAX_CONCURRENT_REQUESTS` | `3`                            | `asyncio.Semaphore` cap (conservative default for free-tier)                                                                                                                     |
 | `REQUEST_TIMEOUT`         | `60.0`                         | Per-request HTTP timeout, in seconds                                                                                                                                              |
 | `MAX_RETRIES`             | `3`                            | Retry attempts on HTTP 429/5xx, with exponential back-off                                                                                                                        |
-| `MLFLOW_TRACKING_URI`     | `sqlite:///mlruns.db`          | MLflow tracking database (SQLite)                                                                                                                                                  |
-| `SECURITY_MODE`           | `basic`                        | Internal probe set: `basic` (5 built-in), `owasp` (30 probes aligned with the 10 OWASP GenAI LLM Top 10 2026 categories), `extended` (23 single-turn probes + 2 LLM01 scenarios). Also settable per run: `--security`/`SECURITY=` |
-| `SECURITY_PROBES_PATH`    | —                               | Path to a custom probe JSON file (overrides`SECURITY_MODE` above)                                                                                                                |
+| `MLFLOW_TRACKING_URI`     | `sqlite:///results/mlflow/mlruns.db`          | MLflow tracking database (SQLite)                                                                                                                                                  |
+| `SECURITY_MODE`           | `full`                         | The security path: `full` runs the 66 probes of `data/prompts/security_probes.json` (50 scored, three attempts each), `skip` leaves security out of the run. Also settable per run: `--security`/`SECURITY=` |
+| `SECURITY_PROBES_PATH`    | —                               | Custom probe JSON file replacing the probe set, for experiments only (ignored with `skip`)                                                                                       |
 | `MAX_SECURITY_PROBE_ERROR_RATE` | `0.15`                    | Abort a run when security-probe transport failures exceed this ratio                                                                                                             |
-| `QUALITY_REPETITIONS`     | `1`                            | Repeats per generic quality prompt; use`2`–`5` only for shortlist stability checks                                                                                            |
+| `QUALITY_REPETITIONS`     | `3`                            | Attempts per quality prompt; three give the stability score and confidence intervals of the reference path                                                                     |
 | `MAX_QUALITY_COLLECTION_ERROR_RATE` | `0.15`                | Abort a run when quality-collection transport failures exceed this ratio                                                                                                         |
-| `QUALITY_SUITE`           | `v2`                           | Quality suite and catalog: `v2` (34 prompts, 8 use cases, default) or `v1` (16 prompts, legacy baseline). Also `--quality-suite`; use the same value for `merge`                    |
-| `QUALITY_CODE_EXECUTION`  | `false`                        | Execute generated code of v2 `code_execution` prompts in the restricted sandbox; when off they are judged by the panel                                                             |
+| `QUALITY_SUITE`           | `v3`                           | Quality suite and catalog: `v3` (48 prompts, 6 per use case, default), `v2` (34 prompts) or `v1` (16 prompts, legacy baseline). Also `--quality-suite`; use the same value for `merge` |
+| `QUALITY_CODE_EXECUTION`  | `true`                         | Run generated code of `code_execution` prompts against their tests in the restricted sandbox, with partial credit; `false` sends them to the judge panel                         |
+| `QUALITY_MAX_TOKENS`      | `16384`                        | Ceiling on a quality answer, hidden reasoning included; bounds a model that loops until its maximum output                                                                       |
+| `PROMPT_DELIVERY_AUDIT`   | `true`                         | Check before each collection what reaches the models; `false` flags the run as non-reference |
 | `WORKLOAD_PROFILE`        | `enterprise_qa`                | TCO/CER workload profile: `enterprise_qa` \| `code_assistant` \| `document_analysis` \| `chatbot_high_volume`                                                              |
 | `MODEL_COMPASS_WEIGHTS`   | catalog defaults               | Optional JSON override for quality/security/cost/performance weights; values must sum to `1.0`                                                                                  |
 
@@ -351,9 +459,10 @@ All settings are loaded from environment variables (`.env`).
 ### Interpreting the quality result
 
 `avg_quality_score` is a **generic quality component**, not a claim that a model is best for a
-specific client workflow. It is macro-averaged across the six quality dimensions so that a large
+specific client workflow. It is macro-averaged across the quality dimensions so that a large
 number of easy formatting prompts cannot dominate the result. Model Compass then evaluates the
-score per catalog use case before producing a recommendation. Read it together with:
+content score per catalog use case before producing a recommendation; output-format compliance
+is reported beside it and never lowers a use case's quality score. Read it together with:
 
 - `quality_coverage_rate` — fraction of configured prompts successfully scored;
 - `quality_dimension_coverage_rate` — fraction of quality dimensions represented in the score;
@@ -368,26 +477,42 @@ For objective checks, `verification_status` in the evidence detail distinguishes
 - `confirmed_failure`, `not_reproduced`, `unstable`, `inconclusive` — result of an optional
   OpenRouter recheck associated with the benchmark.
 
-Recheck reports are sidecar evidence under `results/verification/`. They are shown in Streamlit
-and `evidence.html`, but never rewrite the original benchmark score. For recommendation decisions,
+Recheck reports are sidecar evidence under `results/verification/`. They are shown in
+`evidence.html`, but never rewrite the original benchmark score. For recommendation decisions,
 prefer `QUALITY_REPETITIONS>=2`; the optional recheck mainly exists for diagnosing a `k=1` run.
 
 The cost-efficiency ratio (`cer`) is withheld when the result does not cover the required dimensions.
 Model Compass recommendation rows are exported under `results/recommendations/` and include the
-use-case threshold, quality eligibility, weighted decision score, rank and missing evidence. Set
-`MODEL_COMPASS_WEIGHTS` to override the default `50/25/20/5` weights without changing the code.
+use-case threshold, quality eligibility, weighted decision score, rank and missing evidence, plus
+the rank under each named weight profile of the catalog (`quality_first`, `balanced`,
+`cost_sensitive`). Set `MODEL_COMPASS_WEIGHTS` to override the default `50/25/20/5` weights without
+changing the code; [`docs/model-compass-scope.md`](docs/model-compass-scope.md) justifies the
+defaults and the profiles by the trade-offs they imply.
 Use `gen-e2-eval` when a client-specific golden dataset is available and a domain acceptance decision
 is required.
 See [docs/quality-methodology.md](docs/quality-methodology.md) for prompt provenance, coverage
 limits, the validation protocol and the comparison procedure with `gen-e2-eval`.
+
+For recommendations, cost is what 1,000 requests of the workload profile cost
+with each model: the profile's input size at the listed input price, plus the
+output length the model really produced on the quality suite (hidden reasoning
+included, `measured_completion_tokens_per_answer`) at the listed output price.
+A verbose or reasoning model therefore pays for its tokens. The catalog fixes
+logarithmic score anchors: cost is scored from USD 0.05 to USD 50 per 1,000
+requests, and p95 latency from 1 to 30 seconds. A free model receives 100 for
+cost; missing measured output or p95 is missing evidence. Unlike run-relative
+min-max scoring, adding or removing models does not change another model's
+component score. The workload profile remains part of run provenance because it
+sets the input size and the monthly volume.
 
 ### Actual cost versus TCO projection
 
 - `actual_cost_credits` is the amount returned by OpenRouter in `response.usage.cost` for the calls
   made during the benchmark. `actual_cost_coverage_rate` indicates how many calls supplied this value.
   A free model is correctly represented by **0 credits with 100% coverage**.
-- `tco_usd` is a forward-looking monthly estimate based on the selected workload profile and the
-  pricing snapshot from `/models`; it is not the charge for the current benchmark run.
+- `tco_usd` is a forward-looking monthly estimate based on the selected workload profile, the
+  pricing snapshot from `/models` and each model's measured output length; it is not the charge
+  for the current benchmark run.
 - Calls issued by Copilot judge agents are outside OpenRouter and therefore are not present in the
   OpenRouter call-cost ledger.
 
@@ -413,13 +538,14 @@ ruff check src/            # lint
 mypy src/ --strict         # type-check
 make docs-build            # validate the documentation site
 make docs-serve            # preview it locally with live reload
-streamlit run dashboard/app.py   # dashboard
+make export-html           # static report from the latest benchmark
 mlflow ui                  # view experiment runs
 ```
 
 ### Project conventions
 
-- **Conventional Commits** enforced by `commitlint` (see `.commitlintrc.json`)
+- **Conventional Commits** validated by the local `commit-msg` pre-commit hook
+  (`scripts/check_commit_message.py`)
 - **ruff** for linting + import sorting; **mypy strict** for type safety
 - Every new public method must have a docstring
 - Tests live in `tests/` and use `pytest` + `unittest.mock` (no real API calls in CI)
@@ -448,7 +574,7 @@ of truth and the update checklist.
 
 ## Security
 
-Vulnerabilities should be reported privately — see [SECURITY.md](SECURITY.md).
+Vulnerabilities should be reported privately — see [.github/SECURITY.md](.github/SECURITY.md).
 
 - API keys are never logged or committed (`.env` is gitignored; `SecretStr` prevents accidental prints)
 - MLflow only logs token counts and model IDs — never prompt content
@@ -460,72 +586,33 @@ Vulnerabilities should be reported privately — see [SECURITY.md](SECURITY.md).
 
 ```text
 repo/
-  ├── tsconfig.json                 # TypeScript strict config
-  ├── eslint.config.js              # ESLint flat config (ESLint 9+)
-  ├── .commitlintrc.json            # Conventional Commits enforcement
-  ├── .editorconfig
-  ├── .env.example                  # Secret placeholders — copy to .env
-  ├── .gitignore
-  ├── .pre-commit-config.yaml       # Git hooks: ruff, secrets scan, yaml/json checks
-  ├── docker-compose.yml            # Local dev environment
-  │
-  ├── .devcontainer/
-  │   ├── devcontainer.json         # VS Code Dev Container (Python 3.11 + Node 20)
-  │   └── Dockerfile                # Python + data/AI deps + lab-registry MCP
-  │
-  ├── .github/
-  │   ├── copilot-instructions.md   # Repo-wide Copilot context + Conventional Commits rules
-  │   ├── CODEOWNERS
-  │   ├── PULL_REQUEST_TEMPLATE.md
-  │   ├── dependabot.yml
-  │   ├── ISSUE_TEMPLATE/
-  │   │   ├── bug_report.md
-  │   │   └── feature_request.md
-  │   ├── workflows/
-  │   │   └── ci.yml                # CI: Python (pytest+ruff+mypy) + TypeScript
-  │   ├── instructions/             # Coding rules auto-applied by Copilot
-  │   │   ├── python.instructions.md
-  │   │   └── typescript.instructions.md
-  │   ├── prompts/                  # Reusable agent prompts
-  │   │   ├── init-project.prompt.md
-  │   │   ├── setup-plugins.prompt.md
-  │   │   ├── create-implementation-plan.prompt.md
-  │   │   └── review-architecture.prompt.md
-  │   ├── hooks/
-  │   │   └── protect-secrets.json  # Blocks AI writes to .env / secrets
-  │   ├── skills/                   # gen-e2 skills (Copilot)
-  │   │   ├── commit-push-pr/
-  │   │   ├── execute-plan/
-  │   │   ├── extract-design/
-  │   │   ├── generate-stories/
-  │   │   ├── implementation-plan/
-  │   │   ├── create-implementation-plan/
-  │   │   ├── architecture-review/
-  │   │   ├── architecture-review-session/
-  │   │   ├── mermaid-creator/
-  │   │   └── pdf-to-markdown/
-  │   └── agents/                   # gen-e2 agents (Copilot)
-  │       ├── figma-extractor.agent.md
-  │       └── architecture-review-agent.agent.md
-  │
-  └── .claude/
-  ├── settings.json             # autoMemory, hooks
-  ├── rules/                    # Coding rules (Claude Code)
-  │   ├── api-design.md
-  │   └── typescript.md
-  ├── hooks/
-  │   └── protect-secrets.sh
-  ├── skills/                   # gen-e2 skills (Claude Code — mirror of .github/skills/)
-  │   └── ...
-  ├── agents/                   # gen-e2 agents (Claude Code)
-  │   ├── figma-extractor.md
-  │   └── architecture-review-agent.md
-  └── plugins/                  # Plugin registry for compliance checks
-  ├── delivery/plugin.json
-  ├── implementation-plan/plugin.json
-  └── architecture-reviewer/plugin.json
+  ├── .github/                  # CI, policies, Copilot instructions and judge agents
+  │   ├── CONTRIBUTING.md
+  │   ├── SECURITY.md
+  │   └── workflows/ci.yml      # Python lint, type-check, tests and strict docs build
+  ├── .devcontainer/            # Optional VS Code Python development container
+  ├── .pre-commit-config.yaml   # Python lint/format, file checks and commit-message hook
+  ├── AGENTS.md                 # Shared agent instructions
+  ├── CHANGELOG.md
+  ├── Makefile                  # Install, test, lint, collect, merge and dashboard commands
+  ├── mkdocs.yml                # Documentation site
+  ├── pyproject.toml            # Python package, dependencies and tooling
+  ├── README.md
+  ├── dashboard/                # Report data prep, glossary and charts
+  ├── data/                     # Versioned prompts, probes and use-case catalogs
+  ├── docs/                      # User guides, methodology, ADRs and history
+  ├── scripts/                   # Exporters and small repository tools
+  ├── src/                       # Pipeline and evaluation code
+  └── tests/                     # Python test suite
 ```
 
-## Standards Reference
+GitHub also recognizes contribution and security policies inside `.github/`.
 
-See `AI-STANDARDS.md` for the complete Copilot ↔ Claude Code artefact mapping and file format specifications.
+---
+
+## Usage and distribution
+
+Model Compass is an internal Palo IT tool. The code, prompts, probes and
+reports are proprietary and intended for internal use only; no open-source
+licence is granted. Ask the project owner before sharing the repository or a
+report outside Palo IT.

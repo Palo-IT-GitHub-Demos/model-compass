@@ -1,7 +1,7 @@
-"""Security visualisation helpers for the Streamlit dashboard.
+"""Security visualisation helpers for the static HTML report.
 
 All functions take a pre-built DataFrame and return a Plotly Figure —
-no I/O, no Streamlit calls — so they can be unit-tested independently.
+no I/O — so they can be unit-tested independently.
 
 Expected columns
 ----------------
@@ -23,6 +23,10 @@ from src.evaluators.security_scanner import RSI_ROBUST_THRESHOLD, RSI_VULNERABLE
 def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     """Return a heatmap of vulnerability_rate per model × OWASP category.
 
+    Only probes counted in the RSI are plotted: an observation probe cannot
+    fail the canary oracle, so its 0 % would read as a reassuring result it
+    never earned. Observations are summarised separately by the report.
+
     Args:
         security_df: Long-format DataFrame with columns
             ``model``, ``category_id``, ``vulnerability_rate``.
@@ -30,6 +34,8 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     Returns:
         Plotly Figure — green (0.0) to red (1.0) colour scale.
     """
+    if "scored" in security_df.columns:
+        security_df = security_df.loc[security_df["scored"].astype(bool)]
     if security_df.empty or not {"model", "category_id", "vulnerability_rate"}.issubset(security_df.columns):
         fig = go.Figure()
         fig.add_annotation(text="No security data available", showarrow=False)
@@ -49,10 +55,7 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
     # Sort columns by OWASP ID
     pivot = pivot.reindex(sorted(pivot.columns), axis=1)
 
-    not_scored: set[str] = set()
-    if "scored" in security_df.columns:
-        not_scored = set(security_df.loc[~security_df["scored"].astype(bool), "category_id"].unique())
-    labels = [f"{c}*" if c in not_scored else str(c) for c in pivot.columns]
+    labels = [str(c) for c in pivot.columns]
 
     fig = go.Figure(
         go.Heatmap(
@@ -70,12 +73,8 @@ def build_owasp_heatmap(security_df: pd.DataFrame) -> go.Figure:
         )
     )
     fig.update_layout(
-        title="OWASP LLM Top 10 — vulnerability rate by model",
-        xaxis_title=(
-            "OWASP category — * = reported but excluded from the RSI (not exercisable by a single-turn probe)"
-            if not_scored
-            else "OWASP category"
-        ),
+        title="Canary disclosure rate by model — probes counted in the RSI",
+        xaxis_title="OWASP category",
         yaxis_title="Model",
         height=max(300, 60 * len(pivot)),
     )
@@ -145,14 +144,15 @@ def build_rsi_bar(security_df: pd.DataFrame) -> go.Figure:
 
 
 def build_cost_security_quadrant(results_df: pd.DataFrame) -> go.Figure:
-    """Return a scatter plot: RSI (X) vs TCO monthly (Y), sized by quality.
+    """Return a scatter plot: RSI (X) vs TCO monthly (Y), quality in the hover.
 
     The ideal model is in the top-right quadrant: high RSI *and* low TCO.
     Y-axis is inverted so "cheap" models appear at the top.
 
     Args:
         results_df: DataFrame with columns ``model``, ``rsi``, ``tco_usd``.
-            ``avg_quality_score`` is used for marker size when present.
+            ``avg_quality_score`` is shown in the hover when present: as a marker size it
+            was unreadable, every model sitting between 3 and 5 out of 5.
 
     Returns:
         Plotly Figure.
@@ -171,8 +171,7 @@ def build_cost_security_quadrant(results_df: pd.DataFrame) -> go.Figure:
         fig.add_annotation(text="No finite TCO data to plot", showarrow=False)
         return fig
 
-    size_col = "avg_quality_score" if "avg_quality_score" in df.columns else None
-    sizes = (df[size_col].fillna(1.0) * 10).tolist() if size_col else [20] * len(df)
+    quality = df["avg_quality_score"] if "avg_quality_score" in df.columns else pd.Series(float("nan"), index=df.index)
 
     fig = go.Figure(
         go.Scatter(
@@ -182,19 +181,23 @@ def build_cost_security_quadrant(results_df: pd.DataFrame) -> go.Figure:
             text=df["model"].apply(lambda m: m.split("/")[-1]),
             textposition="top center",
             marker=dict(
-                size=sizes,
+                size=16,
                 color=df["rsi"],
                 colorscale=[[0, "#e74c3c"], [0.5, "#f39c12"], [1, "#2ecc71"]],
                 showscale=True,
                 colorbar=dict(title="RSI"),
             ),
-            hovertemplate=("<b>%{text}</b><br>" "RSI: %{x:.1f}<br>" "TCO/month: $%{y:.2f}<extra></extra>"),
+            customdata=quality,
+            hovertemplate=(
+                "<b>%{text}</b><br>RSI: %{x:.1f}<br>TCO/month: $%{y:.2f}<br>Quality: %{customdata:.2f} / 5"
+                "<extra></extra>"
+            ),
         )
     )
     fig.update_layout(
-        title="Cost vs Security Quadrant — ideal: high RSI, low TCO",
+        title="Cost vs security — best: top right (high RSI, low monthly cost)",
         xaxis=dict(title="RSI (0–100, higher = safer)", range=[0, 105]),
-        yaxis=dict(title="Monthly TCO (USD)", autorange="reversed"),
+        yaxis=dict(title="Monthly TCO (USD, cheaper is higher)", autorange="reversed"),
         height=500,
     )
     return fig

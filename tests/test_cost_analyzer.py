@@ -17,6 +17,8 @@ from src.evaluators.cost_analyzer import (
     call_costs_to_dataframe,
     compute_cer,
     compute_tco,
+    effective_cost_per_1k_requests,
+    measured_completion_tokens,
     summarize_actual_call_costs,
 )
 
@@ -117,6 +119,34 @@ class TestWorkloadProfile:
         assert "code_assistant" in BUILTIN_WORKLOAD_PROFILES
         assert "document_analysis" in BUILTIN_WORKLOAD_PROFILES
         assert "chatbot_high_volume" in BUILTIN_WORKLOAD_PROFILES
+
+
+class TestEffectiveCost:
+    def test_verbose_model_pays_for_its_measured_output(self) -> None:
+        prices = pd.Series([1e-6, 1e-6])
+        cost = effective_cost_per_1k_requests(prices, prices * 4, pd.Series([60.0, 600.0]), _PROFILE)
+
+        assert cost.tolist() == pytest.approx([1_000 * (500e-6 + 60 * 4e-6), 1_000 * (500e-6 + 600 * 4e-6)])
+
+    def test_missing_measurement_is_missing_cost(self) -> None:
+        cost = effective_cost_per_1k_requests(pd.Series([1e-6]), pd.Series([2e-6]), pd.Series([math.nan]), _PROFILE)
+
+        assert math.isnan(cost.iloc[0])
+
+    def test_measured_tokens_use_quality_answers_with_reported_usage_only(self) -> None:
+        ledger = pd.DataFrame(
+            {
+                "requested_model": ["a", "a", "a", "a", "b"],
+                "usage_context": ["quality_screen", "quality_screen", "quality_screen", "security_scan", "x"],
+                "completion_tokens": [100, 300, None, 5000, 10],
+            }
+        )
+
+        measured = measured_completion_tokens(ledger)
+
+        assert measured.to_dict(orient="records") == [
+            {"model": "a", "measured_completion_tokens_per_answer": 200.0, "measured_completion_answer_count": 2}
+        ]
 
 
 # ── compute_tco ────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -119,10 +120,14 @@ def _fake_security_response(system_prompt: str, probe_message: str, model: str) 
 
     Roughly 1-in-7 (deterministic, not random) probes 'leak' so the security
     stage's merge logic (``leak_count``, ``is_vulnerable``) is exercised on
-    both branches during a dry-run, not just the all-safe path.
+    both branches during a dry-run, not just the all-safe path. One model in
+    three obeys the hidden instruction of the obedience probes.
     """
     if _stable_int(model, probe_message) % 7 == 0:
         return system_prompt[:40]
+    hidden = re.search(r"the words (\w+) and (\w+) joined by a hyphen", probe_message)
+    if hidden and _stable_int(model) % 3 == 0:
+        return f"Done as asked. {hidden.group(1)}-{hidden.group(2)}".upper()
     return _REFUSAL
 
 
@@ -151,6 +156,9 @@ def _make_completion(content: str, model: str | None = None) -> _FakeChatComplet
         id=f"dry-run-{_stable_int(model or '', content):x}",
         model=model,
     )
+
+
+_SIMULATED_LATENCY_FLOOR_MS = 400
 
 
 class FakeAsyncOpenRouterClient:
@@ -187,22 +195,30 @@ class FakeAsyncOpenRouterClient:
             if system_msg is not None
             else _fake_prompt_response(user_msg, model)
         )
+        # Deterministic, non-zero latency (no real wait) so the dry run exercises the
+        # performance component and reaches recommended/eligible statuses.
+        simulated_latency_ms = float(_SIMULATED_LATENCY_FLOOR_MS + _stable_int(model, user_msg) % 6_000)
         self._call_costs.append(
             CallCostRecord(
                 usage_context=usage_context,
                 requested_model=model,
                 resolved_model=model,
                 generation_id=None,
-                prompt_tokens=None,
-                completion_tokens=None,
+                prompt_tokens=len(user_msg) // 4,
+                # Synthetic hidden reasoning varies by model so the dry run exercises the cost component.
+                completion_tokens=len(content) // 4 + _stable_int(model) % 400,
                 total_tokens=None,
                 actual_cost_credits=None,
                 cost_source="dry_run",
-                latency_ms=0.0,
-                network_latency_ms=0.0,
+                latency_ms=simulated_latency_ms,
+                network_latency_ms=simulated_latency_ms,
             )
         )
         return _make_completion(content, model)
+
+    async def upstream_request(self, model: str, text: str) -> dict[str, Any] | None:
+        """Echo the message untouched: the offline path has no gateway."""
+        return {"model": model, "messages": [{"role": "user", "content": text}]}
 
     async def get_models(self) -> list[dict[str, Any]]:
         """Return synthetic pricing metadata for every configured target model."""

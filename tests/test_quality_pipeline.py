@@ -76,6 +76,13 @@ class TestMergeResults:
             quality_repetitions=1,
             quality_collection_errors=pd.DataFrame(),
             quality_suite_id="generic-screen-v1-test",
+            actual_call_costs=pd.DataFrame(
+                {
+                    "requested_model": ["model-a", "model-a", "model-a", "model-b"],
+                    "usage_context": ["quality_screen", "quality_screen", "security_scan", "quality_screen"],
+                    "completion_tokens": [100, 300, 4000, 50],
+                }
+            ),
         )
 
         model_a = result.loc[result["model"] == "model-a"].iloc[0]
@@ -87,6 +94,11 @@ class TestMergeResults:
         assert model_a["quality_dimension_coverage_rate"] == pytest.approx(1.0)
         assert bool(model_a["quality_cer_eligible"])
         assert model_a["cer"] > 0.0
+        assert model_a["cost_usd_per_1m_tokens"] == pytest.approx(4.0 / 3.0)
+        # enterprise_qa sends 512 input tokens; the security call's 4,000 tokens do not count.
+        assert model_a["measured_completion_tokens_per_answer"] == pytest.approx(200.0)
+        assert model_a["cost_usd_per_1k_requests"] == pytest.approx(1_000 * (512e-6 + 200 * 2e-6))
+        assert model_a["tco_usd"] == pytest.approx(model_a["cost_usd_per_1k_requests"] / 1_000 * 500 * 22)
 
         assert model_b["quality_coverage_rate"] == pytest.approx(0.5)
         assert model_b["quality_dimension_coverage_rate"] == pytest.approx(0.5)

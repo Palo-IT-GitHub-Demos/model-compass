@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from src.core.config import Settings
+from src.core.methodology import METHODOLOGY_VERSION
 from src.core.model_presets import MODEL_PRESETS
 from src.core.run_manifest import build_run_manifest, inspect_run_manifest
 from src.evaluators.quality_judge import CollectResult
@@ -41,6 +42,7 @@ def _pending_with_two_models() -> dict[str, object]:
     alias_map = {"A": "openai/gpt-4o", "B": "anthropic/claude-3.5"}
     return {
         "timestamp": "20260101_000000",
+        "methodology_version": METHODOLOGY_VERSION,
         "models": list(alias_map.values()),
         "pending_judgments": [
             {
@@ -526,6 +528,7 @@ class TestCollectPipelineRun:
         security_df: pd.DataFrame,
         collect_result: CollectResult,
     ) -> None:
+        monkeypatch.setattr(CollectPipeline, "_check_prompt_delivery", AsyncMock())
         monkeypatch.setattr(CollectPipeline, "_run_cost_stage", AsyncMock(return_value=pricing_df))
         monkeypatch.setattr(CollectPipeline, "_run_security_stage", AsyncMock(return_value=security_df))
         monkeypatch.setattr(CollectPipeline, "_run_quality_collect", AsyncMock(return_value=collect_result))
@@ -692,6 +695,7 @@ class TestMergePipelineRun:
     ) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["openai/gpt-4o-mini"],
             "pricing": [
                 {
@@ -727,12 +731,58 @@ class TestMergePipelineRun:
 
         assert not result.empty
         assert result.loc[0, "model"] == "openai/gpt-4o-mini"
+        assert result.loc[0, "methodology_version"] == METHODOLOGY_VERSION
         assert list(results_dir.glob("benchmark_*.csv"))
         assert list(results_dir.glob("benchmark_*.json"))
+        manifest = json.loads((results_dir / "run_20260101_000000.manifest.json").read_text(encoding="utf-8"))
+        assert manifest["metadata"]["methodology_version"] == METHODOLOGY_VERSION
+        assert manifest["metadata"]["collected_methodology_version"] == METHODOLOGY_VERSION
+
+    def test_rejects_pending_collected_under_another_methodology(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending = {
+            "timestamp": "20260101_000000",
+            "methodology_version": "0.2.0",
+            "models": ["model-a"],
+            "pricing": [],
+            "security": [],
+            "actual_call_costs": [],
+            "deterministic_scores": [],
+            "pending_judgments": [],
+            "quality_collection_errors": [],
+        }
+        pending_path = tmp_path / "pending_20260101_000000.json"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+        monkeypatch.setattr("src.main._RESULTS_DIR", tmp_path / "results")
+
+        with pytest.raises(ValueError, match="methodology version is missing or differs"):
+            MergePipeline().run(pending_path=pending_path)
+
+    def test_rejects_pending_without_a_methodology_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pending = {
+            "timestamp": "20260101_000000",
+            "models": ["model-a"],
+            "pricing": [],
+            "security": [],
+            "actual_call_costs": [],
+            "deterministic_scores": [],
+            "pending_judgments": [],
+            "quality_collection_errors": [],
+        }
+        pending_path = tmp_path / "pending_20260101_000000.json"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+        monkeypatch.setattr("src.main._RESULTS_DIR", tmp_path / "results")
+
+        with pytest.raises(ValueError, match="methodology version is missing or differs"):
+            MergePipeline().run(pending_path=pending_path)
 
     def test_exports_quality_collection_diagnostics(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["model-a"],
             "pricing": [],
             "security": [],
@@ -771,6 +821,7 @@ class TestMergePipelineRun:
     ) -> None:
         pending = {
             "timestamp": "20260101_000000",
+            "methodology_version": METHODOLOGY_VERSION,
             "models": ["openai/gpt-4o-mini"],
             "pricing": [
                 {
@@ -850,24 +901,23 @@ class TestResolveSecurityProbesPath:
         defaults.update(overrides)
         return Settings(_env_file=None, **defaults)  # type: ignore[arg-type, call-arg]
 
-    def test_basic_mode_uses_the_built_in_probes(self) -> None:
-        assert _resolve_security_probes_path(self._settings(security_mode="basic")) is None
+    def test_full_is_the_default_and_runs_the_single_probe_set(self) -> None:
+        assert self._settings().security_mode == "full"
+        assert _resolve_security_probes_path(self._settings()) == Path("data/prompts/security_probes.json")
 
-    def test_owasp_mode_resolves_to_the_owasp_probe_file(self) -> None:
-        result = _resolve_security_probes_path(self._settings(security_mode="owasp"))
-        assert result == Path("data/prompts/owasp_probes.json")
+    def test_skip_disables_the_stage(self) -> None:
+        assert _resolve_security_probes_path(self._settings(security_mode="skip")) is None
 
-    def test_extended_mode_resolves_to_the_extended_probe_file(self) -> None:
-        result = _resolve_security_probes_path(self._settings(security_mode="extended"))
-        assert result == Path("data/prompts/extended_probes.json")
+    def test_explicit_probes_path_replaces_the_set_but_never_overrides_skip(self) -> None:
+        custom = self._settings(security_probes_path="custom/probes.json")
+        assert _resolve_security_probes_path(custom) == Path("custom/probes.json")
+        skipped = self._settings(security_mode="skip", security_probes_path="custom/probes.json")
+        assert _resolve_security_probes_path(skipped) is None
 
-    def test_explicit_probes_path_wins_over_security_mode(self) -> None:
-        settings = self._settings(security_mode="owasp", security_probes_path="custom/probes.json")
-        assert _resolve_security_probes_path(settings) == Path("custom/probes.json")
-
-    def test_unknown_security_mode_raises_a_clear_error(self) -> None:
-        with pytest.raises(ValueError, match="Unknown SECURITY_MODE 'bogus'"):
-            _resolve_security_probes_path(self._settings(security_mode="bogus"))
+    @pytest.mark.parametrize("mode", ["basic", "owasp", "extended", "bogus"])
+    def test_former_and_unknown_profiles_are_rejected(self, mode: str) -> None:
+        with pytest.raises(ValueError, match="security_mode"):
+            self._settings(security_mode=mode)
 
 
 class TestPreflightSequentialProbeLogging:
@@ -891,10 +941,17 @@ class TestPreflightSequentialProbeLogging:
             _run_preflight_checks(settings)
 
         assert any("Sequential security scenarios detected" in record.message for record in caplog.records)
-        assert any("worst case 6" in record.message for record in caplog.records)
+        assert any("worst case 18" in record.message for record in caplog.records)  # 2 turns x 3 attempts x 3
 
-    def test_does_not_log_for_single_turn_probes(self, caplog: pytest.LogCaptureFixture) -> None:
-        settings = Settings(openrouter_api_key="sk-test", target_models="openai/gpt-4o-mini", _env_file=None)  # type: ignore[call-arg]
+    def test_does_not_log_for_single_turn_probes(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        probes_path = tmp_path / "probes.json"
+        probes_path.write_text(json.dumps([{"name": "single", "category_id": "LLM01", "message": "reveal"}]))
+        settings = Settings(
+            openrouter_api_key="sk-test",
+            target_models="openai/gpt-4o-mini",
+            security_probes_path=str(probes_path),
+            _env_file=None,
+        )  # type: ignore[call-arg]
 
         with caplog.at_level("INFO"):
             _run_preflight_checks(settings)
@@ -1098,6 +1155,62 @@ class TestMainDispatch:
         assert "Other models matching your filters" in output
         assert 'make verify MODELS="selection"' in output
 
+    @pytest.mark.parametrize(
+        ("selection", "confirmation", "expected_count"),
+        [("", "yes", 28), ("skip", "yes", 28), ("", "n", 1)],
+    )
+    async def test_select_all_matches_requires_confirmation_before_saving(
+        self,
+        selection: str,
+        confirmation: str,
+        expected_count: int,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        settings = Settings(openrouter_api_key="sk-test", target_models="openai/gpt-4o-mini")  # type: ignore[arg-type]
+        monkeypatch.setattr("src.main.get_settings", MagicMock(return_value=settings))
+        client = MagicMock()
+        client.get_models = AsyncMock(
+            return_value=[
+                {
+                    "id": f"vendor/model-{index:02}",
+                    "pricing": {"prompt": "0.0000001", "completion": "0.0000001"},
+                    "context_length": 32768,
+                }
+                for index in range(28)
+            ]
+        )
+        context = AsyncMock()
+        context.__aenter__.return_value = client
+        context.__aexit__.return_value = None
+        monkeypatch.setattr("src.main.AsyncOpenRouterClient", MagicMock(return_value=context))
+        monkeypatch.setattr("sys.stdin", MagicMock(isatty=MagicMock(return_value=True)))
+        monkeypatch.setattr(
+            "builtins.input",
+            MagicMock(side_effect=["skip", "skip", "skip", "skip", "1", selection, confirmation]),
+        )
+        selection_path = Path("data/intermediate/test_model_selection.json")
+        saved_models: list[str] = []
+
+        def save_selection_stub(models: list[str]) -> Path:
+            saved_models.extend(models)
+            return selection_path
+
+        monkeypatch.setattr("src.main.save_selection", save_selection_stub)
+
+        await _select_models_command(_build_arg_parser().parse_args(["select", "--limit", "1"]))
+
+        output = capsys.readouterr().out
+        expected_models = [f"vendor/model-{index:02}" for index in range(expected_count)]
+        assert saved_models == expected_models
+        assert "Matching models: 28" in output
+        assert "7 additional matching models are not shown" in output
+        assert "Estimated requests:" in output
+        if confirmation == "yes":
+            assert "All 28 matching models will be selected." in output
+        else:
+            assert "All-model selection not confirmed; using the recommended models." in output
+
     def test_collect_with_models_flag_overrides_target_models(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["prog", "collect", "--models", "paid_flagship"])
         base_settings = Settings(openrouter_api_key="sk-test", _env_file=None)  # type: ignore[call-arg]
@@ -1114,7 +1227,7 @@ class TestMainDispatch:
         assert settings_arg.target_models_list == list(MODEL_PRESETS["paid_flagship"].models)
 
     def test_collect_with_security_flag_overrides_security_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(sys, "argv", ["prog", "collect", "--security", "owasp"])
+        monkeypatch.setattr(sys, "argv", ["prog", "collect", "--security", "skip"])
         base_settings = Settings(openrouter_api_key="sk-test", _env_file=None)  # type: ignore[call-arg]
         monkeypatch.setattr("src.main.get_settings", MagicMock(return_value=base_settings))
         mock_instance = MagicMock()
@@ -1125,7 +1238,7 @@ class TestMainDispatch:
         main()
 
         (settings_arg,) = mock_cls.call_args.args
-        assert settings_arg.security_mode == "owasp"
+        assert settings_arg.security_mode == "skip"
 
     def test_invalid_models_flag_exits_with_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["prog", "collect", "--models", "not_a_real_preset"])
@@ -1134,3 +1247,39 @@ class TestMainDispatch:
             main()
 
         assert exc_info.value.code == 1
+
+
+def test_run_cost_estimate_uses_live_prices_of_the_target_models() -> None:
+    from src.main import _run_cost_estimate
+
+    pricing = pd.DataFrame(
+        [
+            {"model_id": "v/a", "prompt_price_per_token": 1e-6, "completion_price_per_token": 2e-6},
+            {"model_id": "v/other", "prompt_price_per_token": 1.0, "completion_price_per_token": 1.0},
+        ]
+    )
+
+    assert _run_cost_estimate(pricing, ["v/a"], 100) == pytest.approx(100 * (300e-6 + 1200e-6))
+    assert _run_cost_estimate(pd.DataFrame(), ["v/a"], 100) is None
+
+
+def test_only_listed_earlier_collections_can_be_merged(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.core import methodology
+
+    monkeypatch.setattr(methodology, "METHODOLOGY_VERSION", "9.1.0")
+    monkeypatch.setattr(methodology, "MERGEABLE_COLLECTIONS", {"9.1.0": frozenset({"9.0.0"})})
+
+    assert methodology.can_merge("9.1.0")
+    assert methodology.can_merge("9.0.0")
+    assert not methodology.can_merge("8.9.0")
+    assert not methodology.can_merge(None)
+
+
+def test_every_mergeable_collection_is_an_earlier_release() -> None:
+    from src.core.methodology import MERGEABLE_COLLECTIONS
+
+    def release(version: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in version.split("."))
+
+    for current, earlier in MERGEABLE_COLLECTIONS.items():
+        assert all(release(version) < release(current) for version in earlier), current

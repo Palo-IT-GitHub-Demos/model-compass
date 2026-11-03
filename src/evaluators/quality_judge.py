@@ -25,13 +25,13 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from src.api.openrouter_client import AsyncOpenRouterClient, OpenRouterClient
-from src.evaluators.deterministic_eval import CHECKS
+from src.api.openrouter_client import AsyncOpenRouterClient, OpenRouterClient, completion_text
+from src.evaluators.deterministic_eval import CHECKS, EXACT_ANSWER_CATEGORIES, final_answer_matches
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,72 @@ QUALITY_SUITE_VERSION = "generic-screen-v1"
 
 FORMAT_COMPLIANCE_DIMENSION = "output_format_compliance"
 """Dimension carrying strict-output adherence, kept apart from content correctness."""
+
+
+def rescore_final_answers(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Re-apply the final-answer content rule to stored exact-answer rows.
+
+    Runs collected before the rule scored a correct answer that also showed
+    its working as a content failure. Merge recomputes the content score from
+    the raw response, which stays untouched, so every run of one methodology
+    version follows the same rule; output-format rows are left as collected.
+    """
+    rescored: list[dict[str, object]] = []
+    for row in rows:
+        accepted = json.loads(str(row.get("expected_answers_json") or "[]"))
+        if (
+            row.get("source") == "deterministic"
+            and row.get("category") in EXACT_ANSWER_CATEGORIES
+            and row.get("quality_dimension") != FORMAT_COMPLIANCE_DIMENSION
+            and float(str(row.get("score", 5))) < 5
+            and isinstance(accepted, list)
+            and final_answer_matches(
+                str(row.get("response") or ""),
+                [str(item) for item in accepted],
+                allow_explanation=True,
+            )
+        ):
+            row = {
+                **row,
+                "score": 5,
+                "reasoning": "Final answer matches an accepted answer; the extra text is scored under output "
+                "format only (rescored at merge from the raw response).",
+            }
+        rescored.append(row)
+    return rescored
+
+
+def with_empty_response_format_failures(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Add a format-compliance failure for every empty response to a format-checked prompt.
+
+    An empty response gets one content failure only, so a format-checked
+    prompt would otherwise keep fewer format attempts for that model than for
+    the others. A prompt is format-checked when any response to it has a
+    format-compliance row. The added row is derived evidence: the original
+    rows and the empty response stay as collected.
+    """
+    format_checked = {
+        int(str(row["prompt_id"])) for row in rows if row.get("quality_dimension") == FORMAT_COMPLIANCE_DIMENSION
+    }
+    present = {
+        (int(str(row["prompt_id"])), int(str(row.get("attempt", 0))), str(row.get("model")))
+        for row in rows
+        if row.get("quality_dimension") == FORMAT_COMPLIANCE_DIMENSION
+    }
+    added = [
+        {
+            **row,
+            "quality_dimension": FORMAT_COMPLIANCE_DIMENSION,
+            "score": 1,
+            "reasoning": "An empty response cannot comply with the required output format.",
+        }
+        for row in rows
+        if row.get("source") == "deterministic-empty-response"
+        and int(str(row["prompt_id"])) in format_checked
+        and (int(str(row["prompt_id"])), int(str(row.get("attempt", 0))), str(row.get("model"))) not in present
+    ]
+    return [*rows, *added]
+
 
 # ── Pydantic models for structured judge output ────────────────────────────────
 
@@ -61,7 +127,7 @@ class JudgeResult(BaseModel):
     """Final score for one model, with the original model ID restored."""
 
     model: str
-    score: int = Field(ge=1, le=5)
+    score: float = Field(ge=1, le=5)
     reasoning: str
 
 
@@ -214,6 +280,7 @@ class CollectedResponse:
     generation_id: str | None = None
     resolved_model: str | None = None
     request_sha256: str = ""
+    finish_reason: str | None = None
 
 
 def _request_sha256(messages: list[dict[str, str]]) -> str:
@@ -488,9 +555,12 @@ class AsyncQualityJudge:
     4. Undecidable responses → saved as pending for a Copilot judge agent (Phase 2).
     """
 
-    def __init__(self, client: AsyncOpenRouterClient, execute_code: bool = False) -> None:
+    def __init__(
+        self, client: AsyncOpenRouterClient, execute_code: bool = False, max_tokens: int | None = None
+    ) -> None:
         self._client = client
         self._execute_code = execute_code
+        self._max_tokens = max_tokens
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -607,7 +677,8 @@ class AsyncQualityJudge:
                         {
                             **row_metadata,
                             "score": 1,
-                            "reasoning": "Model returned an empty response.",
+                            "reasoning": "Model returned an empty response"
+                            + (f" (finish_reason={item.finish_reason})." if item.finish_reason else "."),
                             "source": "deterministic-empty-response",
                         }
                     )
@@ -726,20 +797,21 @@ class AsyncQualityJudge:
 
         async def _get(model: str, attempt: int) -> CollectedResponse:
             try:
+                options: dict[str, Any] = {"temperature": 0}
+                if self._max_tokens:
+                    options["max_tokens"] = self._max_tokens
                 completion = await self._client.chat_completion(
-                    model=model,
-                    messages=messages,
-                    usage_context="quality_screen",
-                    temperature=0,
+                    model=model, messages=messages, usage_context="quality_screen", **options
                 )
-                content = completion.choices[0].message.content if completion.choices else None
+                content, finish_reason = completion_text(completion, model)
                 return CollectedResponse(
                     model=model,
                     attempt=attempt,
-                    content=content or "",
+                    content=content,
                     generation_id=completion.id,
                     resolved_model=completion.model,
                     request_sha256=request_sha256,
+                    finish_reason=finish_reason,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to get response from '%s' (attempt %d): %s", model, attempt + 1, exc)

@@ -39,6 +39,8 @@ INPUT_CORRUPTION_STATUS = "suspected_input_corruption"
 _MIN_MODELS_FOR_CORRUPTION_SIGNAL = 2
 _PASSING_SCORE = 4.0
 _BOOTSTRAP_SAMPLES = 2000
+_MIN_INTERVAL_ATTEMPTS = 3
+"""Attempts per prompt the run must have collected for a confidence interval."""
 _CONTENT_SOURCE = "deterministic"
 _JUDGED_SOURCE_PREFIX = "copilot"
 _DISAGREEMENT_THRESHOLD = 2
@@ -205,8 +207,11 @@ def bootstrap_quality_interval(
 
     Resample prompts within each dimension, then attempts within each sampled
     prompt. The same weighted dimension macro-average as the published score is
-    recomputed in every draw. A single-attempt or partially repeated screen
-    cannot quantify run-to-run variability and returns missing bounds.
+    recomputed in every draw. A screen run with fewer than three attempts per
+    prompt cannot quantify run-to-run variability and returns missing bounds.
+    In a three-attempt run, a prompt that lost one attempt to a collection
+    error is resampled from the attempts it kept; a prompt left with a single
+    attempt still voids the interval.
     """
     required = {"prompt_id", "score", "attempt"}
     if quality_df.empty or not required.issubset(quality_df.columns):
@@ -229,11 +234,12 @@ def bootstrap_quality_interval(
     # Stable across process runs and row ordering, without changing global RNG.
     seed = int.from_bytes(hashlib.sha256(seed_key.encode("utf-8")).digest()[:8], "big")
     rng = np.random.default_rng(seed)
+    attempts_per_prompt = work.groupby(["quality_dimension", "prompt_id"])["attempt"].nunique()
+    if attempts_per_prompt.max() < _MIN_INTERVAL_ATTEMPTS or attempts_per_prompt.min() < 2:
+        return float("nan"), float("nan")
     dimensions: list[np.ndarray] = []
     for _, dimension in work.groupby("quality_dimension", sort=True):
         prompts = list(dimension.groupby("prompt_id", sort=True))
-        if any(prompt["attempt"].nunique() < 3 for _, prompt in prompts):
-            return float("nan"), float("nan")
         weights = np.array([float(prompt["weight"].iloc[0]) for _, prompt in prompts])
         indices = rng.integers(len(prompts), size=(_BOOTSTRAP_SAMPLES, len(prompts)))
         sampled_weights = weights[indices]

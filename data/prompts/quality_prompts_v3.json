@@ -1,0 +1,1211 @@
+[
+  {
+    "prompt": "Extract the fields from the text and return exactly one JSON object, with no markdown or extra text, using the keys `ticket_id`, `priority` and `team`.\nText: 'Ticket TCK-7731 was opened with priority P2 for the billing team.'",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "ticket_id": "TCK-7731",
+      "priority": "P2",
+      "team": "billing"
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-01",
+    "use_case_id": "structured_extraction",
+    "construct": "schema_faithful_extraction",
+    "task_type": "json",
+    "difficulty": "easy",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Replay this order log and return exactly one JSON object, with no markdown or extra text, that maps each product still in the order to its final quantity (integer). An undone step has no effect at all, as if it had never been written. Leave out products whose final quantity is zero or that were removed.\nOrder log:\n1. Add 3 x lamp.\n2. Add 2 x cable.\n3. Add 1 x stand.\n4. Change the quantity of lamp to 5.\n5. Remove cable from the order.\n6. Add 4 x cable.\n7. Add 2 x lamp.\n8. Undo step 6.\n9. Add 2 x mouse.\n10. Change the quantity of mouse to 0.",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "lamp": 7,
+      "stand": 1
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-09",
+    "use_case_id": "structured_extraction",
+    "construct": "state_tracking_over_edits",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one array in JSON format, with no markdown or extra text, listing the `id` (string) of every payment whose status is paid or partially_refunded and whose amount is at least 100, sorted by amount from highest to lowest, and by id in alphabetical order when amounts are equal.\nPayments (id | amount | status):\nP1 | 250 | paid\nP2 | 100 | partially_refunded\nP3 | 99.99 | paid\nP4 | 250 | refunded\nP5 | 180 | paid\nP6 | 250 | partially_refunded\nP7 | 100 | paid\nP8 | 410 | cancelled\nP9 | 180 | paid\nP10 | 180 | paid",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": [
+      "P1",
+      "P6",
+      "P10",
+      "P5",
+      "P9",
+      "P2",
+      "P7"
+    ],
+    "strict_output": true,
+    "item_id": "structured_extraction-15",
+    "use_case_id": "structured_extraction",
+    "construct": "filter_then_sort_with_tie_rule",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Return exactly one JSON object, with no markdown or extra text, mapping each product line to its revenue in cents (integer). Revenue counts only orders whose status is delivered or delivered late; returned and cancelled orders count for nothing. An order of 10 units or more gets 10% off. Include every product line. Example of the expected format, with other values: {\"monitors\": 125000, \"mice\": 0}\nOrders (order | product line | units | unit price in dollars | status):\n5001 | cables | 6 | 69 | returned\n5002 | cables | 4 | 76 | delivered late\n5003 | keyboards | 13 | 80 | delivered late\n5004 | chargers | 1 | 15 | delivered\n5005 | headsets | 14 | 17 | delivered late\n5006 | cables | 14 | 67 | cancelled\n5007 | headsets | 4 | 55 | delivered\n5008 | headsets | 6 | 53 | cancelled\n5009 | cables | 12 | 48 | delivered\n5010 | headsets | 5 | 63 | delivered\n5011 | headsets | 1 | 52 | delivered\n5012 | keyboards | 7 | 16 | delivered late\n5013 | keyboards | 14 | 19 | delivered late\n5014 | keyboards | 7 | 72 | delivered\n5015 | keyboards | 10 | 66 | returned\n5016 | cables | 10 | 33 | delivered\n5017 | cables | 12 | 71 | cancelled\n5018 | cables | 12 | 59 | delivered late\n5019 | chargers | 8 | 34 | delivered\n5020 | keyboards | 11 | 65 | cancelled\n5021 | headsets | 9 | 56 | cancelled\n5022 | headsets | 9 | 69 | cancelled\n5023 | keyboards | 13 | 56 | delivered late\n5024 | chargers | 5 | 39 | delivered\n5025 | cables | 3 | 63 | returned\n5026 | keyboards | 6 | 30 | delivered\n5027 | keyboards | 8 | 70 | delivered late\n5028 | keyboards | 9 | 9 | delivered\n5029 | headsets | 8 | 17 | delivered late\n5030 | headsets | 8 | 28 | delivered late\n5031 | keyboards | 2 | 39 | delivered late\n5032 | headsets | 2 | 29 | cancelled\n5033 | keyboards | 3 | 62 | delivered\n5034 | cables | 1 | 62 | returned\n5035 | cables | 10 | 30 | delivered\n5036 | cables | 10 | 10 | returned\n5037 | headsets | 11 | 50 | delivered\n5038 | cables | 6 | 79 | returned\n5039 | keyboards | 12 | 22 | returned\n5040 | chargers | 8 | 80 | delivered",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "cables": 202660,
+      "chargers": 112200,
+      "headsets": 165620,
+      "keyboards": 353160
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-17",
+    "use_case_id": "structured_extraction",
+    "construct": "long_table_filtered_aggregation",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Replay this ledger in order and return exactly one JSON object, with no markdown or extra text, mapping each account still open at the end (its number, as a string) to its final balance (integer). Rules: a new account starts at 0; a withdrawal or a transfer larger than the balance of the account it takes from is rejected and changes nothing; a transfer to an account that is not open is rejected; an account can be closed only when its balance is 0, otherwise the close is ignored; any operation on an account that is not open is ignored, and a closed account cannot be opened again.\nLedger:\n1. open account 1001\n2. open account 1002\n3. open account 1003\n4. open account 1004\n5. deposit 180 into account 1003\n6. transfer 300 from account 1001 to account 1002\n7. transfer 270 from account 1005 to account 1004\n8. transfer 260 from account 1005 to account 1004\n9. close account 1005\n10. withdraw 20 from account 1002\n11. transfer 110 from account 1001 to account 1005\n12. close account 1001\n13. withdraw 280 from account 1001\n14. transfer 80 from account 1004 to account 1003\n15. withdraw 130 from account 1003\n16. withdraw 250 from account 1004\n17. transfer 40 from account 1001 to account 1003\n18. transfer 110 from account 1005 to account 1003\n19. withdraw 300 from account 1002\n20. transfer 20 from account 1005 to account 1003\n21. open account 1005\n22. close account 1003\n23. withdraw 150 from account 1004\n24. deposit 300 into account 1004\n25. transfer 290 from account 1005 to account 1004\n26. deposit 180 into account 1004\n27. close account 1005\n28. withdraw 180 from account 1004\n29. withdraw 200 from account 1004\n30. withdraw 180 from account 1005\n31. close account 1001\n32. transfer 280 from account 1002 to account 1005\n33. deposit 300 into account 1005\n34. transfer 170 from account 1001 to account 1004\n35. deposit 300 into account 1004\n36. deposit 220 into account 1001\n37. transfer 240 from account 1004 to account 1005\n38. transfer 230 from account 1003 to account 1004\n39. withdraw 270 from account 1005",
+    "category": "json_output",
+    "quality_dimension": "structured_output",
+    "expected_json": {
+      "1002": 0,
+      "1003": 50,
+      "1004": 400
+    },
+    "strict_output": true,
+    "item_id": "structured_extraction-18",
+    "use_case_id": "structured_extraction",
+    "construct": "long_ledger_with_rejections",
+    "task_type": "json",
+    "difficulty": "hard",
+    "evaluator": "json_exact",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `normalize_ticket_id(raw: str) -> str` that removes leading and trailing whitespace, converts the text to uppercase and replaces every run of whitespace or underscores inside it with a single hyphen. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "normalize_ticket_id",
+    "required_parameters": [
+      "raw"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          " tck_77  31 "
+        ],
+        "expected": "TCK-77-31"
+      },
+      {
+        "args": [
+          "abc"
+        ],
+        "expected": "ABC"
+      },
+      {
+        "args": [
+          "a__b"
+        ],
+        "expected": "A-B"
+      },
+      {
+        "args": [
+          ""
+        ],
+        "expected": ""
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for obvious edge cases.",
+      "The response contains source code only."
+    ],
+    "reference_answer": "import re\n\ndef normalize_ticket_id(raw):\n    return re.sub(r'[\\s_]+', '-', raw.strip()).upper()",
+    "item_id": "code_generation-01",
+    "use_case_id": "code_generation",
+    "construct": "string_normalisation",
+    "task_type": "programmatic",
+    "difficulty": "easy",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `parse_duration(text: str) -> int` that converts a duration such as '1h 30m 15s' to a number of seconds; the text contains any combination of hours (h), minutes (m) and seconds (s) written as an integer followed by the unit, and an empty text means 0. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "parse_duration",
+    "required_parameters": [
+      "text"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          "1h 30m 15s"
+        ],
+        "expected": 5415
+      },
+      {
+        "args": [
+          "45s"
+        ],
+        "expected": 45
+      },
+      {
+        "args": [
+          "2h"
+        ],
+        "expected": 7200
+      },
+      {
+        "args": [
+          "10m 5s"
+        ],
+        "expected": 605
+      },
+      {
+        "args": [
+          ""
+        ],
+        "expected": 0
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for obvious edge cases.",
+      "The response contains source code only."
+    ],
+    "reference_answer": "import re\n\ndef parse_duration(text):\n    factors = {'h': 3600, 'm': 60, 's': 1}\n    return sum(int(n) * factors[u] for n, u in re.findall(r'(\\d+)([hms])', text))",
+    "item_id": "code_generation-02",
+    "use_case_id": "code_generation",
+    "construct": "text_parsing",
+    "task_type": "programmatic",
+    "difficulty": "medium",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `roman_to_int(numeral: str) -> int` that converts an uppercase Roman numeral in standard form, between 1 and 3999, to an integer, and returns -1 for any text that is not a standard-form numeral, such as 'IIII', 'IC', 'VX', 'MMMM' or an empty string. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "roman_to_int",
+    "required_parameters": [
+      "numeral"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          "MCMXCIV"
+        ],
+        "expected": 1994
+      },
+      {
+        "args": [
+          "XLII"
+        ],
+        "expected": 42
+      },
+      {
+        "args": [
+          "MMXXVI"
+        ],
+        "expected": 2026
+      },
+      {
+        "args": [
+          "IIII"
+        ],
+        "expected": -1
+      },
+      {
+        "args": [
+          "IC"
+        ],
+        "expected": -1
+      },
+      {
+        "args": [
+          "VX"
+        ],
+        "expected": -1
+      },
+      {
+        "args": [
+          ""
+        ],
+        "expected": -1
+      },
+      {
+        "args": [
+          "MMMM"
+        ],
+        "expected": -1
+      },
+      {
+        "args": [
+          "MMMCMXCIX"
+        ],
+        "expected": 3999
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "import re\n\n_FORM = re.compile(r\"M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})\")\n_VALUES = {\"M\": 1000, \"D\": 500, \"C\": 100, \"L\": 50, \"X\": 10, \"V\": 5, \"I\": 1}\n\ndef roman_to_int(numeral):\n    if not numeral or not _FORM.fullmatch(numeral):\n        return -1\n    total = 0\n    for index, letter in enumerate(numeral):\n        value = _VALUES[letter]\n        following = _VALUES[numeral[index + 1]] if index + 1 < len(numeral) else 0\n        total += -value if value < following else value\n    return total",
+    "item_id": "code_generation-07",
+    "use_case_id": "code_generation",
+    "construct": "validation_of_canonical_form",
+    "task_type": "programmatic",
+    "difficulty": "hard",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `top_k_words(text: str, k: int) -> list[str]` that counts the words of `text` case-insensitively (a word is a run of letters a to z), and returns the `k` most frequent words in lowercase, most frequent first, breaking ties alphabetically; it returns fewer words when the text has fewer than `k`. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "top_k_words",
+    "required_parameters": [
+      "text",
+      "k"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          "the cat and the hat and THE bat",
+          2
+        ],
+        "expected": [
+          "the",
+          "and"
+        ]
+      },
+      {
+        "args": [
+          "b a b a c",
+          3
+        ],
+        "expected": [
+          "a",
+          "b",
+          "c"
+        ]
+      },
+      {
+        "args": [
+          "Delta, alpha; delta! Alpha? beta",
+          2
+        ],
+        "expected": [
+          "alpha",
+          "delta"
+        ]
+      },
+      {
+        "args": [
+          "",
+          3
+        ],
+        "expected": []
+      },
+      {
+        "args": [
+          "one two three",
+          5
+        ],
+        "expected": [
+          "one",
+          "three",
+          "two"
+        ]
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "import re\nfrom collections import Counter\n\ndef top_k_words(text, k):\n    counts = Counter(re.findall(r\"[a-z]+\", text.lower()))\n    return [word for word, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:k]]",
+    "item_id": "code_generation-09",
+    "use_case_id": "code_generation",
+    "construct": "frequency_ranking_with_ties",
+    "task_type": "programmatic",
+    "difficulty": "medium",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Write only a Python function `order_total(lines: list[list[int]], coupon: str) -> int` that returns the total of an order in cents. Each line is [quantity, unit price in cents]. Rules, applied in this order: 1) a line total is quantity times unit price, and a line of 10 units or more gets 10% off that line, rounded down to the cent; 2) the subtotal is the sum of the line totals; 3) coupon SAVE5 takes 500 cents off when the subtotal is at least 3000 cents and does nothing otherwise; coupon PCT10 takes 10% off the subtotal, rounded down to the cent, but at most 2000 cents; coupons are case-sensitive and any other value, the empty string included, does nothing; 4) shipping costs 499 cents, and is free when the amount after the coupon is at least 5000 cents; 5) an order without lines costs 0, shipping included. Return the raw source code with no markdown code fences, no explanation and no other text. You may import only from these standard-library modules: collections, datetime, functools, itertools, math, re, string and typing.",
+    "category": "code_execution",
+    "quality_dimension": "code_correctness",
+    "required_function": "order_total",
+    "required_parameters": [
+      "lines",
+      "coupon"
+    ],
+    "strict_output": true,
+    "test_cases": [
+      {
+        "args": [
+          [
+            [
+              2,
+              1000
+            ]
+          ],
+          ""
+        ],
+        "expected": 2499
+      },
+      {
+        "args": [
+          [
+            [
+              2,
+              1500
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 2999
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              2999
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 3498
+      },
+      {
+        "args": [
+          [
+            [
+              10,
+              333
+            ]
+          ],
+          ""
+        ],
+        "expected": 3496
+      },
+      {
+        "args": [
+          [
+            [
+              9,
+              333
+            ]
+          ],
+          ""
+        ],
+        "expected": 3496
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              5400
+            ]
+          ],
+          "SAVE5"
+        ],
+        "expected": 5399
+      },
+      {
+        "args": [
+          [
+            [
+              1,
+              5600
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 5040
+      },
+      {
+        "args": [
+          [
+            [
+              30,
+              10000
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 268000
+      },
+      {
+        "args": [
+          [
+            [
+              2,
+              3000
+            ]
+          ],
+          "save5"
+        ],
+        "expected": 6000
+      },
+      {
+        "args": [
+          [],
+          "PCT10"
+        ],
+        "expected": 0
+      },
+      {
+        "args": [
+          [
+            [
+              12,
+              450
+            ],
+            [
+              1,
+              99
+            ]
+          ],
+          "PCT10"
+        ],
+        "expected": 4963
+      }
+    ],
+    "judge_criteria": [
+      "The response is a Python function with the required name and parameters.",
+      "The function returns the specified result for every example in the description and for the stated edge cases.",
+      "The response contains source code only and imports only the allowed modules."
+    ],
+    "reference_answer": "def order_total(lines, coupon):\n    if not lines:\n        return 0\n    subtotal = 0\n    for quantity, price in lines:\n        line = quantity * price\n        if quantity >= 10:\n            line -= line // 10\n        subtotal += line\n    if coupon == \"SAVE5\" and subtotal >= 3000:\n        subtotal -= 500\n    elif coupon == \"PCT10\":\n        subtotal -= min(subtotal // 10, 2000)\n    return subtotal + (0 if subtotal >= 5000 else 499)",
+    "item_id": "code_generation-14",
+    "use_case_id": "code_generation",
+    "construct": "many_rules_with_thresholds",
+    "task_type": "programmatic",
+    "difficulty": "hard",
+    "evaluator": "sandbox_tests",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: A licence expires exactly 18 months after its activation, on the same day of the month. This licence was activated on 15 August 2025. It was later suspended for 2 months, and a suspension extends the expiry by the same number of months.\nQuestion: On what date does the licence expire? Reply with the date only, as YYYY-MM-DD.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "2027-04-15"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-14",
+    "use_case_id": "contextual_qa",
+    "construct": "date_arithmetic_with_extension",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: The annual report gives revenue for the first three quarters of 2025: 4.1, 3.8 and 4.4 million. The fourth-quarter figure will be published in March. Analysts expect a fourth quarter similar to the third.\nQuestion: What was the total revenue for 2025, in millions? If the context does not give it, reply exactly NOT STATED.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "NOT STATED"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-15",
+    "use_case_id": "contextual_qa",
+    "construct": "abstention_against_estimate",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: A grant requires all of the following: the company was founded in 2024 or earlier, it has fewer than 50 employees, and it has not received a grant in 2024 or later.\nApplicants:\nApplicant 1: founded in 2023, 12 employees, no previous grant.\nApplicant 2: founded in 2025, 8 employees, no previous grant.\nApplicant 3: founded in 2019, 50 employees, previous grant in 2018.\nApplicant 4: founded in 2020, 49 employees, previous grant in 2023.\nApplicant 5: founded in 2022, 30 employees, previous grant in 2022.\nApplicant 6: founded in 2010, 5 employees, previous grant in 2024.\nQuestion: How many applicants are eligible? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "3"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-16",
+    "use_case_id": "contextual_qa",
+    "construct": "multi_condition_count",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: Warehouse stock: W1 holds 1,200 units; W2 holds 950 units; W3 holds 2 pallets of 400 units each; W4 is closed and holds 300 units awaiting transfer to another warehouse.\nQuestion: How many units can be shipped today from the open warehouses? Reply with the number only, without separators.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "2950"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-11",
+    "use_case_id": "contextual_qa",
+    "construct": "aggregation_with_exclusions",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Context: The office is closed on Saturdays, Sundays and public holidays. In March 2026, the public holidays fall on the 6th and the 20th.\nQuestion: On how many days is the office open from 2 March 2026 to 13 March 2026, both dates included? Reply with the number only.",
+    "category": "exact_answer",
+    "quality_dimension": "contextual_accuracy",
+    "accepted_answers": [
+      "9"
+    ],
+    "strict_output": true,
+    "item_id": "contextual_qa-17",
+    "use_case_id": "contextual_qa",
+    "construct": "inclusive_count_with_closures",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "A box holds 24 items. 3 full boxes are shipped and 5 loose items are added to the shipment. How many items are shipped in total? Reply with the number only.",
+    "category": "logical_reasoning",
+    "quality_dimension": "elementary_reasoning",
+    "accepted_answers": [
+      "77"
+    ],
+    "strict_output": true,
+    "item_id": "reasoning_analysis-01",
+    "use_case_id": "reasoning_analysis",
+    "construct": "arithmetic_word_problem",
+    "task_type": "free_response",
+    "difficulty": "easy",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "A room is booked from 09:40 to 11:15 and from 13:05 to 14:50. A team needs a 70-minute slot between 09:00 and 15:00 that starts on a multiple of 5 minutes and keeps at least 10 minutes free before every booking starts and after every booking ends. What is the earliest possible start time? Reply with the time only, as HH:MM.",
+    "category": "logical_reasoning",
+    "quality_dimension": "elementary_reasoning",
+    "accepted_answers": [
+      "11:25"
+    ],
+    "strict_output": true,
+    "item_id": "reasoning_analysis-11",
+    "use_case_id": "reasoning_analysis",
+    "construct": "scheduling_with_buffers",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Each of A, B and C either always tells the truth or always lies. A says: 'B is a liar.' B says: 'C is a liar.' C says: 'A and B are both liars.' Who tells the truth? Reply with the letter only.",
+    "category": "logical_reasoning",
+    "quality_dimension": "elementary_reasoning",
+    "accepted_answers": [
+      "B"
+    ],
+    "strict_output": true,
+    "item_id": "reasoning_analysis-07",
+    "use_case_id": "reasoning_analysis",
+    "construct": "consistency_reasoning",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "How many three-digit numbers have digits that add up to 5? Reply with the number only.",
+    "category": "logical_reasoning",
+    "quality_dimension": "elementary_reasoning",
+    "accepted_answers": [
+      "15"
+    ],
+    "strict_output": true,
+    "item_id": "reasoning_analysis-09",
+    "use_case_id": "reasoning_analysis",
+    "construct": "combinatorial_counting",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "A bag holds 3 red balls and 2 blue balls. Two balls are drawn without replacement. What is the probability that both are red? Reply with a simplified fraction such as 1/4, and nothing else.",
+    "category": "logical_reasoning",
+    "quality_dimension": "elementary_reasoning",
+    "accepted_answers": [
+      "3/10"
+    ],
+    "strict_output": true,
+    "item_id": "reasoning_analysis-10",
+    "use_case_id": "reasoning_analysis",
+    "construct": "probability_without_replacement",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Classify the review as POSITIVE, NEGATIVE or MIXED. MIXED means the review both clearly praises and clearly criticises the product itself; complaints about delivery or the courier do not count. Reply with the label only.\nReview: 'Shipping took two weeks, which is the courier's fault, but the blender itself is excellent and surprisingly quiet.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "POSITIVE"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-14",
+    "use_case_id": "classification_routing",
+    "construct": "scope_of_sentiment",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Route the message to exactly one queue: BILLING, TECHNICAL, ACCOUNT or UNCLEAR. Use UNCLEAR when the message raises issues for two or more queues and does not say which one matters more. Reply with the label only.\nMessage: 'I was charged twice this month and I can no longer log in to my account.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "UNCLEAR"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-17",
+    "use_case_id": "classification_routing",
+    "construct": "abstention_on_tie",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Assign a priority using these rules: P1 = the service is down for all users; P2 = a feature is broken for some users and a workaround exists; P3 = a question or a cosmetic issue. Reply with the label only.\nTicket: 'Since this morning nobody in the company can log in; meanwhile we use the old portal.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "P1"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-11",
+    "use_case_id": "classification_routing",
+    "construct": "rule_based_priority",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Assign a priority with these rules: P1 if more than 100 users are affected or if the outage has lasted more than 4 hours; P2 if 10 to 100 users are affected; P3 otherwise. Reply with the label only.\nTicket: 'Exactly 100 users cannot sync their files. The outage started at 08:10 and is still going on now, at 12:05.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "P2"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-18",
+    "use_case_id": "classification_routing",
+    "construct": "boundaries_of_two_rules",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Route each message to one queue with these rules, in order: a message about a charge, an invoice or a refund is BILLING even if it also reports an error; a message about login, password or profile is ACCOUNT, unless it reports an error code, then it is TECHNICAL; any other error or malfunction is TECHNICAL; anything else is OTHER. Reply with the number of messages in each queue, in the order BILLING, TECHNICAL, ACCOUNT, OTHER, as four integers separated by a comma and a space, and nothing else.\n1. 'I was charged twice for order 6120.'\n2. 'Error 500 appears when I download invoice 6121.'\n3. 'How do I change the phone number on my profile?'\n4. 'The login page shows error 403 since this morning.'\n5. 'Do you have a newsletter?'\n6. 'The app crashes when I open the reports page.'\n7. 'The refund for order 6133 has still not arrived.'\n8. 'I forgot my password and the reset email never comes.'\n9. 'Exports stop at 50 percent with error 504.'\n10. 'Thanks for the quick help last week.'\n11. 'My profile page loads very slowly.'\n12. 'Password reset fails with error 422.'\n13. 'Please send the invoice for order 6140 again; the first one had a typo.'\n14. 'Are you hiring interns this summer?'\n15. 'The dashboard shows yesterday's numbers even after a refresh.'\n16. 'Can I add a second login for my assistant?'\n17. 'Error 502 when I try to pay, and now I see two pending charges.'\n18. 'Your mobile app is great, keep it up.'\n19. 'Search returns nothing for any keyword.'\n20. 'How do I delete my profile picture?'\n21. 'Two-factor login rejects every code with error 401.'\n22. 'Is there a discount for non-profits?'\n23. 'The receipt for my last refund shows the wrong amount.'\n24. 'Notifications stopped working after the update.'",
+    "category": "exact_answer",
+    "quality_dimension": "classification_accuracy",
+    "accepted_answers": [
+      "6, 8, 5, 5",
+      "6,8,5,5"
+    ],
+    "strict_output": true,
+    "item_id": "classification_routing-22",
+    "use_case_id": "classification_routing",
+    "construct": "long_batch_routing_with_precedence",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Summarize the update in at most two sentences.\nUpdate: 'The beta launch was planned for 3 June, but a security review found two critical issues in the login flow. The team decided to move the launch to 24 June to fix them. Marketing has been told and the press event will move accordingly. The budget is unchanged.'",
+    "category": "generic_judgment",
+    "quality_dimension": "summarization_quality",
+    "judge_criteria": [
+      "States that the launch moved from 3 June to 24 June.",
+      "Gives the security issues in the login flow as the reason.",
+      "Does not invent facts, such as a budget change.",
+      "Uses at most two sentences."
+    ],
+    "reference_answer": "The beta launch moves from 3 June to 24 June so the team can fix two critical login issues found in a security review.",
+    "item_id": "summarization-01",
+    "use_case_id": "summarization",
+    "construct": "faithful_summary",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The beta launch went ahead on 3 June because the login review found no issues; the budget doubled.",
+      "3": "A review found concerns with the login flow, so the beta launch moves from 3 June to 24 June.",
+      "5": "The beta launch moves from 3 June to 24 June to address two critical login-flow issues found in the security review."
+    }
+  },
+  {
+    "prompt": "Write a summary for an executive in at most 40 words.\nNotes: '- Discussed Q3 churn. - Decision: pause the loyalty email campaign until the new segmentation is ready. - The data lead owns the segmentation and will deliver it by 15 July. - The cafeteria menu was also mentioned.'",
+    "category": "generic_judgment",
+    "quality_dimension": "summarization_quality",
+    "judge_criteria": [
+      "States the decision to pause the loyalty email campaign.",
+      "Names the data lead as owner and 15 July as the deadline.",
+      "Leaves out the cafeteria menu.",
+      "Uses at most 40 words."
+    ],
+    "reference_answer": "The loyalty email campaign is paused until the new segmentation is ready; the data lead owns it and will deliver by 15 July.",
+    "item_id": "summarization-02",
+    "use_case_id": "summarization",
+    "construct": "executive_summary_with_constraints",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The cafeteria will serve a new menu next week, and Q3 churn has been solved.",
+      "3": "The loyalty email campaign is paused pending segmentation; the data lead plans to deliver it around 15 July.",
+      "5": "Pause the loyalty email campaign until the new segmentation is ready; the data lead owns it and will deliver it by 15 July."
+    }
+  },
+  {
+    "prompt": "Summarize the report for customers in two sentences.\nReport: 'The outage lasted 47 minutes. Customer data was not exposed. The root cause was an expired certificate, not a software release. A follow-up audit of all certificates is scheduled.'",
+    "category": "generic_judgment",
+    "quality_dimension": "summarization_quality",
+    "judge_criteria": [
+      "States that the outage lasted about 47 minutes.",
+      "States that customer data was not exposed.",
+      "Gives an expired certificate as the cause and does not blame a software release.",
+      "Mentions the scheduled certificate audit.",
+      "Uses two sentences."
+    ],
+    "reference_answer": "The outage lasted 47 minutes and no customer data was exposed. It was caused by an expired certificate, not a release, and an audit of all certificates is scheduled.",
+    "item_id": "summarization-03",
+    "use_case_id": "summarization",
+    "construct": "preserving_negations",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "A software release exposed customer records during a two-hour outage. No further checks are planned.",
+      "3": "The 47-minute outage did not expose customer data. An expired certificate caused it, and a follow-up review of the certificates is being arranged.",
+      "5": "The 47-minute outage was caused by an expired certificate, not a software release, and no customer data was exposed. An audit of all certificates is scheduled."
+    }
+  },
+  {
+    "prompt": "Write a status summary of at most two sentences for the steering committee, using the most recent information.\nMessage 1 (Monday): 'Migration on track for 15 May; budget 120k.'\nMessage 2 (Thursday): 'Vendor delay: the migration moves to 29 May; the budget is unchanged; the testing team needs two extra people.'",
+    "category": "generic_judgment",
+    "quality_dimension": "summarization_quality",
+    "judge_criteria": [
+      "Gives 29 May as the migration date and does not present 15 May as current.",
+      "States that the budget is unchanged at 120k.",
+      "Mentions that testing needs two extra people.",
+      "Uses at most two sentences."
+    ],
+    "reference_answer": "Because of a vendor delay, the migration moves to 29 May with the budget unchanged at 120k; the testing team needs two extra people.",
+    "item_id": "summarization-04",
+    "use_case_id": "summarization",
+    "construct": "latest_information_wins",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "The migration is on track for 15 May.",
+      "3": "The migration is delayed to 29 May because of the vendor.",
+      "5": "A vendor delay moves the migration to 29 May; the 120k budget is unchanged, and testing needs two more people."
+    }
+  },
+  {
+    "prompt": "Summarize the incident report in at most 50 words for the support team.\nReport: 'Between 09:12 and 09:47 UTC, 18% of payment requests in the EU region failed with timeout errors. The cause was a misconfigured load-balancer rule deployed at 09:05. The rule was rolled back at 09:44. No payment was charged twice. A post-mortem is scheduled for Friday.'",
+    "category": "generic_judgment",
+    "quality_dimension": "summarization_quality",
+    "judge_criteria": [
+      "States the 09:12 to 09:47 UTC window and the 18% of EU payment requests that failed.",
+      "Names the misconfigured load-balancer rule as the cause and its rollback.",
+      "States that no payment was charged twice.",
+      "Uses at most 50 words and adds no fact absent from the report."
+    ],
+    "reference_answer": "From 09:12 to 09:47 UTC, 18% of EU payment requests timed out because of a misconfigured load-balancer rule, rolled back at 09:44. No payment was charged twice; a post-mortem is planned for Friday.",
+    "item_id": "summarization-05",
+    "use_case_id": "summarization",
+    "construct": "numeric_fidelity",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Payments failed this morning because of a database outage, and some customers were charged twice.",
+      "3": "Some EU payments failed this morning because of a load-balancer rule, now rolled back.",
+      "5": "From 09:12 to 09:47 UTC, 18% of EU payment requests timed out due to a misconfigured load-balancer rule, rolled back at 09:44; no double charges; post-mortem on Friday."
+    }
+  },
+  {
+    "prompt": "A customer writes: 'My order arrived damaged and I want my money back right now.' Write a reply in no more than 60 words.",
+    "category": "generic_judgment",
+    "quality_dimension": "concise_communication",
+    "judge_criteria": [
+      "Apologise sincerely without blaming the customer.",
+      "Give a concrete next step, such as sharing the order number or a photo so a refund or replacement can be processed.",
+      "Do not promise a specific refund amount or date that has not been authorised.",
+      "Stay within 60 words and keep a calm tone."
+    ],
+    "reference_answer": "I am sorry your order arrived damaged. Please share your order number and a photo of the damage, and we will start a refund or replacement review right away.",
+    "item_id": "concise_communication-01",
+    "use_case_id": "concise_communication",
+    "construct": "empathetic_brief_reply",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "You must have damaged the order yourself. We will refund you $200 tomorrow, guaranteed.",
+      "3": "I'm sorry your order arrived damaged. Please contact our support team so we can look into a refund or replacement.",
+      "5": "I'm sorry your order arrived damaged. Please send your order number and a photo of the damage so we can review a refund or replacement promptly."
+    }
+  },
+  {
+    "prompt": "Write a reply of at most 50 words telling a customer that the feature they asked for will not be built this year. Do not promise any date, and offer one alternative: the existing CSV export.",
+    "category": "generic_judgment",
+    "quality_dimension": "concise_communication",
+    "judge_criteria": [
+      "States clearly that the feature will not be built this year.",
+      "Gives no date and makes no promise about the feature.",
+      "Offers the existing CSV export as the alternative.",
+      "Uses at most 50 words and stays polite."
+    ],
+    "reference_answer": "Thank you for the suggestion. We will not build this feature this year, so I cannot give you a date. In the meantime, the existing CSV export lets you get the same data today.",
+    "item_id": "concise_communication-04",
+    "use_case_id": "concise_communication",
+    "construct": "declining_without_promise",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Great idea, we will ship it next month!",
+      "3": "We are not planning this feature right now, sorry.",
+      "5": "Thanks for the idea. It will not be built this year and we have no date to share, but the existing CSV export gives you the same data now."
+    }
+  },
+  {
+    "prompt": "Rewrite this for a non-technical executive in at most two sentences: 'p95 latency regressed from 180 ms to 420 ms after the ORM upgrade; we are reverting tonight and expect baseline by 08:00.'",
+    "category": "generic_judgment",
+    "quality_dimension": "concise_communication",
+    "judge_criteria": [
+      "Explains that the slowest responses became more than twice as slow after a software update.",
+      "States that the update is being undone tonight.",
+      "States that normal speed is expected by 08:00.",
+      "Uses no unexplained jargon such as p95 or ORM, in at most two sentences."
+    ],
+    "reference_answer": "After a software update, our slowest responses became more than twice as slow. We are undoing the update tonight and expect normal speed by 8:00.",
+    "item_id": "concise_communication-05",
+    "use_case_id": "concise_communication",
+    "construct": "jargon_removal_with_fact_retention",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "p95 latency regressed after the ORM upgrade.",
+      "3": "A recent update slowed the system down; we are fixing it.",
+      "5": "Since a software update, the slowest pages take more than twice as long; we roll it back tonight and expect normal speed by 8:00."
+    }
+  },
+  {
+    "prompt": "A client writes in a chat: 'Can you also redo our logo while you are at it? Same budget.' Write a reply of at most 45 words that declines the logo work within the current budget and proposes a separate quote.",
+    "category": "generic_judgment",
+    "quality_dimension": "concise_communication",
+    "judge_criteria": [
+      "Declines doing the logo within the current budget.",
+      "Proposes a separate quote for the logo.",
+      "Stays positive and professional.",
+      "Uses at most 45 words."
+    ],
+    "reference_answer": "Happy to help with the logo, but it is outside the current scope and budget. I can send you a separate quote for it this week.",
+    "item_id": "concise_communication-06",
+    "use_case_id": "concise_communication",
+    "construct": "scope_control",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Sure, we will add the logo at no extra cost.",
+      "3": "The logo is not included, sorry.",
+      "5": "Glad you asked! The logo is outside the current budget, so I will send you a separate quote for it this week."
+    }
+  },
+  {
+    "prompt": "A customer sends a long, angry email about three late deliveries, a wrong invoice and no reply from support. Write a one-sentence acknowledgement of at most 35 words that names all three problems and says that the delivery team will reply by tomorrow.",
+    "category": "generic_judgment",
+    "quality_dimension": "concise_communication",
+    "judge_criteria": [
+      "Names the late deliveries, the wrong invoice and the missing support reply.",
+      "Says that the delivery team will reply by tomorrow.",
+      "Is a single sentence of at most 35 words.",
+      "Acknowledges the frustration without blaming the customer."
+    ],
+    "reference_answer": "I am sorry about the three late deliveries, the wrong invoice and our missing reply; the delivery team will get back to you by tomorrow.",
+    "item_id": "concise_communication-08",
+    "use_case_id": "concise_communication",
+    "construct": "acknowledgement_completeness",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Please calm down, we are doing our best.",
+      "3": "Sorry for the late deliveries; someone will contact you soon.",
+      "5": "I am sorry for the three late deliveries, the incorrect invoice and our silence; the delivery team will reply to you by tomorrow."
+    }
+  },
+  {
+    "prompt": "Take the English names of the days of the week from Monday to Sunday, keep only the names that have exactly six letters, then write them in reverse order, in lowercase, separated by single spaces, and nothing else.",
+    "category": "instruction_following",
+    "quality_dimension": "instruction_reliability",
+    "accepted_answers": [
+      "sunday friday monday"
+    ],
+    "strict_output": true,
+    "item_id": "instruction_following-10",
+    "use_case_id": "instruction_following",
+    "construct": "filter_then_reverse",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Reply with the word 'pipeline' with all its vowels removed, then a hyphen, then the number of vowels you removed, and nothing else.",
+    "category": "instruction_following",
+    "quality_dimension": "instruction_reliability",
+    "accepted_answers": [
+      "ppln-4"
+    ],
+    "strict_output": true,
+    "item_id": "instruction_following-06",
+    "use_case_id": "instruction_following",
+    "construct": "transformation_with_count",
+    "task_type": "free_response",
+    "difficulty": "medium",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Sort these words by length, shortest first, keeping words of the same length in alphabetical order, and output them separated by single spaces and nothing else: delta, ox, alpha, be, cat, ant",
+    "category": "instruction_following",
+    "quality_dimension": "instruction_reliability",
+    "accepted_answers": [
+      "be ox ant cat alpha delta"
+    ],
+    "strict_output": true,
+    "item_id": "instruction_following-07",
+    "use_case_id": "instruction_following",
+    "construct": "sort_with_tie_rule",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "Take the letters of 'banana' that are not 'a', write them in the reverse of their order of appearance, then a colon, then the number of letters 'a' in the word, and nothing else.",
+    "category": "instruction_following",
+    "quality_dimension": "instruction_reliability",
+    "accepted_answers": [
+      "nnb:3"
+    ],
+    "strict_output": true,
+    "item_id": "instruction_following-09",
+    "use_case_id": "instruction_following",
+    "construct": "filter_reverse_count",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "exact_match",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened"
+  },
+  {
+    "prompt": "A stakeholder says: 'Improve the dashboard.' Ask exactly one clarifying question and do not suggest any change yet.",
+    "category": "generic_judgment",
+    "quality_dimension": "instruction_reliability",
+    "judge_criteria": [
+      "Ask exactly one question.",
+      "The question seeks a concrete success criterion such as the audience, the decision it supports or the missing information.",
+      "Do not propose changes, assumptions or a solution before receiving clarification."
+    ],
+    "reference_answer": "Which decision should the improved dashboard help its main audience make?",
+    "item_id": "instruction_following-04",
+    "use_case_id": "instruction_following",
+    "construct": "clarification_without_solution",
+    "task_type": "free_response",
+    "difficulty": "hard",
+    "evaluator": "rubric_panel",
+    "language": "en",
+    "difficulty_status": "draft",
+    "license_status": "internal_original",
+    "contamination_status": "internal_unscreened",
+    "rubric_version": "rubric-v2",
+    "rubric_anchors": {
+      "1": "Replace the dashboard with a blue bar chart today; that will fix it.",
+      "3": "What would make the dashboard better for you?",
+      "5": "Which decision should the dashboard help its main audience make?"
+    }
+  }
+]

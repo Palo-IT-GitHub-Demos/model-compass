@@ -278,3 +278,26 @@ class TestAsyncGetKeyInfo:
                     await client.get_key_info()
         finally:
             await client.aclose()
+
+
+class TestCompletionText:
+    def test_returns_text_and_finish_reason(self) -> None:
+        from types import SimpleNamespace
+
+        from src.api.openrouter_client import completion_text
+
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=None), finish_reason="length")]
+        )
+
+        assert completion_text(completion, "openai/x") == ("", "length")
+
+    def test_a_completion_without_choices_is_an_api_error(self) -> None:
+        from types import SimpleNamespace
+
+        from src.api.openrouter_client import completion_text
+
+        completion = SimpleNamespace(choices=None, model=None, model_extra={"error": {"code": 403}})
+
+        with pytest.raises(OpenRouterError, match="no choices for model 'openai/x': {'code': 403}"):
+            completion_text(completion, "openai/x")

@@ -28,8 +28,13 @@ class CheckResult:
     passed: bool | None
     """True = definitive pass, False = definitive fail, None = undecidable (forward to LLM judge)."""
 
-    score: int | None
-    """Score on a 1–5 scale, or None when undecidable."""
+    score: float | None
+    """Score on a 1–5 scale, or None when undecidable.
+
+    Structured checks give partial credit (``1 + 4 × share correct``): a JSON
+    answer with three of four fields right, or code passing four of five
+    tests, scores between 1 and 5 instead of failing like an empty answer.
+    """
 
     reason: str
     """Human-readable explanation of the result."""
@@ -89,10 +94,14 @@ class JsonValidityCheck:
                     "format_reason": "Response has the wrong JSON root type for the required object or array.",
                 }
             if expected_json is not None and parsed != expected_json:
+                share = json_agreement(parsed, expected_json)
                 return CheckResult(
                     passed=False,
-                    score=1,
-                    reason="Response is valid JSON but does not match the required JSON value.",
+                    score=partial_credit(share),
+                    reason=(
+                        "Response is valid JSON but does not match the required JSON value "
+                        f"({share:.0%} of the expected fields or items are correct)."
+                    ),
                     **fmt,
                 )
             return CheckResult(
@@ -108,6 +117,19 @@ class JsonValidityCheck:
         except json.JSONDecodeError as exc:
             if fmt:
                 fmt = {"format_score": 1, "format_reason": "Response is not syntactically valid JSON."}
+            expected_json = _get_context_value(evaluation, "expected_json")
+            embedded = _last_embedded_json(content, expected_json)
+            if embedded is not _NOT_FOUND:
+                share = json_agreement(embedded, expected_json) if expected_json is not None else 1.0
+                return CheckResult(
+                    passed=False,
+                    score=round(1.0 + (RECOVERED_ANSWER_SCORE - 1.0) * share, 2),
+                    reason=(
+                        "Extra text surrounds the JSON value; the last JSON value in the response gets "
+                        f"{share:.0%} of the expected fields or items right, scored at most {RECOVERED_ANSWER_SCORE}."
+                    ),
+                    **fmt,
+                )
             return CheckResult(
                 passed=False,
                 score=1,
@@ -254,19 +276,23 @@ class PythonExecutionCheck:
             return CheckResult(passed=None, score=None, reason=f"Sandbox unavailable: {result.detail}", **fmt)
         if result.status == "ok" and result.passed == result.total:
             return CheckResult(passed=True, score=5, reason=f"Passed {result.passed}/{result.total} test cases.", **fmt)
-        detail = (
-            f"Passed {result.passed}/{result.total} test cases."
-            if result.status == "ok"
-            else f"Execution {result.status}: {result.detail}"
-        )
-        return CheckResult(passed=False, score=1, reason=detail, **fmt)
+        if result.status == "ok":
+            return CheckResult(
+                passed=False,
+                score=partial_credit(result.passed / result.total if result.total else 0.0),
+                reason=f"Passed {result.passed}/{result.total} test cases.",
+                **fmt,
+            )
+        return CheckResult(passed=False, score=1, reason=f"Execution {result.status}: {result.detail}", **fmt)
 
 
 class ExactFormatCheck:
     """Evaluate exact output when accepted answers are supplied.
 
-    Without reference answers, the response remains undecidable and is sent to
-    the blind judge panel. This preserves support for open-ended prompts.
+    The exact output is the construct here, so a correct final line after
+    extra text (shown working, a preamble) scores :data:`RECOVERED_ANSWER_SCORE`,
+    not 5. Without reference answers, the response remains undecidable and is
+    sent to the blind judge panel. This preserves support for open-ended prompts.
     """
 
     category = "instruction_following"
@@ -307,6 +333,13 @@ class ExactFormatCheck:
                     reason="Response matches an accepted answer.",
                     **fmt,
                 )
+            if final_answer_matches(response, accepted_answers):
+                return CheckResult(
+                    passed=False,
+                    score=RECOVERED_ANSWER_SCORE,
+                    reason="The final line is an accepted answer, but extra text breaks the exact-output instruction.",
+                    **fmt,
+                )
             return CheckResult(
                 passed=False,
                 score=1,
@@ -321,9 +354,175 @@ class ExactFormatCheck:
 
 
 class ExactAnswerCheck(ExactFormatCheck):
-    """Exact-answer check for factual-sanity and elementary-reasoning probes."""
+    """Exact-answer check for factual-sanity, classification and elementary-reasoning probes.
+
+    Content is the final answer: a correct answer that also shows its working,
+    or wraps the value in markdown emphasis, keeps its content score and fails
+    only output-format compliance. Exact-format instruction prompts
+    (:class:`ExactFormatCheck`) cap that case at :data:`RECOVERED_ANSWER_SCORE`,
+    since there the exact output is the construct being measured.
+    """
 
     category = "exact_answer"
+
+    def run(
+        self,
+        prompt: str,
+        response: str,
+        evaluation: Mapping[str, Any] | None = None,
+    ) -> CheckResult:
+        """Score the final answer, keeping the strict format verdict separate."""
+        result = super().run(prompt, response, evaluation)
+        accepted_answers = _get_context_strings(evaluation, "accepted_answers")
+        if result.passed is not False or not final_answer_matches(response, accepted_answers, allow_explanation=True):
+            return result
+        return CheckResult(
+            passed=True,
+            score=5,
+            reason="Final answer matches an accepted answer; the extra text is scored under output format only.",
+            format_score=result.format_score,
+            format_reason=result.format_reason,
+        )
+
+
+EXACT_ANSWER_CATEGORIES = frozenset({"exact_answer", "factual_sanity", "logical_reasoning"})
+"""Categories whose content is the final answer, scored by :class:`ExactAnswerCheck`."""
+
+_ANSWER_LABEL = re.compile(r"^(?:final answer|answer|result|label|the answer is)\s*[:=-]?\s*", re.IGNORECASE)
+_NUMBER = re.compile(r"-?\d+(?:[.,]\d+)?")
+
+
+def final_answer(response: str, accepted_answers: list[str], *, allow_explanation: bool = False) -> str:
+    """Return the final answer a response commits to, or ``""``.
+
+    The final answer is the last non-empty line, without markdown emphasis,
+    quotes, an ``Answer:``-style label or trailing punctuation. When every
+    accepted answer is a number, it is the last number on that line, so
+    ``3 * 24 + 5 = 77`` answers ``77``.
+
+    With ``allow_explanation`` (exact-answer items, whose content is the
+    answer), two more places commit to an answer when the last line alone does
+    not: the first line holding nothing but an accepted answer (``**11:25**``
+    then the working), unless the last line ends on a different bare answer;
+    and an accepted answer that the last line introduces with ``=``, ``:`` or
+    "the answer is" (``3/5 * 2/4 = 3/10``). A value met in between is never
+    the answer, so a response that considers the right value and settles on
+    another one still fails. Every response accepted without the option is
+    accepted with it.
+    """
+    lines = [line for line in _strip_code_fences(response).splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last = _bare_answer(lines[-1])
+    if allow_explanation and not _is_accepted(last, accepted_answers):
+        committed = _committed_answer(lines, last, accepted_answers)
+        if committed:
+            return committed
+    if accepted_answers and all(_NUMBER.fullmatch(answer.strip()) for answer in accepted_answers):
+        numbers = _NUMBER.findall(last)
+        return numbers[-1] if numbers else ""
+    return last
+
+
+def _bare_answer(line: str) -> str:
+    """A line without markdown emphasis, an ``Answer:`` label, quotes or trailing punctuation."""
+    bare = re.sub(r"[*_`]+", "", line).strip()
+    return _ANSWER_LABEL.sub("", bare).strip().strip("\"'“”‘’").rstrip(".!").strip()
+
+
+def _is_accepted(answer: str, accepted_answers: list[str]) -> bool:
+    return bool(answer) and _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}
+
+
+_WRAPPER = r"[\"'“”‘’*_`]*"
+
+
+def _committed_answer(lines: list[str], last: str, accepted_answers: list[str]) -> str:
+    """The accepted answer given alone on the first line, or introduced at the end of the last line, else ``""``."""
+    first = _bare_answer(lines[0])
+    if (
+        len(lines) > 1
+        and _is_accepted(first, accepted_answers)
+        and not _matches_bare_answer_shape(last, accepted_answers)
+    ):
+        return first
+    for answer in (item.strip() for item in accepted_answers):
+        if not answer:
+            continue
+        value = rf"{_WRAPPER}{re.escape(answer)}{_WRAPPER}"
+        assigned = rf"[=:]\s*{value}\s*[.!]?\s*$"
+        stated = rf"\b(?:answer|result)\s+(?:is|would be)\s*[:=-]?\s*{value}(?=\s*(?:[.!,;]|$))"
+        if re.search(assigned, lines[-1], re.IGNORECASE) or re.search(stated, lines[-1], re.IGNORECASE):
+            return answer
+    return ""
+
+
+def final_answer_matches(response: str, accepted_answers: list[str], *, allow_explanation: bool = False) -> bool:
+    """Return whether the response's final answer is one of *accepted_answers*."""
+    answer = final_answer(response, accepted_answers, allow_explanation=allow_explanation)
+    if not answer:
+        return False
+    return _normalize_exact_text(answer) in {_normalize_exact_text(item) for item in accepted_answers}
+
+
+RECOVERED_ANSWER_SCORE = 3
+"""Content score of a correct answer that breaks the exact-output contract of a JSON or exact-format item.
+
+Better than a wrong answer (1), worse than following the contract (5): there
+the contract is part of what the item measures. Output-format compliance still
+fails separately.
+"""
+
+_NOT_FOUND = object()
+
+
+def _last_embedded_json(text: str, expected: object) -> object:
+    """Return the last top-level JSON value in *text*, of the expected root type when one is given.
+
+    Recovers the answer of a response that shows its working before the JSON
+    value; returns ``_NOT_FOUND`` when no such value parses.
+    """
+    decoder = json.JSONDecoder()
+    found: object = _NOT_FOUND
+    resume = 0
+    for match in re.finditer(r"[{\[]", text):
+        if match.start() < resume:
+            continue
+        try:
+            value, end = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        resume = end
+        if expected is None or isinstance(value, type(expected)):
+            found = value
+    return found
+
+
+def partial_credit(share: float) -> float:
+    """Map the share of a structured answer that is correct to the 1–5 scale (1 + 4 × share)."""
+    return round(1.0 + 4.0 * min(max(share, 0.0), 1.0), 2)
+
+
+def json_agreement(actual: object, expected: object) -> float:
+    """Share of an expected JSON value the answer gets right, from 0 to 1.
+
+    Objects compare their top-level fields: an extra field counts against the
+    answer like a missing or wrong one, since inventing fields is an error.
+    Arrays compare position by position over the longer of the two. Any other
+    value is all or nothing.
+    """
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return 0.0
+        fields = set(expected) | set(actual)
+        correct = sum(1 for key in expected if key in actual and actual[key] == expected[key])
+        return correct / len(fields) if fields else 1.0
+    if isinstance(expected, list):
+        if not isinstance(actual, list):
+            return 0.0
+        size = max(len(expected), len(actual))
+        return sum(1 for got, want in zip(actual, expected, strict=False) if got == want) / size if size else 1.0
+    return 1.0 if actual == expected else 0.0
 
 
 # ── Registry ───────────────────────────────────────────────────────────────────

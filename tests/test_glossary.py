@@ -1,8 +1,8 @@
-"""Tests for the glossary shared by the live and static dashboards."""
+"""Tests for the glossary rendered by the static HTML report."""
 
 from __future__ import annotations
 
-from dashboard.glossary import GLOSSARY_INTRO, GLOSSARY_TERMS, glossary_html, glossary_markdown
+from dashboard.glossary import GLOSSARY_INTRO, GLOSSARY_TERMS, glossary_html
 
 
 class TestGlossaryContent:
@@ -44,8 +44,3 @@ class TestGlossaryRendering:
         html = glossary_html(GLOSSARY_INTRO)
         assert html.count("<dt>") == len(GLOSSARY_TERMS)
         assert html.count("<dd>") == len(GLOSSARY_TERMS)
-
-    def test_markdown_covers_the_same_terms(self) -> None:
-        markdown = glossary_markdown()
-        for term, _ in GLOSSARY_TERMS:
-            assert term in markdown

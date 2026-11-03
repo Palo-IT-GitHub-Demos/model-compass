@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.evaluators.cost_analyzer import BUILTIN_WORKLOAD_PROFILES, summarize_actual_call_costs
+from src.core.methodology import METHODOLOGY_VERSION
+from src.evaluators.cost_analyzer import (
+    BUILTIN_WORKLOAD_PROFILES,
+    effective_cost_per_1k_requests,
+    measured_completion_tokens,
+    summarize_actual_call_costs,
+)
 from src.evaluators.quality_metrics import summarize_quality_dimensions, summarize_quality_scores
 
 
@@ -22,8 +28,15 @@ def merge_results(
     actual_call_costs: pd.DataFrame | None = None,
     *,
     min_quality_coverage_for_cer: float = 0.8,
+    security_profile: str = "full",
+    prompt_delivery: dict[str, object] | None = None,
 ) -> pd.DataFrame:
-    """Merge quality, security and pricing outputs without changing their metrics."""
+    """Merge quality, security and pricing outputs without changing their metrics.
+
+    ``security_profile`` travels with every row: ``skip`` tells the
+    recommendation that missing security evidence is a declared choice of
+    the run, not a model's failure to provide it.
+    """
     base = pd.DataFrame({"model": models})
 
     if not quality_df.empty and "score" in quality_df.columns:
@@ -65,9 +78,16 @@ def merge_results(
 
     if quality_suite_id:
         base["quality_suite_id"] = quality_suite_id
+    base["methodology_version"] = METHODOLOGY_VERSION
+    base["security_profile"] = security_profile
+    if prompt_delivery is not None:
+        undelivered = prompt_delivery.get("undelivered_probes")
+        base["prompt_delivery_verified"] = bool(prompt_delivery.get("verified"))
+        base["undelivered_security_probes"] = ", ".join(undelivered) if isinstance(undelivered, list) else ""
 
     if actual_call_costs is not None and not actual_call_costs.empty:
         base = base.merge(summarize_actual_call_costs(actual_call_costs), on="model", how="left")
+        base = base.merge(measured_completion_tokens(actual_call_costs), on="model", how="left")
 
     if not security_df.empty:
         wanted = [
@@ -80,6 +100,7 @@ def merge_results(
             "rsi_scored_probe_count",
             "rsi_scored_categories",
             "rsi_leak_capped",
+            "security_probe_set_id",
             "probe_count",
             "probe_error_count",
             "probe_error_rate",
@@ -99,9 +120,23 @@ def merge_results(
         input_price = pd.to_numeric(base["prompt_price_per_token"], errors="coerce")
         completion_price = pd.to_numeric(base["completion_price_per_token"], errors="coerce")
         has_pricing = input_price.notna() & completion_price.notna()
-        base["tco_usd"] = (
-            input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens
-        ).where(has_pricing, float("inf"))
+        monthly_tokens = profile.monthly_prompt_tokens + profile.monthly_completion_tokens
+        base["cost_usd_per_1m_tokens"] = (
+            (input_price * profile.monthly_prompt_tokens + completion_price * profile.monthly_completion_tokens)
+            / monthly_tokens
+            * 1_000_000
+        )
+        measured_tokens = (
+            pd.to_numeric(base["measured_completion_tokens_per_answer"], errors="coerce")
+            if "measured_completion_tokens_per_answer" in base.columns
+            else pd.Series(float("nan"), index=base.index)
+        )
+        base["cost_usd_per_1k_requests"] = effective_cost_per_1k_requests(
+            input_price, completion_price, measured_tokens, profile
+        )
+        base["tco_usd"] = (base["cost_usd_per_1k_requests"] / 1_000 * profile.monthly_requests).where(
+            has_pricing & measured_tokens.notna(), float("inf")
+        )
 
         quality_col = "avg_quality_score"
         if quality_col in base.columns:

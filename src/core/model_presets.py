@@ -32,8 +32,9 @@ class ModelPreset:
 MODEL_PRESETS: dict[str, ModelPreset] = {
     "free_general": ModelPreset(
         description=(
-            "Two-model free-tier comparison (Google and Cohere) kept small enough "
-            "for the default basic probe set on a 50-request daily quota."
+            "Two-model free-tier comparison (Google and Cohere). With the default v2 suite "
+            "and basic probes a run sends about 78 requests: above the 50/day cap of "
+            "accounts with less than 10 USD of credits."
         ),
         models=(
             "google/gemma-4-31b-it:free",
@@ -41,9 +42,7 @@ MODEL_PRESETS: dict[str, ModelPreset] = {
         ),
     ),
     "paid_flagship": ModelPreset(
-        description=(
-            "Cross-provider flagship paid trio (Anthropic, Meta, OpenAI) for a " "production-grade benchmark."
-        ),
+        description=("Cross-provider flagship paid trio (Anthropic, Meta, OpenAI) for a production-grade benchmark."),
         models=(
             "anthropic/claude-sonnet-5",
             "meta-llama/llama-3.3-70b-instruct",

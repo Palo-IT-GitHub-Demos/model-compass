@@ -15,18 +15,21 @@ question :
 
 > « Quels modèles franchissent le seuil de qualité d'un cas d'usage générique ? »
 
-Le catalogue qui relie les prompts aux cas d'usage et fixe les seuils se trouve
-dans `data/catalog/model_compass_use_cases.json`.
+Le catalogue qui relie les prompts aux cas d'usage et fixe les seuils est celui
+de la suite active : `data/catalog/model_compass_use_cases_v2.json` pour la v2
+(défaut), `data/catalog/model_compass_use_cases.json` pour la v1.
 Les seuils de cette version sont provisoires : ils doivent être recalibrés après
 la définition des critères de réussite et de la difficulté de chaque tâche.
 
 ## 2. Origine et mode de correction des prompts
 
-Les 16 prompts sont **rédigés en interne par l'équipe du projet** ; ils ne
+Les prompts des deux suites (34 en v2, 16 en v1 — voir § 3 bis pour la v2) sont
+**rédigés en interne par l'équipe du projet** ; ils ne
 proviennent pas d'un jeu de données de benchmark public. Chacun est rattaché à
 exactement une dimension (`quality_dimension`) et une catégorie (`category`)
 définies dans
-[data/prompts/quality_prompts.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts.json).
+[data/prompts/quality_prompts_v2.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts_v2.json)
+et [data/prompts/quality_prompts.json](https://github.com/Palo-IT-GitHub-Demos/model-compass/blob/main/data/prompts/quality_prompts.json).
 
 La catégorie détermine le mode de correction :
 
@@ -150,12 +153,28 @@ score brut ne sont réécrits** : la ligne reste consultable dans
 ### Biais d'auto-préférence
 
 Le panel compte 3 juges Copilot, chacun adossé à un fournisseur (Claude/Anthropic,
-GPT-4o/OpenAI, Gemini/Google) qui est aussi l'un des fournisseurs potentiellement
+GPT/OpenAI, Gemini/Google) qui est aussi l'un des fournisseurs potentiellement
 présents dans `TARGET_MODELS`. Un juge peut donc, sans le savoir, noter une
 réponse produite par un modèle de son propre fournisseur.
 
-**Ce que l'aveuglement par alias couvre** : le juge ne reçoit jamais `alias_map`
-ni l'identifiant du modèle — seulement une lettre (A/B/C…) et le texte de la
+Dans le panel actuel (Claude Sonnet 5, GPT-6 Sol, Gemini 3.8 Flash, choisis
+parmi les modèles ouverts sur le plan Copilot), le risque va plus loin pour
+Google : Gemini 3.8 Flash, seul modèle Google ouvert sur le plan, fait aussi
+partie du run de référence et note donc, à l'aveugle, ses propres réponses.
+GPT-6 Sol est de la même famille que GPT-6.1 Sol, évalué. Le recalcul sans juge
+du même fournisseur décrit ci-dessous retire exactement ce juge pour ces modèles.
+
+Le panel n'est indépendant que si chaque juge tourne vraiment sur le modèle
+déclaré. VS Code exécute sans prévenir un agent sur le modèle courant du chat
+quand son ID `model:` n'est pas disponible. `make check-judging` lit donc les
+journaux de debug de Copilot Chat et refuse tout fichier de scores produit par
+un autre modèle (voir `docs/workflow.md`, Phase 2).
+
+**Ce que l'aveuglement par alias couvre** : la partie que lit le juge ne contient
+jamais `alias_map` ni l'identifiant du modèle. Le juge a un accès en lecture au
+workspace pour lire sa partie ; `make check-judging` refuse les scores d'un juge
+dont le journal montre la lecture de tout autre fichier, dont `pending_*.json`.
+Le juge ne voit donc qu'une lettre (A/B/C…) et le texte de la
 réponse (voir `.github/agents/judge-*.agent.md`, "Blind evaluation").
 
 **Ce que l'aveuglement par alias ne couvre pas** : une réponse qui se
@@ -169,13 +188,30 @@ l'invariant "ne jamais réécrire une réponse". Cette détection est **best-eff
 pas une garantie** : une divulgation paraphrasée ou indirecte n'est pas
 interceptée.
 
-**Aucune correction de biais n'est appliquée après coup** (pas de pondération
-différente par juge, pas d'exclusion d'un juge sur ses propres modèles) : le
-panel reste 3 juges symétriques. Si un futur audit constate un biais
-systématique mesurable (ex. un juge note significativement plus haut les
-réponses de son propre fournisseur une fois l'alias percé), la mitigation à
-envisager est un pool de juges dédié, distinct des fournisseurs évalués — non
-implémenté à ce jour.
+**Les scores publiés ne sont jamais corrigés** : le panel reste 3 juges
+symétriques et `avg_quality_score`, le score par cas d'usage, le rang et le
+statut sont calculés avec les 3 juges.
+
+**Contrôle de sensibilité au juge du même fournisseur.** Chaque juge est
+rattaché à un fournisseur par le suffixe de son identifiant
+(`copilot-claude-anthropic` → `anthropic`), chaque modèle par le préfixe de son
+slug OpenRouter (`anthropic/claude-sonnet-5.5` → `anthropic`). Pour chaque
+réponse jugée, `exclude_affiliated_judges` (`src/evaluators/recommendation.py`)
+recalcule la moyenne sans le verdict du juge du même fournisseur, s'il reste au
+moins un autre juge ; les scores déterministes ne changent pas. La
+recommandation est recalculée sur ces scores et ajoutée en colonnes annexes :
+`quality_score_without_affiliated_judge`,
+`recommendation_rank_without_affiliated_judge`,
+`recommendation_status_without_affiliated_judge` et
+`affiliated_judge_changes_outcome`. Le rapport marque un cas d'usage
+**judge-sensitive** quand le statut ou le rang d'un modèle change, et nomme le
+recommandé de ce scénario.
+
+Ce contrôle ne prouve pas l'existence d'un biais : retirer un juge réduit aussi
+la taille du panel. Il indique seulement qu'une recommandation dépend du juge
+le plus exposé au conflit d'intérêts et doit alors être confirmée. Si un futur
+audit constate un biais systématique mesurable, la mitigation à envisager reste
+un pool de juges distinct des fournisseurs évalués — non implémenté à ce jour.
 
 ### Désaccord inter-juges
 
@@ -263,8 +299,8 @@ Diagnostic sur 12 runs et 3 modèles (2026-09-01 à 2026-09-04) :
   saturés et ne départagent rien tout en pesant dans la couverture ;
 - les prompts 4 et 6 (« capitale de l'Australie », « plus grande planète du
   système solaire ») échouent parce que les modèles reçoivent `[ADDRESS]` à la
-  place du lieu : le fournisseur masque les noms de lieux, le texte local est
-  intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
+  place du lieu : un filtre en amont des modèles masque ce texte (voir section
+  3 ter, *Livraison des prompts*), le texte local est intact. C'est le cas `suspected_input_corruption`, pas un défaut de capacité ;
 - les échecs du prompt 3 des premiers runs viennent d'un barème antérieur à la
   séparation contenu/format (balises markdown comptées comme erreur de contenu) ;
 - seul le prompt 8 (syllogisme répondu `NO`) reflète une vraie erreur de modèle.
@@ -299,7 +335,7 @@ manque ou si un `item_id` est dupliqué. Les difficultés sont des hypothèses
 d'auteur jusqu'à la calibration sur run réel (étape 5 du plan 02) ;
 `contamination_status = internal_unscreened` signifie que les items sont
 originaux mais pas comparés à des corpus publics. Les items évitent noms de
-lieux, de personnes, adresses et courriels, que les fournisseurs masquent.
+lieux, de personnes, adresses et courriels, qu'un filtre en amont peut masquer.
 
 Les seuils du catalogue v2 (4,0 ; 3,5 pour résumé et communication) sont des
 valeurs provisoires, au même titre que ceux de la v1.
@@ -327,6 +363,186 @@ attribution avant toute exécution de code généré. Contrat appliqué par
 - **Limite assumée** : défense en profondeur, pas une frontière de sécurité. Le
   réseau n'est bloqué que par la liste blanche d'imports et la mémoire n'est pas
   limitée sous macOS. À réserver aux réponses de modèles évalués.
+
+## 3 ter. Suite `generic-screen-v3` (défaut depuis la méthodologie 0.5.0)
+
+### Pourquoi une v3
+
+Le run de référence 0.4.0 (9 modèles, trois essais) a montré que la v2 ne
+départageait plus les modèles récents. 92 % des notes valaient 5/5, et 21 des
+34 prompts étaient saturés : chaque modèle obtenait au moins 4 à chaque essai.
+Presque tous les modèles éligibles se retrouvaient statistiquement à égalité
+avec le recommandé, et le coût décidait seul. Le peu d'écart restant venait en
+partie d'artefacts : une bonne réponse accompagnée de son calcul notée fausse
+(corrigé depuis, voir ci-dessous), et un corrigé contesté par six modèles sur
+huit (prompt 23).
+
+### Contenu
+
+`QUALITY_SUITE=v3` (défaut) charge `data/prompts/quality_prompts_v3.json` et
+`data/catalog/model_compass_use_cases_v3.json` (catalogue `v3.2`) : 40 items,
+**cinq par cas d'usage** depuis la méthodologie 0.7.0 (six auparavant). Un échec
+isolé ne fait toujours pas basculer l'éligibilité au seuil de 4,0 (voir
+[le périmètre](model-compass-scope.md)).
+
+| Cas d'usage | Items | Repris de la v2 | Évaluateur |
+|---|---:|---:|---|
+| Extraction structurée | 5 | 1 | JSON attendu, crédit partiel |
+| Code court | 5 | 2 | tests dans le sandbox, crédit partiel |
+| Question-réponse avec contexte | 5 | 0 | réponse finale exacte (dont abstention) |
+| Raisonnement borné | 5 | 1 | réponse finale exacte |
+| Classification et routage | 5 | 0 | réponse finale exacte (dont `UNCLEAR` sous règle explicite) |
+| Résumé | 5 | 3 | rubrique, panel de juges |
+| Communication concise | 5 | 1 | rubrique, panel de juges |
+| Suivi d'instruction | 5 | 1 | sortie exacte, 1 rubrique |
+
+Les items repris sont ceux qui départageaient encore les modèles ; les items
+saturés sont remplacés par des variantes plus difficiles du même construit
+(valeur corrigée qui remplace la première, champ absent à laisser à `null`,
+multi-sauts avec un fait périmé, exception à une règle héritée, ironie,
+priorité entre deux demandes, règle de routage explicite, contraintes de
+format cumulées). Les nouveaux items privilégient les contrôles déterministes :
+seuls résumé, communication concise et un item de suivi d'instruction restent
+jugés, soit 11 items depuis 0.7.0. Comme en v2, ils évitent les noms de personnes et de
+lieux, les adresses et les courriels, qu'un filtre en amont peut masquer.
+Les valeurs attendues des nouveaux items sont calculées par
+`scripts/build_quality_suite_v3.py`, et chaque solution de référence des items
+de code doit passer ses propres tests dans le sandbox avant toute écriture. Ce
+script est la source de la suite et de son catalogue : un item se modifie là, pas
+dans le JSON, et un test échoue si les fichiers versionnés s'en écartent.
+
+Le champ `difficulty_status` des items reste `draft` : le modifier changerait
+l'empreinte `quality_suite_id` et rendrait le run de référence
+incomparable aux suivants. La difficulté réelle est celle que mesure l'analyse
+des items de ce run (`results/quality_analysis/benchmark_20261103_154602_item_analysis.csv`,
+fusion 0.8.0) : 6 items sur 40 réussis par les six modèles, 14 ratés seulement
+par Llama 3.3 70B, 20 qui départagent les modèles de tête.
+
+### Items durcis (méthodologie 0.6.0)
+
+Sur le run du 2 novembre 2026, 30 items sur 48 étaient saturés pour les cinq
+modèles de tête (au moins 4,67 de moyenne chacun), et 18 étaient réussis par
+les six modèles, Llama 3.3 70B compris : ils ne départageaient rien. Ces 18 items
+sont remplacés par de nouveaux items du même cas d'usage, sous de nouveaux
+identifiants, pour qu'un run 0.5 ne se compare jamais à tort à un run 0.6 :
+
+| Cas d'usage | Retirés | Ajoutés | Ce qui les rend plus durs |
+|---|---|---|---|
+| Extraction structurée | -05, -06, -07 | -09, -10, -11 | rejouer un journal de commandes avec annulation, valeurs dérivées d'un tableau avec remises, comptage groupé sous règles ; crédit partiel par champ |
+| Code court | -06, -08 | -10, -11 | ordre de versions avec pré-versions, chevauchement maximal avec bornes exclues ; 7 à 10 tests chacun |
+| Question-réponse avec contexte | -06 à -10 | -12 à -16 | suivi d'état sur sept mises à jour, exception qui l'emporte sur une autre, date avec prolongation, abstention face à une estimation tentante, comptage sous trois conditions |
+| Raisonnement borné | -06, -08 | -11, -12 | créneau avec marges autour de réservations, moyenne pondérée conditionnelle |
+| Classification et routage | -07 à -10, -12 | -13 à -17 | lot de cinq messages avec ordre de priorité des règles, portée d'un avis, règle qui l'emporte sur un nombre, intention contre mot-clé, abstention en cas d'égalité |
+| Suivi d'instruction | -05 | -10 | filtrer puis inverser une liste |
+
+Chaque réponse attendue est calculée par le script, et un contrôle vérifie que
+la bonne réponse obtient 5 et qu'une erreur plausible échoue. Les items qui
+séparaient déjà Llama des autres modèles sont conservés ; seuls les items
+jugés de communication concise restent à durcir. La difficulté réelle ne sera
+connue qu'après le prochain run : un item trop dur pour tous passera en
+`floor` dans l'analyse des items.
+
+### Suite finale : cinq items par cas d'usage (méthodologie 0.7.0)
+
+Sur le run du 3 novembre 2026, 13 items sur 48 étaient encore réussis par les
+six modèles, et deux séries d'items écrits « plus durs » l'ont confirmé : les
+cinq modèles de tête atteignent le plafond sur les tâches génériques notées
+automatiquement. Des 18 items remplacés en 0.6.0, 12 sont restés réussis par
+tous ; des 19 candidats essayés le 3 novembre avec `make pilot-items`, y compris
+des tâches longues (tableau de 40 commandes, journal de 39 opérations, lot de 24
+messages, avenants datés), un seul est raté sur le fond par un modèle de tête,
+et un autre seulement pour son format.
+
+La suite s'arrête donc à cinq items par cas d'usage, choisis sur preuves :
+
+- retirés : les 13 items réussis par tous, et un item que seul Llama ratait en
+  résumé et en suivi d'instruction, où il en restait six ;
+- ajoutés : les 7 candidats qu'au moins un modèle a ratés (extraction : -15,
+  -17, -18 ; code : -14 ; question-réponse : -17 ; classification : -18, -22).
+  Ceux que seul Llama rate gardent un plancher sous l'éligibilité.
+
+Ce que la qualité générique mesure entre modèles de tête tient au respect du
+format, aux contraintes jugées (longueur, ton, absence de promesse) et à des
+erreurs ponctuelles : elle sert surtout de **seuil d'éligibilité**. Les départager
+finement est le rôle de `gen-e2-eval` sur les données du client. Un seul item
+JSON montre un exemple de la sortie attendue (-17), les autres items stricts
+non. Les candidats écartés restent dans `data/prompts/quality_candidates_v3.json`,
+avec le constat du pilote dans le script de construction.
+
+### Livraison des prompts (méthodologie 0.6.0)
+
+Le run du 2 novembre 2026 a montré que le chemin vers les modèles réécrit
+certains prompts, sans erreur et avec facturation : `JSON array`, `EUR` ou `W1`
+arrivaient sous la forme `[ADDRESS]`, et des sondes sous la forme
+`[PROMPT_INJECTION]`. La cause probable est un garde-fou de workspace OpenRouter.
+Un score obtenu sur un prompt réécrit mesure le filtre, pas le modèle.
+
+Chaque `make collect` contrôle donc d'abord le texte réellement transmis, via
+l'option `debug.echo_upstream_body` d'OpenRouter (16 tokens par prompt, moins
+d'un centime pour le parcours complet). Le contrôle n'a pas de cache : un filtre
+modifié ou retiré est pris en compte au run suivant.
+
+- **Item qualité réécrit :** la collecte s'arrête avant tout appel noté. L'item se
+  reformule dans `scripts/build_quality_suite_v3.py`, car c'est un faux positif
+  sur un texte bénin.
+- **Sonde réécrite :** elle n'est pas envoyée et sort du RSI (voir la
+  [méthodologie sécurité](security-methodology.md)).
+- **Contrôle impossible :** la collecte s'arrête. `PROMPT_DELIVERY_AUDIT=false`
+  permet de passer outre, et le rapport signale alors que le run n'est pas une
+  preuve de référence.
+
+### Règles de notation introduites de 0.4.0 à 0.7.0
+
+- **Réponse finale.** Pour les items à réponse exacte (`exact_answer`,
+  `factual_sanity`, `logical_reasoning`), le contenu est la réponse finale :
+  la dernière ligne non vide, sans emphase Markdown ni étiquette « Answer: », et
+  le dernier nombre de cette ligne quand la réponse attendue est numérique. Une
+  bonne réponse qui montre son calcul garde son score de contenu ; seule la
+  conformité de format échoue. Depuis 0.8.0, deux autres positions engagent la
+  réponse quand la dernière ligne ne la donne pas : la **première ligne** si
+  elle ne contient que la réponse (`**11:25**` puis l'explication), sauf si la
+  dernière ligne se termine sur une autre réponse de même forme ; et une réponse
+  que la **dernière ligne** introduit par `=`, `:` ou « the answer is »
+  (`3/5 * 2/4 = 3/10`, « the correct answer would be NOT STATED, as… »). Une
+  valeur rencontrée entre les deux ne compte jamais : une réponse qui envisage
+  la bonne valeur puis en retient une autre échoue. La fusion réapplique cette
+  règle aux réponses brutes stockées, sans les modifier.
+- **Bonne réponse hors contrat (0.7.0).** Pour les items `instruction_following`
+  et JSON, la sortie exacte fait partie de ce qui est mesuré : une bonne réponse
+  noyée dans du texte vaut **3** en contenu, et non 5 ni 1. C'est la dernière
+  ligne pour un item `instruction_following` (`… = 4.\n\nppln-4`), le dernier
+  objet ou tableau JSON de la réponse pour un item JSON, dont le crédit partiel
+  passe alors à `1 + 2 × part des champs corrects`. La conformité de format
+  échoue à part. Un seul item JSON donne un exemple de la forme attendue : les
+  autres items stricts n'en ont pas, pour départager les modèles qui ne
+  respectent un format qu'une fois montré.
+- **Contenu seul par cas d'usage.** Le score de qualité d'un cas d'usage, qui
+  décide de l'éligibilité, ne moyenne que les lignes de contenu ; la conformité
+  de format est publiée à part (`format_compliance_rate`, colonne *Format
+  respected* du rapport).
+- **Crédit partiel.** Une réponse JSON vaut `1 + 4 × part des champs
+  corrects` (un champ inventé compte comme une erreur) ; un code vaut
+  `1 + 4 × part des tests réussis`. Une réponse partiellement juste reste un
+  échec, mais n'est plus notée comme une réponse vide.
+- **Réponse vide.** Elle vaut 1 en contenu et, si le prompt contrôle le format,
+  1 aussi en conformité de format ; sa justification indique le `finish_reason`
+  de l'API (`length` = budget épuisé sans réponse). Une réponse d'API sans
+  aucun `choice` est une erreur de collecte, exclue du score.
+- **Plafond de tokens.** `QUALITY_MAX_TOKENS` (16 384 par défaut, raisonnement
+  caché compris) borne un modèle qui boucle jusqu'à sa sortie maximale, comme
+  la réponse vide de 131 072 tokens et 20 minutes du run 0.4.0.
+- **Exécution du code par défaut.** `QUALITY_CODE_EXECUTION=true` dans le
+  parcours standard : les items de code sont notés par leurs tests dans le
+  sandbox, plus objectifs et gratuits, au lieu du panel de juges. Les imports
+  autorisés sont listés dans chaque prompt.
+- **Analyse des items sur le contenu.** Depuis 0.6.0, `analyze_items` ignore les
+  lignes de format : un item où tout le monde répond juste reste saturé, même si
+  certains modèles détaillent leur raisonnement.
+- **Corrigé contesté.** L'analyse des items marque `key_disputed` un item à
+  réponse exacte dont la réponse la plus fréquente de plus de la moitié des
+  modèles est la même réponse rejetée par le corrigé. L'item n'est pas retiré :
+  la carte du cas d'usage affiche le badge *disputed key* pour que la
+  recommandation ne repose pas sans le savoir sur un corrigé discutable.
 
 ## 4. Couverture du périmètre
 
@@ -428,16 +644,28 @@ la moyenne pondérée par dimension, puis la macro-moyenne ; pour un cas d'usage
 il recalcule la moyenne plate de ses prompts. Les bornes sont les quantiles
 2,5 % et 97,5 % des tirages. Les scores et les rangs publiés restent inchangés.
 
-Il faut au moins **3 tentatives distinctes sur chaque prompt scoré** et la
-couverture complète des prompts attendus ; sinon les bornes sont `null`.
+Les intervalles d'un cas d'usage portent sur le contenu seul, comme son score.
+Il faut un run d'au moins **3 tentatives par prompt**, au moins 2 tentatives
+sur chaque prompt scoré et la couverture complète des prompts attendus ; sinon
+les bornes sont `null`. Un prompt qui a perdu une tentative sur une erreur
+technique de collecte est rééchantillonné sur les tentatives restantes, au lieu
+d'annuler l'intervalle du modèle entier.
+
+Une réponse vide est un échec du modèle, pas une erreur de collecte : elle vaut
+1 en contenu et, si le prompt a un contrôle de format, 1 aussi en conformité de
+format. Sans cette seconde ligne, le modèle aurait une tentative de format de
+moins que les autres sur ce prompt. `finish_reason=length` dans la
+justification signale que le modèle a épuisé son budget de tokens sans
+répondre. Une réponse d'API sans aucun `choice` est en revanche une erreur de
+collecte : la cause est l'API, pas le modèle.
 Dans le benchmark global, les exclusions pour corruption d'entrée suspectée
 sont aussi retirées du dénominateur, conformément au score existant. Ces IC
 reflètent le rééchantillonnage de cette suite et de ces tentatives, **pas** une garantie
 de généralisation aux tâches métier. `quality_ci95_overlaps_leader` indique
 le chevauchement des IC de qualité avec au moins un premier du classement,
 pour les modèles éligibles avec IC disponible. Un chevauchement n'est pas
-une preuve d'égalité statistique : les ex æquo restent définis uniquement
-par l'égalité des scores de recommandation.
+une preuve d'égalité statistique : les ex æquo de rang restent définis
+uniquement par l'égalité des scores de recommandation.
 
 `recommendation_sensitivity_rank_min/max` et `recommendation_fragile`
 décrivent 10 scénarios déterministes par cas d'usage : chacun des quatre
@@ -447,9 +675,13 @@ borné à l'échelle 1–5. Les autres poids et seuils restent fixes à chaque
 scénario. `recommendation_fragile=true` si l'éligibilité ou le rang diffère
 du scénario de référence ; les bornes de rang ignorent les scénarios où le
 modèle n'a pas de rang. Une preuve de décision incomplète produit `null`
-pour cette alerte, pas une fausse stabilité. Cette analyse locale ne remplace
-ni la calibration humaine des seuils provisoires ni un test de toutes les
-combinaisons de poids.
+pour cette alerte, pas une fausse stabilité. Depuis 0.7.0, tout modèle classé
+qu'au moins un scénario met premier (`recommendation_sensitivity_rank_min = 1`)
+est `recommended` à côté du premier, avec son rang inchangé : un écart que
+±10 % sur un poids renverse n'est pas une décision. Cette analyse locale ne remplace
+ni la relecture des réponses jugées qui a calibré les seuils de 3,5 (voir
+[le périmètre](model-compass-scope.md)), ni un test de toutes les combinaisons
+de poids.
 
 Pour `k=1`, une mauvaise réponse objective porte
 `verification_status=optional_openrouter_recheck`. Une commande manuelle peut
@@ -496,10 +728,21 @@ w_q Q_{100} + w_s S_{100} + w_c C_{100} + w_p P_{100},
 $$
 
 Par défaut, $w_q=0{,}50$, $w_s=0{,}25$, $w_c=0{,}20$ et $w_p=0{,}05$.
-Le coût et la performance sont normalisés sur le **cohort de modèles du run** ;
-la comparaison du score composite suppose donc le même périmètre et les mêmes
-poids. La sensibilité aux variations de poids utilise ces mêmes composantes
-0–100 ; les variations du seuil qualité continuent d'agir sur l'échelle 1–5.
+Le coût est celui de 1 000 requêtes du profil de charge : la taille d'entrée du
+profil au prix d'entrée affiché, plus la longueur de sortie que le modèle a
+réellement produite sur la suite qualité (raisonnement caché compris,
+`measured_completion_tokens_per_answer`) au prix de sortie affiché. Un modèle
+bavard ou qui raisonne longuement paie donc ses tokens. La performance utilise
+la latence p95. Chaque catalogue contient leurs bornes logarithmiques fixes
+(v1.2, v2.2 et v3.1) : coût 0,05–50 USD pour 1 000 requêtes et latence
+1–30 secondes. Le score est 100 au seuil meilleur,
+0 au seuil moins bon, avec plafonnement hors plage ; un modèle gratuit obtient
+100 pour le coût. L'ajout ou le retrait d'un modèle ne change donc pas le score
+des modèles déjà présents. Sans latence p95, la preuve de performance est
+manquante et aucun débit tokens/s ne la remplace. Les autres dimensions sont
+ensuite combinées selon leurs poids enregistrés. La sensibilité aux poids
+utilise ces mêmes composantes 0–100 ; les variations du seuil qualité continuent
+d'agir sur l'échelle 1–5.
 
 Les artefacts générés avant cette correction utilisaient par erreur la note
 qualité brute sur 1–5 dans la somme pondérée : leurs `recommendation_score`,
