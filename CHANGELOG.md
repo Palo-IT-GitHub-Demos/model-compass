@@ -182,6 +182,8 @@ methodology.
 
 ### Fixed
 
+- The test suite gives every test a fake OpenRouter key: 12 tests needed the
+  local `.env`, so CI had failed on `main` since 13 October 2026.
 - A prompt the gateway rewrites is logged with the words it changed
   (`'M. 2.' -> '[PERSON_NAME].'`), not only the start of the text, where the
   rewrite rarely is. Three candidate items were reworded this way: a clothing
