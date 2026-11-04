@@ -17,7 +17,7 @@ and the [security methodology](security-methodology.md).
 
 ## How we recommend
 
-![Quality is a gate, not a trade-off: gate, rank, stress-test](assets/model-compass/slide-2.png)
+![No model recommended below the quality bar: gate, rank, stress-test](assets/model-compass/slide-2.png)
 
 Quality is a gate: a model below a use case's threshold is never recommended.
 Eligible models are ranked with the *balanced* profile (50 / 25 / 20 / 5); the
